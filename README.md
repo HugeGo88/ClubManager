@@ -21,6 +21,9 @@ Use **New meeting** or **Sample meeting** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its
 PDF to `meetings/protocols`, replacing the previous PDF for that meeting. Meeting
 details support Markdown, and the Open Tasks view lists tasks from saved meetings.
+After export, **Gespeichertes PDF öffnen** opens the last exported protocol in
+the system's default PDF viewer. It does not include subsequent meeting changes
+until the PDF is exported again.
 Check a task there to mark it done and save the change immediately. Use Reload
 tasks to refresh the list, including after an on-disk conflict.
 

@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const state = { view: 'meetings', folder: null, meetings: [], meeting: null, revision: null, dirty: false, message: '', error: false };
+const state = { view: 'meetings', folder: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -58,7 +58,8 @@ function formatDate(value) {
 
 function meetingEditor(meeting) {
   return `<div class="topline"><div><h1>Sitzung bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
-    <div class="row">${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
+    <div class="row">${state.hasProtocol ? button('open-protocol', 'Gespeichertes PDF öffnen') : ''}${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
+    ${state.hasProtocol ? '<p class="muted">Das gespeicherte PDF zeigt den Stand des letzten Exports. Änderungen an der Sitzung werden erst nach einem erneuten Export übernommen.</p>' : ''}
     <div class="card"><div class="fields">
       <label>Titel der Sitzung<input data-field="title" value="${escape(meeting.title)}" placeholder="Titel der Sitzung"></label>
       <label>Datum<input type="date" data-field="date" value="${escape(meeting.date)}"></label>
@@ -134,6 +135,7 @@ async function changeView(view) {
   if (!confirmDiscard()) return;
   state.meeting = null;
   state.revision = null;
+  state.hasProtocol = false;
   state.dirty = false;
   state.view = view;
   setMessage('');
@@ -151,6 +153,7 @@ async function run(action, target) {
         state.folder = selected;
         state.meeting = null;
         state.revision = null;
+        state.hasProtocol = false;
         state.dirty = false;
         await refresh();
         setMessage('Datenordner ausgewählt. Die Modulordner sind bereit.');
@@ -162,6 +165,7 @@ async function run(action, target) {
       if (!confirmDiscard()) return;
       state.meeting = action === 'sample' ? sampleMeeting() : blankMeeting();
       state.revision = null;
+      state.hasProtocol = false;
       state.dirty = true;
       setMessage(action === 'sample' ? 'Dies sind Beispieldaten. Speichern Sie die Sitzung, um sie zu behalten.' : '');
       break;
@@ -171,8 +175,10 @@ async function run(action, target) {
       await refresh();
       const selected = state.meetings.find(item => item.meeting.id === target.dataset.id);
       if (!selected) throw new Error('Die Sitzung ist auf dem Datenträger nicht mehr vorhanden.');
+      const hasProtocol = await window.club.hasProtocol(selected.meeting.id);
       state.meeting = structuredClone(selected.meeting);
       state.revision = selected.revision;
+      state.hasProtocol = hasProtocol;
       state.dirty = false;
       state.view = 'meetings';
       setMessage('');
@@ -192,6 +198,10 @@ async function run(action, target) {
     case 'export':
       if (state.dirty || !state.revision) throw new Error('Speichern Sie die Sitzung, bevor Sie das PDF exportieren.');
       setMessage(`PDF gespeichert unter: ${await window.club.exportMeeting(meeting, state.revision)}`);
+      state.hasProtocol = true;
+      break;
+    case 'open-protocol':
+      await window.club.openProtocol(meeting.id);
       break;
     case 'add-person': meeting.attendance.push({ name: '', status: 'attending' }); state.dirty = true; break;
     case 'remove-person': meeting.attendance.splice(i, 1); state.dirty = true; break;

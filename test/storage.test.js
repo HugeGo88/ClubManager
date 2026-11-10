@@ -58,3 +58,18 @@ test('rejects invalid meeting data and reports corrupt records', async t => {
   await fs.writeFile(file, '{broken');
   await assert.rejects(storage.listMeetings(folder), /ungültiges JSON/);
 });
+
+test('locates protocol PDFs safely and rejects non-files', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  assert.equal(await storage.hasProtocol(folder, data.id), false);
+  assert.throws(() => storage.protocolPath(folder, '../escape'), /Ungültige Sitzungs-ID/);
+  const directory = path.join(folder, 'meetings', 'protocols');
+  await fs.mkdir(directory);
+  const file = storage.protocolPath(folder, data.id);
+  await fs.writeFile(file, '%PDF-test');
+  assert.equal(await storage.hasProtocol(folder, data.id), true);
+  await fs.unlink(file);
+  await fs.mkdir(file);
+  await assert.rejects(storage.hasProtocol(folder, data.id), /keine reguläre Datei/);
+});

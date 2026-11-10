@@ -22,5 +22,7 @@ contextBridge.exposeInMainWorld('club', {
   chooseFolder: () => invoke('folder:choose'),
   listMeetings: () => invoke('meetings:list'),
   saveMeeting: (meeting, revision) => invoke('meetings:save', meeting, revision),
-  exportMeeting: (meeting, revision) => invoke('meetings:export', meeting, revision)
+  exportMeeting: (meeting, revision) => invoke('meetings:export', meeting, revision),
+  hasProtocol: id => invoke('meetings:has-protocol', id),
+  openProtocol: id => invoke('meetings:open-protocol', id)
 });

@@ -1,4 +1,4 @@
-const { app, dialog } = require('electron');
+const { app, dialog, shell } = require('electron');
 const assert = require('node:assert/strict');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
@@ -13,6 +13,9 @@ async function main() {
   app.setPath('userData', path.join(root, 'settings'));
   await fs.mkdir(app.getPath('userData'));
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [data] });
+  const openedPaths = [];
+  let openError = '';
+  shell.openPath = async file => { openedPaths.push(file); return openError; };
 
   const timeout = setTimeout(() => {
     console.error('Electron smoke test timed out.');
@@ -40,6 +43,7 @@ async function main() {
           await click('[data-view="meetings"]');
           await click('[data-action="sample"]');
           await waitFor(() => document.querySelector('[data-field="title"]'));
+          const absentBeforeExport = !document.querySelector('[data-action="open-protocol"]');
           const language = document.documentElement.lang;
           const navigation = [...document.querySelectorAll('[data-view]')].map(button => button.getAttribute('aria-label'));
           const attendanceOptions = [...document.querySelector('[data-person="0"][data-field="status"]').options].map(option => option.textContent);
@@ -52,11 +56,15 @@ async function main() {
             const text = document.querySelector('[role="status"]')?.textContent;
             return text?.includes('PDF gespeichert') && text;
           });
+          await waitFor(() => document.querySelector('[data-action="open-protocol"]'));
+          await click('[data-action="open-protocol"]');
+          await waitFor(() => !document.body.inert);
           await click('[data-view="tasks"]');
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
-          return { notice, tasks: document.querySelector('main').textContent, language, navigation, attendanceOptions, typeOptions };
+          return { notice, tasks: document.querySelector('main').textContent, language, navigation, attendanceOptions, typeOptions, absentBeforeExport };
         })()`);
         assert.equal(result.language, 'de');
+        assert.ok(result.absentBeforeExport);
         assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
         assert.deepEqual(result.typeOptions, ['Diskussion', 'Entscheidung', 'Information']);
@@ -70,6 +78,7 @@ async function main() {
         assert.equal(saved.meeting.points[1].headline, 'Kommende Veranstaltung');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+        assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         saved.meeting.points[1].tasks[0].responsible = 'Updated externally';
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(saved, null, 2) + '\n');
         const completion = await window.webContents.executeJavaScript(`(async () => {
@@ -96,16 +105,40 @@ async function main() {
           await waitFor(() => document.querySelector('[data-action="select"]'));
           document.querySelector('[data-action="select"]').click();
           await waitFor(() => document.querySelector('[data-field="done"]'));
-          return { conflict, stillOpen, empty, checked: document.querySelector('[data-field="done"]').checked };
+          return { conflict, stillOpen, empty, checked: document.querySelector('[data-field="done"]').checked,
+            openAvailable: !!document.querySelector('[data-action="open-protocol"]') };
         })()`);
         assert.match(completion.conflict, /auf dem Datenträger geändert/);
         assert.doesNotMatch(completion.conflict, /Error invoking remote method/);
         assert.ok(completion.stillOpen);
         assert.ok(completion.empty);
         assert.ok(completion.checked);
+        assert.ok(completion.openAvailable);
         const completed = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(completed.meeting.points[1].tasks[0].done, true);
         assert.equal(completed.meeting.points[1].tasks[0].responsible, 'Updated externally');
+        openError = 'Testfehler';
+        const openFailure = await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="open-protocol"]').click();
+          for (let i = 0; i < 200; i++) {
+            const text = document.querySelector('.notice.error')?.textContent;
+            if (text) return text;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for PDF open error');
+        })()`);
+        assert.match(openFailure, /konnte nicht geöffnet werden: Testfehler/);
+        await fs.unlink(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
+        const missing = await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="open-protocol"]').click();
+          for (let i = 0; i < 200; i++) {
+            const text = document.querySelector('.notice.error')?.textContent;
+            if (text?.includes('nicht gefunden')) return text;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for missing PDF error');
+        })()`);
+        assert.match(missing, /nicht gefunden/);
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
         }

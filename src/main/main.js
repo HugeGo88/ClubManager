@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const storage = require('./storage');
@@ -74,6 +74,15 @@ function registerHandlers() {
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));
   ipcMain.handle('meetings:save', (event, meeting, revision) =>
     serializeWrite(() => storage.saveMeeting(requireFolder(), meeting, revision)));
+  ipcMain.handle('meetings:has-protocol', (event, id) => storage.hasProtocol(requireFolder(), id));
+  ipcMain.handle('meetings:open-protocol', async (event, id) => {
+    const currentFolder = requireFolder();
+    if (!await storage.hasProtocol(currentFolder, id)) {
+      throw new Error('Das Protokoll-PDF wurde nicht gefunden. Exportieren Sie es erneut.');
+    }
+    const error = await shell.openPath(storage.protocolPath(currentFolder, id));
+    if (error) throw new Error(`Das Protokoll-PDF konnte nicht geöffnet werden: ${error}`);
+  });
   ipcMain.handle('meetings:export', (event, meeting, revision) => serializeWrite(async () => {
     const currentFolder = requireFolder();
     storage.validateMeeting(meeting);
@@ -88,7 +97,7 @@ function registerHandlers() {
       const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true });
       const directory = path.join(currentFolder, 'meetings', 'protocols');
       await fs.mkdir(directory, { recursive: true });
-      const file = path.join(directory, `${meeting.id}.pdf`);
+      const file = storage.protocolPath(currentFolder, meeting.id);
       await storage.atomicWrite(file, pdf);
       return file;
     } finally {

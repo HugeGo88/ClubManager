@@ -16,6 +16,23 @@ function meetingPath(folder, id) {
   return path.join(folder, 'meetings', `${id}.json`);
 }
 
+function protocolPath(folder, id) {
+  meetingPath(folder, id);
+  return path.join(folder, 'meetings', 'protocols', `${id}.pdf`);
+}
+
+async function hasProtocol(folder, id) {
+  const file = protocolPath(folder, id);
+  try {
+    const stat = await fs.lstat(file);
+    if (!stat.isFile()) throw new Error('Das Protokoll-PDF ist keine reguläre Datei.');
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 function revision(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
@@ -92,4 +109,4 @@ async function saveMeeting(folder, meeting, expectedRevision) {
   return revision(content);
 }
 
-module.exports = { initializeFolder, listMeetings, saveMeeting, atomicWrite, validateMeeting };
+module.exports = { initializeFolder, listMeetings, saveMeeting, atomicWrite, validateMeeting, protocolPath, hasProtocol };
