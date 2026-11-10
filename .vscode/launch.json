@@ -5,6 +5,7 @@
       "name": "Launch Electron main",
       "type": "node",
       "request": "launch",
+      "preLaunchTask": "Markdown-Editor bauen",
       "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
       "windows": {
         "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/electron.exe"

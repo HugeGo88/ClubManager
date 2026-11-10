@@ -2,6 +2,12 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Markdown-Editor bauen",
+			"type": "npm",
+			"script": "build:editor",
+			"problemMatcher": []
+		},
+		{
 			"label": "Electron: debug main process",
 			"type": "shell",
 			"command": "${workspaceFolder}/node_modules/.bin/electron",
@@ -10,6 +16,7 @@
 				"."
 			],
 			"isBackground": true,
+			"dependsOn": "Markdown-Editor bauen",
 			"problemMatcher": []
 		}
 	]

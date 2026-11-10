@@ -10,8 +10,13 @@ function escapeHtml(value) {
 
 function markdown(value) {
   return sanitizeHtml(marked.parse(value), {
-    allowedTags: ['p', 'br', 'strong', 'em', 'del', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'hr'],
-    allowedAttributes: {}
+    allowedTags: ['p', 'br', 'strong', 'em', 'del', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'hr', 'input'],
+    allowedAttributes: { input: ['type', 'checked', 'disabled'] },
+    transformTags: {
+      input: (tagName, attributes) => attributes.type === 'checkbox'
+        ? { tagName: 'input', attribs: { type: 'checkbox', disabled: 'disabled', ...(Object.hasOwn(attributes, 'checked') ? { checked: 'checked' } : {}) } }
+        : { tagName: 'span', attribs: {} }
+    }
   });
 }
 

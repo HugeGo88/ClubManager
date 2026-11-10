@@ -57,3 +57,20 @@ button:disabled { opacity: .45; cursor: default; }
 .sort-button { border: 0; background: none; color: inherit; font: inherit; font-weight: 600; padding: 0; }
 .sort-button:hover { color: #2867c7; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.markdown-field { margin: 12px 0; }
+.markdown-label { color: #4a586b; font-size: 13px; font-weight: 600; }
+.markdown-field .cm-editor { margin-top: 5px; border: 1px solid #cbd4df; border-radius: 5px; background: white; }
+.markdown-field .cm-editor.cm-focused { outline: 2px solid #2867c7; outline-offset: -1px; }
+.markdown-field .cm-content { min-height: 90px; padding: 8px 10px; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.markdown-field .cm-placeholder { color: #667487; }
+.markdown-strong { font-weight: bold; }
+.markdown-emphasis { font-style: italic; }
+.markdown-strike { text-decoration: line-through; }
+.markdown-code { font-family: monospace; background: #eef1f5; border-radius: 3px; }
+.markdown-link { color: #2867c7; text-decoration: underline; }
+.markdown-heading-1 { font-size: 1.6em; font-weight: bold; }
+.markdown-heading-2 { font-size: 1.4em; font-weight: bold; }
+.markdown-heading-3, .markdown-heading-4, .markdown-heading-5, .markdown-heading-6 { font-size: 1.2em; font-weight: bold; }
+.markdown-bullet { display: inline-block; min-width: 1ch; text-align: center; color: #4a586b; }
+.markdown-list-number { color: #4a586b; font-weight: 600; }
+.markdown-field .markdown-task { vertical-align: middle; margin: 0 2px; cursor: pointer; }

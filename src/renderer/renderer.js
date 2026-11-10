@@ -2,6 +2,7 @@ const app = document.querySelector('#app');
 const state = { view: 'meetings', folder: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
+let markdownEditors = [];
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -82,7 +83,7 @@ function meetingEditor(meeting) {
         <label>Überschrift<input data-point="${i}" data-field="headline" value="${escape(point.headline)}" placeholder="Überschrift"></label>
         <label>Typ<select data-point="${i}" data-field="type">${options(Object.entries(clubDeutsch.pointType), point.type)}</select></label>
       </div>
-      <label>Details <span class="muted">(Markdown)</span><textarea data-point="${i}" data-field="details" placeholder="Details in Markdown schreiben">${escape(point.details)}</textarea></label>
+      <div class="markdown-field"><span class="markdown-label">Details <span class="muted">(Markdown mit Live-Vorschau)</span></span><div data-markdown-editor="${i}"></div></div>
       <div class="card-header"><h3>Aufgaben</h3><button class="action" data-action="add-task" data-index="${i}">+ Aufgabe hinzufügen</button></div>
       ${point.tasks.map((task, j) => `<div class="row">
         <label>Aufgabe<input data-point="${i}" data-task="${j}" data-field="description" value="${escape(task.description)}" placeholder="Aufgabe"></label>
@@ -145,6 +146,8 @@ function tasksView() {
 }
 
 function render() {
+  for (const editor of markdownEditors) editor.destroy();
+  markdownEditors = [];
   document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
   let content = '';
   if (state.view === 'settings') {
@@ -165,6 +168,16 @@ function render() {
   }
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
     <div class="content"><div class="content-inner">${notice()}${content}</div></div></div>`;
+  app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
+    const index = Number(parent.dataset.markdownEditor);
+    const point = state.meeting.points[index];
+    markdownEditors.push(window.createMarkdownEditor(parent, point.details, value => {
+      point.details = value;
+      state.dirty = true;
+      const status = document.querySelector('.status');
+      if (status) status.textContent = 'Ungespeicherte Änderungen';
+    }, `Details für TOP ${index + 1}`));
+  });
 }
 
 async function refresh() {

@@ -10,19 +10,30 @@
   },
   "main": "src/main/main.js",
   "scripts": {
+    "build:editor": "esbuild src/renderer/markdown-editor.js --bundle --platform=browser --format=iife --outfile=src/renderer/generated/markdown-editor.js",
+    "prestart": "npm run build:editor",
     "start": "electron .",
     "test": "node --test",
+    "pretest:electron": "npm run build:editor",
     "test:electron": "electron scripts/electron-smoke.cjs",
+    "predist:mac": "npm run build:editor",
     "dist:mac": "electron-builder --mac dmg --arm64",
+    "predist:win": "npm run build:editor",
     "dist:win": "electron-builder --win nsis --x64"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.0",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.39.0",
     "marked": "^12.0.2",
     "sanitize-html": "^2.18.1"
   },
   "devDependencies": {
     "electron": "^45.3.0",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25.0"
   },
   "build": {
     "appId": "app.clubmanager.desktop",

@@ -34,3 +34,12 @@ test('protocol escapes user content and strips unsafe Markdown', () => {
   assert.match(html, /&lt;img&gt;/);
   assert.doesNotMatch(html, /<script>/);
 });
+
+test('protocol displays Markdown checklists as disabled checkboxes', () => {
+  const html = protocolHtml({
+    title: 'Sitzung', date: '', attendance: [],
+    points: [{ headline: 'Punkt', type: 'info', details: '- [ ] Offen\n- [x] Fertig', tasks: [] }]
+  }, '');
+  assert.match(html, /<input type="checkbox" disabled="disabled"\s*\/?> Offen/);
+  assert.match(html, /<input type="checkbox" disabled="disabled" checked="checked"\s*\/?> Fertig/);
+});

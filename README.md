@@ -20,7 +20,13 @@ Selecting another folder opens that folder's data; it does not migrate it.
 Use **New meeting** or **Sample meeting** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its
 PDF to `meetings/protocols`, replacing the previous PDF for that meeting. Meeting
-details support Markdown, and the Open Tasks view lists tasks from saved meetings.
+details support Markdown with an inline live preview. Bold, italic, headings,
+inline code, links, lists and task checkboxes are formatted in the editor; their
+Markdown markers become visible when the cursor is inside the formatting.
+Markdown task checkboxes can be toggled directly; these are separate from the
+meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
+used for PDF export, where task checkboxes are shown as non-editable. The Open
+Tasks view lists tasks from saved meetings.
 After export, **Gespeichertes PDF öffnen** opens the last exported protocol in
 the system's default PDF viewer. It does not include subsequent meeting changes
 until the PDF is exported again.
@@ -48,6 +54,8 @@ VS Code starts Electron and attaches the debugger automatically. Set breakpoints
 in the main process, such as `src/main/main.js`; stop debugging to close the
 launched app. Install dependencies first with `npm install`. To debug renderer
 code, use the Electron window's Developer Tools.
+The debug launch builds the Markdown editor automatically. If launching Electron
+directly without `npm start`, run `npm run build:editor` first.
 
 Alternatively, run the **Electron: debug main process** task and select
 **Attach to Electron main** to attach to that running instance. Its inspector

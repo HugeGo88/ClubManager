@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'nonce-clubmanager-editor'; script-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'">
   <title>ClubManager</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -21,6 +21,7 @@
   </aside>
   <main id="app"></main>
   <script src="../shared/de.js"></script>
+  <script src="generated/markdown-editor.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
