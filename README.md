@@ -21,6 +21,8 @@ Use **New meeting** or **Sample meeting** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its
 PDF to `meetings/protocols`, replacing the previous PDF for that meeting. Meeting
 details support Markdown, and the Open Tasks view lists tasks from saved meetings.
+Check a task there to mark it done and save the change immediately. Use Reload
+tasks to refresh the list, including after an on-disk conflict.
 
 The app warns if a meeting has changed on disk since it was opened. This is not
 a synchronization system or a substitute for backups; avoid editing the same

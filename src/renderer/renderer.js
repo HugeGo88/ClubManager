@@ -85,11 +85,12 @@ function meetingEditor(meeting) {
 }
 
 function tasksView() {
-  const tasks = state.meetings.flatMap(({ meeting }) => meeting.points.flatMap(point =>
-    point.tasks.filter(task => !task.done).map(task => ({ meeting, point, task }))));
-  return `<div class="topline"><div><h1>Open tasks</h1><p>Outstanding tasks from saved meetings.</p></div></div>
-    ${tasks.length ? tasks.map(({ meeting, point, task }) => `<div class="card">
-      <strong>${escape(task.description || 'Untitled task')}</strong>
+  const tasks = state.meetings.flatMap(({ meeting }) => meeting.points.flatMap((point, pointIndex) =>
+    point.tasks.flatMap((task, taskIndex) => task.done ? [] : [{ meeting, point, task, pointIndex, taskIndex }])));
+  return `<div class="topline"><div><h1>Open tasks</h1><p>Outstanding tasks from saved meetings.</p></div>${button('refresh-tasks', 'Reload tasks')}</div>
+    ${tasks.length ? tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => `<div class="card">
+      <label class="checkbox"><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}">
+      <strong>${escape(task.description || 'Untitled task')}</strong> <span class="muted">Mark done</span></label>
       <p>${escape(meeting.title || 'Untitled meeting')} · ${escape(point.headline || 'Untitled point')}</p>
       <span class="badge">${escape(task.responsible || 'Unassigned')}</span>
       <button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Open meeting</button></div>`).join('') :
@@ -172,6 +173,10 @@ async function run(action, target) {
       setMessage('');
       break;
     }
+    case 'refresh-tasks':
+      await refresh();
+      setMessage('Tasks reloaded.');
+      break;
     case 'save':
       if (!meeting.title.trim()) throw new Error('Enter a meeting title before saving.');
       state.revision = await window.club.saveMeeting(meeting, state.revision);
@@ -214,6 +219,29 @@ document.addEventListener('click', async event => {
     document.body.inert = false;
   }
   render();
+});
+
+app.addEventListener('change', async event => {
+  const target = event.target;
+  if (!target.matches('[data-complete-task]') || !target.checked) return;
+  document.body.inert = true;
+  try {
+    const record = state.meetings.find(item => item.meeting.id === target.dataset.id);
+    if (!record) throw new Error('Meeting no longer exists. Reload tasks and try again.');
+    const meeting = structuredClone(record.meeting);
+    const task = meeting.points[Number(target.dataset.pointIndex)]?.tasks[Number(target.dataset.taskIndex)];
+    if (!task || task.done) throw new Error('Task is no longer open. Reload tasks and try again.');
+    task.done = true;
+    const revision = await window.club.saveMeeting(meeting, record.revision);
+    record.meeting = meeting;
+    record.revision = revision;
+    setMessage('Task marked done.');
+  } catch (error) {
+    setMessage(`${error.message} Reload tasks to see the latest saved data.`, true);
+  } finally {
+    document.body.inert = false;
+    render();
+  }
 });
 
 app.addEventListener('input', event => {

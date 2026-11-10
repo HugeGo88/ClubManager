@@ -61,10 +61,45 @@ async function main() {
         assert.equal(saved.meeting.points[1].headline, 'Upcoming event');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+        saved.meeting.points[1].tasks[0].responsible = 'Updated externally';
+        await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(saved, null, 2) + '\n');
+        const completion = await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async (test) => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for completion UI');
+          };
+          document.querySelector('[data-complete-task]').click();
+          const conflict = await waitFor(() => {
+            const notice = document.querySelector('.notice.error')?.textContent;
+            return notice?.includes('changed on disk') && notice;
+          });
+          const stillOpen = !!document.querySelector('[data-complete-task]:not(:checked)');
+          document.querySelector('[data-action="refresh-tasks"]').click();
+          await waitFor(() => document.querySelector('.badge')?.textContent === 'Updated externally');
+          document.querySelector('[data-complete-task]').click();
+          await waitFor(() => document.querySelector('[role="status"]')?.textContent === 'Task marked done.');
+          const empty = document.querySelector('main').textContent.includes('No open tasks.');
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="select"]'));
+          document.querySelector('[data-action="select"]').click();
+          await waitFor(() => document.querySelector('[data-field="done"]'));
+          return { conflict, stillOpen, empty, checked: document.querySelector('[data-field="done"]').checked };
+        })()`);
+        assert.match(completion.conflict, /changed on disk/);
+        assert.ok(completion.stillOpen);
+        assert.ok(completion.empty);
+        assert.ok(completion.checked);
+        const completed = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
+        assert.equal(completed.meeting.points[1].tasks[0].done, true);
+        assert.equal(completed.meeting.points[1].tasks[0].responsible, 'Updated externally');
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
         }
-        console.log('Electron smoke test passed: folder selection, meeting save, reorder, open tasks, and PDF export.');
+        console.log('Electron smoke test passed: meeting, PDF export, task completion, persistence, and conflict recovery.');
         clearTimeout(timeout);
         window.destroy();
         app.exit(0);
