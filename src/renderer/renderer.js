@@ -1,5 +1,7 @@
 const app = document.querySelector('#app');
 const state = { view: 'meetings', folder: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
+const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
+const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -90,17 +92,56 @@ function meetingEditor(meeting) {
       </div>`).join('')}</section>`).join('') : '<p>Noch keine Traktanden vorhanden.</p>'}`;
 }
 
-function tasksView() {
-  const tasks = state.meetings.flatMap(({ meeting }) => meeting.points.flatMap((point, pointIndex) =>
+function taskResults() {
+  const allTasks = state.meetings.flatMap(({ meeting }) => meeting.points.flatMap((point, pointIndex) =>
     point.tasks.flatMap((task, taskIndex) => task.done ? [] : [{ meeting, point, task, pointIndex, taskIndex }])));
+  const search = taskView.search.trim().toLocaleLowerCase('de');
+  const responsible = taskView.responsible.trim().toLocaleLowerCase('de');
+  const tasks = allTasks.filter(({ meeting, point, task }) => {
+    const text = [task.description, task.responsible || clubDeutsch.unassigned, meeting.title, point.headline, meeting.date, formatDate(meeting.date)].join(' ').toLocaleLowerCase('de');
+    return text.includes(search) && (task.responsible || clubDeutsch.unassigned).toLocaleLowerCase('de').includes(responsible);
+  });
+  const values = {
+    description: item => item.task.description,
+    responsible: item => item.task.responsible || clubDeutsch.unassigned,
+    meeting: item => item.meeting.title,
+    point: item => item.point.headline,
+    date: item => item.meeting.date
+  };
+  tasks.sort((a, b) => taskCollator.compare(values[taskView.sort](a), values[taskView.sort](b)) *
+    (taskView.direction === 'ascending' ? 1 : -1));
+  const header = (key, label) => {
+    const active = taskView.sort === key;
+    const indicator = active ? (taskView.direction === 'ascending' ? ' ↑' : ' ↓') : '';
+    return `<th scope="col"${active ? ` aria-sort="${taskView.direction}"` : ''}><button class="sort-button" data-action="sort-tasks" data-sort="${key}" aria-label="${label} sortieren">${label}${indicator}</button></th>`;
+  };
+  return `<p class="task-count" role="status">${tasks.length} von ${allTasks.length} offenen Aufgaben</p>
+    ${allTasks.length === 0 ? '<p>Keine offenen Aufgaben.</p>' : tasks.length === 0 ? '<p>Keine Aufgaben entsprechen den Filtern.</p>' :
+      `<div class="table-scroll"><table class="tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption><thead><tr>
+        <th scope="col">Erledigt</th>${header('description', 'Aufgabe')}${header('responsible', 'Verantwortlich')}
+        ${header('meeting', 'Sitzung')}${header('point', 'Traktandum')}${header('date', 'Sitzungsdatum')}
+        <th scope="col">Aktion</th></tr></thead><tbody>
+      ${tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => `<tr>
+        <td><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}" aria-label="${escape(`${task.description || 'Aufgabe ohne Titel'} – ${meeting.title || 'Sitzung ohne Titel'} als erledigt markieren`)}"></td>
+        <td>${escape(task.description || 'Aufgabe ohne Titel')}</td>
+        <td>${escape(task.responsible || clubDeutsch.unassigned)}</td>
+        <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
+        <td>${escape(point.headline || 'Traktandum ohne Titel')}</td>
+        <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
+        <td><button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
+      </tr>`).join('')}</tbody></table></div>`}`;
+}
+
+function tasksView() {
   return `<div class="topline"><div><h1>Offene Aufgaben</h1><p>Offene Aufgaben aus gespeicherten Sitzungen.</p></div>${button('refresh-tasks', 'Aufgaben neu laden')}</div>
-    ${tasks.length ? tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => `<div class="card">
-      <label class="checkbox"><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}">
-      <strong>${escape(task.description || 'Aufgabe ohne Titel')}</strong> <span class="muted">Als erledigt markieren</span></label>
-      <p>${escape(meeting.title || 'Sitzung ohne Titel')} · ${escape(point.headline || 'Traktandum ohne Titel')}</p>
-      <span class="badge">${escape(task.responsible || clubDeutsch.unassigned)}</span>
-      <button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></div>`).join('') :
-      '<div class="card"><p>Keine offenen Aufgaben.</p></div>'}`;
+    <div class="card">
+      <div class="task-filters">
+        <label>Aufgaben suchen<input type="search" data-task-filter="search" value="${escape(taskView.search)}" placeholder="Aufgabe, Sitzung, Traktandum oder Datum"></label>
+        <label>Verantwortliche filtern<input type="search" data-task-filter="responsible" value="${escape(taskView.responsible)}" placeholder="Name"></label>
+        ${button('clear-task-filters', 'Filter zurücksetzen')}
+      </div>
+      <div id="task-results">${taskResults()}</div>
+    </div>`;
 }
 
 function render() {
@@ -188,6 +229,18 @@ async function run(action, target) {
       await refresh();
       setMessage('Aufgaben neu geladen.');
       break;
+    case 'clear-task-filters':
+      taskView.search = '';
+      taskView.responsible = '';
+      break;
+    case 'sort-tasks':
+      if (taskView.sort === target.dataset.sort) {
+        taskView.direction = taskView.direction === 'ascending' ? 'descending' : 'ascending';
+      } else {
+        taskView.sort = target.dataset.sort;
+        taskView.direction = 'ascending';
+      }
+      break;
     case 'save':
       if (!meeting.title.trim()) throw new Error('Geben Sie vor dem Speichern einen Titel für die Sitzung ein.');
       state.revision = await window.club.saveMeeting(meeting, state.revision);
@@ -234,6 +287,9 @@ document.addEventListener('click', async event => {
     document.body.inert = false;
   }
   render();
+  if (target.dataset.action === 'sort-tasks') {
+    document.querySelector(`[data-action="sort-tasks"][data-sort="${target.dataset.sort}"]`)?.focus();
+  }
 });
 
 app.addEventListener('change', async event => {
@@ -261,6 +317,11 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.dataset.taskFilter) {
+    taskView[target.dataset.taskFilter] = target.value;
+    document.querySelector('#task-results').innerHTML = taskResults();
+    return;
+  }
   if (!target.dataset.field || !state.meeting) return;
   let item = state.meeting;
   if (target.dataset.person !== undefined) item = item.attendance[Number(target.dataset.person)];

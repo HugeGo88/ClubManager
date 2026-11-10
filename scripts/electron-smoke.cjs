@@ -79,8 +79,59 @@ async function main() {
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
-        saved.meeting.points[1].tasks[0].responsible = 'Updated externally';
+        saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false });
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(saved, null, 2) + '\n');
+        const table = await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async (test) => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for table');
+          };
+          const rows = () => [...document.querySelectorAll('.tasks-table tbody tr')].map(row => row.cells[1].textContent);
+          const filter = (name, value) => {
+            const input = document.querySelector('[data-task-filter="' + name + '"]');
+            input.focus();
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return document.activeElement === input;
+          };
+          document.querySelector('[data-action="refresh-tasks"]').click();
+          await waitFor(() => rows().length === 2);
+          document.querySelector('[data-sort="description"]').click();
+          await waitFor(() => document.querySelector('[aria-sort="ascending"]'));
+          const ascending = rows();
+          document.querySelector('[data-sort="description"]').click();
+          await waitFor(() => document.querySelector('[aria-sort="descending"]'));
+          const descending = rows();
+          const keptFocus = filter('search', 'BUDGET') && filter('responsible', 'zoe');
+          const filtered = rows();
+          filter('responsible', 'Niemand');
+          const noMatch = document.querySelector('#task-results').textContent.includes('Keine Aufgaben entsprechen den Filtern.');
+          document.querySelector('[data-action="clear-task-filters"]').click();
+          await waitFor(() => rows().length === 2);
+          filter('search', 'budget');
+          document.querySelector('[data-complete-task]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Aufgabe als erledigt markiert.');
+          const remainingFiltered = document.querySelector('#task-results').textContent;
+          document.querySelector('[data-action="clear-task-filters"]').click();
+          await waitFor(() => rows().length === 1);
+          return { ascending, descending, keptFocus, filtered, noMatch, remainingFiltered, remaining: rows() };
+        })()`);
+        assert.deepEqual(table.ascending, ['Budget prüfen', 'Veranstaltungsort kontaktieren']);
+        assert.deepEqual(table.descending, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
+        assert.ok(table.keptFocus);
+        assert.deepEqual(table.filtered, ['Budget prüfen']);
+        assert.ok(table.noMatch);
+        assert.match(table.remainingFiltered, /Keine Aufgaben entsprechen den Filtern/);
+        assert.deepEqual(table.remaining, ['Veranstaltungsort kontaktieren']);
+        const afterTable = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
+        assert.equal(afterTable.meeting.points[0].tasks[0].done, true);
+        assert.equal(afterTable.meeting.points[1].tasks[0].done, false);
+        afterTable.meeting.points[1].tasks[0].responsible = 'Updated externally';
+        await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(afterTable, null, 2) + '\n');
         const completion = await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async (test) => {
             for (let i = 0; i < 200; i++) {
@@ -97,15 +148,15 @@ async function main() {
           });
           const stillOpen = !!document.querySelector('[data-complete-task]:not(:checked)');
           document.querySelector('[data-action="refresh-tasks"]').click();
-          await waitFor(() => document.querySelector('.badge')?.textContent === 'Updated externally');
+          await waitFor(() => document.querySelector('.tasks-table tbody')?.textContent.includes('Updated externally'));
           document.querySelector('[data-complete-task]').click();
           await waitFor(() => document.querySelector('[role="status"]')?.textContent === 'Aufgabe als erledigt markiert.');
           const empty = document.querySelector('main').textContent.includes('Keine offenen Aufgaben.');
           document.querySelector('[data-view="meetings"]').click();
           await waitFor(() => document.querySelector('[data-action="select"]'));
           document.querySelector('[data-action="select"]').click();
-          await waitFor(() => document.querySelector('[data-field="done"]'));
-          return { conflict, stillOpen, empty, checked: document.querySelector('[data-field="done"]').checked,
+          await waitFor(() => document.querySelector('[data-point="1"][data-field="done"]'));
+          return { conflict, stillOpen, empty, checked: document.querySelector('[data-point="1"][data-field="done"]').checked,
             openAvailable: !!document.querySelector('[data-action="open-protocol"]') };
         })()`);
         assert.match(completion.conflict, /auf dem Datenträger geändert/);
@@ -142,7 +193,7 @@ async function main() {
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
         }
-        console.log('Electron smoke test passed: meeting, PDF export, task completion, persistence, and conflict recovery.');
+        console.log('Electron smoke test passed: task table filtering, sorting, completion, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();
         app.exit(0);
