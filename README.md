@@ -16,6 +16,17 @@ npm start
 In Settings (the bottom icon), choose a data folder. The app creates `meetings`,
 `members`, `invoices`, and `letters` subfolders without moving existing data.
 Selecting another folder opens that folder's data; it does not migrate it.
+In **Einstellungen**, optionally select a CSS file for PDF protocols. It
+replaces the default stylesheet, is stored as a path in the app settings, and
+is reread for each export. Use **Standardlayout verwenden** to reset it.
+If the selected file is missing or unreadable, export reports an error instead
+of falling back silently. Use self-contained CSS; external resources are
+blocked during PDF generation. Existing PDFs need to be exported again.
+PDF protocols repeat the meeting title in the page header and the meeting date
+and page number in the footer. The header and footer use CSS `@page` margin
+boxes; custom stylesheets can change their appearance with `@top-left`,
+`@bottom-left` and `@bottom-right` inside `@page`. Keep suitable page margins
+to leave room for them.
 
 Use **New meeting** or **Sample meeting** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its

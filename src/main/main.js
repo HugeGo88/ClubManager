@@ -2,10 +2,13 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron')
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const storage = require('./storage');
+const settings = require('./settings');
 const { protocolHtml } = require('./protocol');
 
 let mainWindow;
 let folder;
+let configuredFolder = null;
+let protocolCss = null;
 let writeQueue = Promise.resolve();
 
 function serializeWrite(operation) {
@@ -20,24 +23,10 @@ function requireFolder() {
 }
 
 async function loadFolder() {
-  const configFile = path.join(app.getPath('userData'), 'settings.json');
-  let content;
-  try {
-    content = await fs.readFile(configFile, 'utf8');
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    return;
-  }
-  let config;
-  try {
-    config = JSON.parse(content);
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) throw error;
-    throw new Error('Die gespeicherten Einstellungen enthalten ungültiges JSON.');
-  }
-  if (typeof config.folder !== 'string' || !path.isAbsolute(config.folder)) {
-    throw new Error('Der gespeicherte Datenordner ist ungültig.');
-  }
+  const config = await settings.loadSettings(settingsFile());
+  configuredFolder = config.folder;
+  protocolCss = config.protocolCss;
+  if (!config.folder) return;
   // Do not recreate a missing location automatically, e.g. an unmounted drive.
   let info;
   try {
@@ -51,8 +40,48 @@ async function loadFolder() {
   folder = config.folder;
 }
 
+function settingsFile() {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+async function saveSettings(nextFolder, nextProtocolCss) {
+  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss });
+}
+
+async function readProtocolCss(file) {
+  try {
+    return await fs.readFile(file, 'utf8');
+  } catch (error) {
+    throw new Error(`Die CSS-Datei für PDF-Protokolle konnte nicht gelesen werden: ${error.message}`);
+  }
+}
+
 function registerHandlers() {
   ipcMain.handle('folder:get', () => folder || null);
+  ipcMain.handle('protocol-css:get', () => protocolCss);
+  ipcMain.handle('protocol-css:choose', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'CSS-Datei für PDF-Protokolle auswählen',
+      buttonLabel: 'CSS-Datei auswählen',
+      properties: ['openFile'],
+      filters: [{ name: 'CSS-Dateien', extensions: ['css'] }]
+    });
+    if (result.canceled) return null;
+    return serializeWrite(async () => {
+      const selected = result.filePaths[0];
+      if (typeof selected !== 'string' || !path.isAbsolute(selected) || path.extname(selected).toLowerCase() !== '.css') {
+        throw new Error('Wählen Sie eine gültige CSS-Datei aus.');
+      }
+      await readProtocolCss(selected);
+      await saveSettings(configuredFolder, selected);
+      protocolCss = selected;
+      return selected;
+    });
+  });
+  ipcMain.handle('protocol-css:reset', () => serializeWrite(async () => {
+    await saveSettings(configuredFolder, null);
+    protocolCss = null;
+  }));
   ipcMain.handle('folder:choose', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Datenordner für ClubManager auswählen',
@@ -64,9 +93,8 @@ function registerHandlers() {
       const selected = result.filePaths[0];
       await storage.initializeFolder(selected);
       await storage.listMeetings(selected);
-      await fs.mkdir(app.getPath('userData'), { recursive: true });
-      await storage.atomicWrite(path.join(app.getPath('userData'), 'settings.json'),
-        JSON.stringify({ folder: selected }, null, 2) + '\n');
+      await saveSettings(selected, protocolCss);
+      configuredFolder = selected;
       folder = selected;
       return folder;
     });
@@ -90,11 +118,11 @@ function registerHandlers() {
     if (!current || current.revision !== revision) {
       throw new Error('Die gespeicherte Sitzung wurde geändert. Laden Sie sie vor dem Export erneut.');
     }
-    const css = await fs.readFile(path.join(__dirname, '../shared/document.css'), 'utf8');
+    const css = await readProtocolCss(protocolCss || path.join(__dirname, '../shared/document.css'));
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
     try {
       await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(current.meeting, css))}`);
-      const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true });
+      const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
       const directory = path.join(currentFolder, 'meetings', 'protocols');
       await fs.mkdir(directory, { recursive: true });
       const file = storage.protocolPath(currentFolder, meeting.id);
@@ -137,7 +165,7 @@ app.whenReady().then(async () => {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  if (startupError) await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Der gespeicherte Datenordner konnte nicht geöffnet werden', detail: startupError, buttons: ['OK'] });
+  if (startupError) await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden', detail: startupError, buttons: ['OK'] });
   app.on('activate', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
 });
 

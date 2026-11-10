@@ -9,10 +9,24 @@ async function main() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-electron-test-'));
   process.on('exit', () => fsSync.rmSync(root, { recursive: true, force: true }));
   const data = path.join(root, 'data');
+  const cssFile = path.join(root, 'custom.css');
+  await fs.writeFile(cssFile, 'body { color: rgb(12, 34, 56); }');
   await fs.mkdir(data);
   app.setPath('userData', path.join(root, 'settings'));
   await fs.mkdir(app.getPath('userData'));
-  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [data] });
+  let cancelCssDialog = false;
+  dialog.showOpenDialog = async (window, options) => options.properties.includes('openFile')
+    ? (cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
+    : { canceled: false, filePaths: [data] };
+  const pdfColors = [];
+  app.on('browser-window-created', (event, window) => {
+    if (window.isVisible()) return;
+    const printToPDF = window.webContents.printToPDF.bind(window.webContents);
+    window.webContents.printToPDF = async options => {
+      pdfColors.push(await window.webContents.executeJavaScript('getComputedStyle(document.body).color'));
+      return printToPDF(options);
+    };
+  });
   const openedPaths = [];
   let openError = '';
   shell.openPath = async file => { openedPaths.push(file); return openError; };
@@ -24,6 +38,35 @@ async function main() {
   app.once('browser-window-created', (event, window) => {
     window.webContents.once('did-finish-load', async () => {
       try {
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-view="settings"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('[data-action="choose-protocol-css"]')) break;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (!document.querySelector('[data-protocol-css]').textContent.includes('Standardlayout')) throw new Error('Missing default CSS');
+          document.querySelector('[data-action="choose-protocol-css"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('[data-action="reset-protocol-css"]')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('CSS selection timed out');
+        })()`);
+        const settingsFile = path.join(app.getPath('userData'), 'settings.json');
+        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: null, protocolCss: cssFile });
+        cancelCssDialog = true;
+        await window.webContents.executeJavaScript(`(async () => {
+          const button = document.querySelector('[data-action="choose-protocol-css"]');
+          button.click();
+          for (let i = 0; i < 200; i++) {
+            if (!button.isConnected) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('CSS dialog cancellation timed out');
+        })()`);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).protocolCss, cssFile);
+        cancelCssDialog = false;
+        await fs.writeFile(cssFile, 'body { color: rgb(65, 43, 21); }');
         const result = await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async (test) => {
             for (let i = 0; i < 200; i++) {
@@ -177,6 +220,8 @@ async function main() {
         assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+        assert.deepEqual(pdfColors, ['rgb(65, 43, 21)']);
+        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: cssFile });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const now = new Date();
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
@@ -354,6 +399,39 @@ async function main() {
           throw new Error('Timed out waiting for missing PDF error');
         })()`);
         assert.match(missing, /nicht gefunden/);
+        await fs.unlink(cssFile);
+        const cssError = await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="export"]').click();
+          for (let i = 0; i < 200; i++) {
+            const text = document.querySelector('.notice.error')?.textContent;
+            if (text?.includes('CSS-Datei')) return text;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Missing CSS error timed out');
+        })()`);
+        assert.match(cssError, /CSS-Datei.*nicht gelesen/);
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('CSS reset timed out');
+          };
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => document.querySelector('[data-action="reset-protocol-css"]'));
+          document.querySelector('[data-action="reset-protocol-css"]').click();
+          await waitFor(() => document.querySelector('[data-protocol-css]')?.textContent.includes('Standardlayout'));
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="select"]'));
+          document.querySelector('[data-action="select"]').click();
+          await waitFor(() => document.querySelector('[data-action="export"]'));
+          document.querySelector('[data-action="export"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+        })()`);
+        assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
+        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: null });
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
         }

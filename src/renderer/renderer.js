@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const state = { view: 'meetings', folder: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
+const state = { view: 'meetings', folder: null, protocolCss: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 let markdownEditors = [];
@@ -179,7 +179,12 @@ function render() {
       <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
       <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
       ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
-      <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>`;
+      <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
+      <div class="card"><h2>CSS für PDF-Protokolle</h2>
+      <p>Eine CSS-Datei ersetzt das Standardlayout beim nächsten PDF-Export.</p>
+      <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
+      <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
+      <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>`;
   } else if (!state.folder) {
     content = `<div class="empty"><h1>Willkommen bei ClubManager</h1><p>Wählen Sie zunächst in den Einstellungen einen Datenordner aus.</p>${button('open-settings', 'Einstellungen öffnen', 'primary')}</div>`;
   } else if (state.view === 'meetings') {
@@ -278,6 +283,19 @@ async function run(action, target) {
       }
       break;
     }
+    case 'choose-protocol-css': {
+      const selected = await window.club.chooseProtocolCss();
+      if (selected) {
+        state.protocolCss = selected;
+        setMessage('CSS-Datei für PDF-Protokolle ausgewählt.');
+      }
+      break;
+    }
+    case 'reset-protocol-css':
+      await window.club.resetProtocolCss();
+      state.protocolCss = null;
+      setMessage('Das Standardlayout für PDF-Protokolle wird verwendet.');
+      break;
     case 'new':
     case 'sample':
       if (!confirmDiscard()) return;
@@ -434,6 +452,7 @@ window.addEventListener('beforeunload', event => {
 (async () => {
   try {
     state.folder = await window.club.getFolder();
+    state.protocolCss = await window.club.getProtocolCss();
     await refresh();
   } catch (error) {
     setMessage(error.message, true);

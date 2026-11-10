@@ -20,6 +20,9 @@ async function invoke(channel, ...args) {
 contextBridge.exposeInMainWorld('club', {
   getFolder: () => invoke('folder:get'),
   chooseFolder: () => invoke('folder:choose'),
+  getProtocolCss: () => invoke('protocol-css:get'),
+  chooseProtocolCss: () => invoke('protocol-css:choose'),
+  resetProtocolCss: () => invoke('protocol-css:reset'),
   listMeetings: () => invoke('meetings:list'),
   saveMeeting: (meeting, revision) => invoke('meetings:save', meeting, revision),
   exportMeeting: (meeting, revision) => invoke('meetings:export', meeting, revision),

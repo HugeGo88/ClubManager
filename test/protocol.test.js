@@ -60,3 +60,22 @@ test('protocol includes optional task deadlines', () => {
   assert.match(html, /Mit Frist — Nicht zugewiesen — Fällig: 10\.11\.2026/);
   assert.match(html, /Ohne Frist — Nicht zugewiesen<\/li>/);
 });
+
+test('keeps CSS inside the stylesheet and blocks external resources', () => {
+  const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [] },
+    'body::after { content: "</style><script>bad</script>"; }');
+  assert.match(html, /Content-Security-Policy/);
+  assert.match(html, /default-src 'none'/);
+  assert.match(html, /<\\\/style>/);
+  assert.doesNotMatch(html, /<\/style><script>/);
+});
+
+test('adds safe page headers and numbered footers for every protocol', () => {
+  const html = protocolHtml({ title: '</style><script>bad</script>', date: '2026-11-10', attendance: [], points: [] }, '');
+  assert.match(html, /@top-left \{ content: /);
+  assert.match(html, /@bottom-left \{ content: /);
+  assert.match(html, /@bottom-right \{ content: "Seite " counter\(page\) " von " counter\(pages\)/);
+  assert.match(html, /\\3c \\2f \\73 \\74 \\79 \\6c \\65 \\3e /);
+  assert.doesNotMatch(html, /<\/style><script>/);
+  assert.match(html, /<header class="protocol-heading">/);
+});

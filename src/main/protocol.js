@@ -21,6 +21,10 @@ function markdown(value) {
   });
 }
 
+function cssString(value) {
+  return `"${Array.from(value, char => `\\${char.codePointAt(0).toString(16)} `).join('')}"`;
+}
+
 function protocolHtml(meeting, css) {
   const attendance = meeting.attendance.map(person =>
     `<li>${escapeHtml(person.name)} — ${escapeHtml(de.attendance[person.status])}</li>`
@@ -32,10 +36,17 @@ function protocolHtml(meeting, css) {
       `<li><input type="checkbox" disabled="disabled"${task.done ? ' checked="checked"' : ''} aria-label="${task.done ? 'Erledigt' : 'Offen'}"> ${escapeHtml(task.description)} — ${escapeHtml(task.responsible || de.unassigned)}${task.dueDate ? ` — Fällig: ${escapeHtml(formatDate(task.dueDate))}` : ''}${task.done && task.completedDate ? ` — Erledigt am: ${escapeHtml(formatDate(task.completedDate))}` : ''}</li>`
     ).join('')}</ul>` : ''}</section>`).join('');
   const date = formatDate(meeting.date);
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head>
-    <body><h1>${escapeHtml(meeting.title)}</h1><p>${escapeHtml(date)}</p>
+  const pageLayout = `@page {
+    size: A4;
+    margin: 20mm;
+    @top-left { content: ${cssString(meeting.title)}; font: 9pt sans-serif; }
+    @bottom-left { content: ${cssString(date)}; font: 9pt sans-serif; }
+    @bottom-right { content: "Seite " counter(page) " von " counter(pages); font: 9pt sans-serif; }
+  }`;
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><style>${pageLayout}</style><style>${css.replace(/<\/style/gi, '<\\/style')}</style></head>
+    <body><header class="protocol-heading"><h1>${escapeHtml(meeting.title)}</h1><p>${escapeHtml(date)}</p></header><main>
     <h2>Anwesenheit</h2>${attendance ? `<ul>${attendance}</ul>` : '<p>Keine Anwesenheit erfasst.</p>'}
-    <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}</body></html>`;
+    <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}</main></body></html>`;
 }
 
 module.exports = { protocolHtml };

@@ -1,7 +1,15 @@
-body { color: #24292f; font: 11pt/1.5 sans-serif; margin: 2cm; }
+@page {
+  size: A4;
+  margin: 20mm;
+  @top-left { color: #596575; font: 9pt sans-serif; }
+  @bottom-left { color: #596575; font: 9pt sans-serif; }
+  @bottom-right { color: #596575; font: 9pt sans-serif; content: "Seite " counter(page) " von " counter(pages); }
+}
+body { color: #24292f; font: 11pt/1.5 sans-serif; margin: 0; }
 h1 { font-size: 24pt; margin-bottom: 0; }
 h2 { font-size: 15pt; margin-top: 1.5em; }
 h3 { font-size: 11pt; }
+h1, h2, h3 { break-after: avoid; }
 section { break-inside: avoid; border-top: 1px solid #d5dbe2; }
 .type { color: #596575; text-transform: capitalize; }
 .protocol-tasks { list-style: none; padding-left: 0; }
