@@ -57,6 +57,8 @@ refined later. It is an idea document, not a finalized specification.
 - Allow tasks to be written down for each meeting point.
 - Allow one or more responsible persons to be associated with each task.
 - Allow an optional deadline on each task and highlight overdue open tasks.
+- Store the local completion date when a task is completed; clear it if the
+  task is reopened. Show task checkboxes and completion dates in the PDF.
 - Include an Open Tasks submodule for checking outstanding meeting tasks.
 - Record attendance for each meeting, distinguishing attendees, people absent
   with an excuse, and people absent without an excuse.

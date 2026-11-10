@@ -37,7 +37,11 @@ click a column heading to change its sort order. Check a task to mark it done
 and save immediately. Use **Aufgaben neu laden** to refresh the list, including
 after an on-disk conflict. Meeting tasks can have an optional due date; an open
 task becomes overdue after that date in the computer's local time zone. The
-deadline is also included in newly exported protocols.
+deadline is also included in newly exported protocols. On narrower windows,
+scroll the table horizontally to reach all columns.
+Completing a meeting task records the computer's local date; reopening it clears
+that date. Newly exported protocols display task checkboxes and, when known,
+their completion dates. Previously completed tasks have no inferred date.
 
 The app warns if a meeting has changed on disk since it was opened. This is not
 a synchronization system or a substitute for backups; avoid editing the same

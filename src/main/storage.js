@@ -69,6 +69,9 @@ function validateMeeting(meeting) {
       if (task.dueDate !== undefined && task.dueDate !== '' && !isDate(task.dueDate)) {
         throw new Error('Ungültiges Fälligkeitsdatum für die Aufgabe.');
       }
+      if (task.completedDate !== undefined && (!task.done || !isDate(task.completedDate))) {
+        throw new Error('Ungültiges Erledigungsdatum für die Aufgabe.');
+      }
     }
   }
 }

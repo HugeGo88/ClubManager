@@ -59,6 +59,13 @@ function formatDate(value) {
   return clubDates.formatDate(value);
 }
 
+function setTaskDone(task, done) {
+  if (task.done === done) return;
+  task.done = done;
+  if (done) task.completedDate = clubDates.localDate();
+  else delete task.completedDate;
+}
+
 function meetingEditor(meeting) {
   return `<div class="topline meeting-toolbar"><div><h1>Sitzung bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
     <div class="row meeting-actions">${state.hasProtocol ? button('open-protocol', 'Gespeichertes PDF öffnen') : ''}${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
@@ -90,6 +97,7 @@ function meetingEditor(meeting) {
         <label>Verantwortliche Personen<input data-point="${i}" data-task="${j}" data-field="responsible" value="${escape(task.responsible)}" placeholder="Namen"></label>
         <label>Fällig am (optional)<input type="date" data-point="${i}" data-task="${j}" data-field="dueDate" value="${escape(task.dueDate || '')}"></label>
         <label class="checkbox"><input type="checkbox" data-point="${i}" data-task="${j}" data-field="done" ${task.done ? 'checked' : ''}> Erledigt</label>
+        <span class="task-completed-date">${task.done && task.completedDate ? `Erledigt am: ${escape(formatDate(task.completedDate))}` : ''}</span>
         <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Aufgabe entfernen">Entfernen</button>
       </div>`).join('')}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}`;
 }
@@ -125,7 +133,8 @@ function taskResults() {
   };
   return `<p class="task-count" role="status">${tasks.length} von ${allTasks.length} offenen Aufgaben</p>
     ${allTasks.length === 0 ? '<p>Keine offenen Aufgaben.</p>' : tasks.length === 0 ? '<p>Keine Aufgaben entsprechen den Filtern.</p>' :
-      `<div class="table-scroll"><table class="tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption><thead><tr>
+      `<div class="table-scroll" role="region" aria-label="Aufgabentabelle, horizontal scrollbar" tabindex="0"><table class="tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption>
+      <colgroup><col class="task-col-check"><col class="task-col-description"><col class="task-col-responsible"><col class="task-col-meeting"><col class="task-col-point"><col class="task-col-date"><col class="task-col-due"><col class="task-col-action"></colgroup><thead><tr>
         <th scope="col">Erledigt</th>${header('description', 'Aufgabe')}${header('responsible', 'Verantwortlich')}
         ${header('meeting', 'Sitzung')}${header('point', 'TOP')}${header('date', 'Sitzungsdatum')}${header('dueDate', 'Fällig am')}
         <th scope="col">Aktion</th></tr></thead><tbody>
@@ -155,6 +164,7 @@ function tasksView() {
 
 function render() {
   const previousContent = app.querySelector('.content');
+  const tableScroll = app.querySelector('.table-scroll')?.scrollLeft ?? 0;
   const preserveScroll = previousContent?.dataset.viewContext === state.view &&
     previousContent?.dataset.meetingId === (state.meeting?.id || '');
   const scrollTop = preserveScroll ? previousContent.scrollTop : 0;
@@ -180,7 +190,7 @@ function render() {
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
-    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner">${notice()}${content}</div></div></div>`;
+    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${state.view === 'tasks' ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
   app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
     const index = Number(parent.dataset.markdownEditor);
     const point = state.meeting.points[index];
@@ -196,6 +206,10 @@ function render() {
     newContent.scrollTop = scrollTop;
     newContent.scrollLeft = scrollLeft;
   }
+  if (preserveScroll && state.view === 'tasks') {
+    const table = app.querySelector('.table-scroll');
+    if (table) table.scrollLeft = tableScroll;
+  }
   scheduleTaskDateRefresh();
 }
 
@@ -207,7 +221,7 @@ function scheduleTaskDateRefresh() {
   const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   taskDateRefresh = setTimeout(() => {
     if (state.view === 'tasks' && state.folder) {
-      document.querySelector('#task-results').innerHTML = taskResults();
+      refreshTaskResults();
       scheduleTaskDateRefresh();
     }
   }, Math.max(1000, nextDay.getTime() - now.getTime() + 100));
@@ -216,13 +230,21 @@ function scheduleTaskDateRefresh() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.view === 'tasks' && state.folder &&
       displayedTaskDate !== clubDates.localDate()) {
-    document.querySelector('#task-results').innerHTML = taskResults();
+    refreshTaskResults();
     scheduleTaskDateRefresh();
   }
 });
 
 async function refresh() {
   state.meetings = state.folder ? await window.club.listMeetings() : [];
+}
+
+function refreshTaskResults() {
+  const results = document.querySelector('#task-results');
+  const scrollLeft = results.querySelector('.table-scroll')?.scrollLeft ?? 0;
+  results.innerHTML = taskResults();
+  const table = results.querySelector('.table-scroll');
+  if (table) table.scrollLeft = scrollLeft;
 }
 
 async function changeView(view) {
@@ -367,7 +389,7 @@ app.addEventListener('change', async event => {
     const meeting = structuredClone(record.meeting);
     const task = meeting.points[Number(target.dataset.pointIndex)]?.tasks[Number(target.dataset.taskIndex)];
     if (!task || task.done) throw new Error('Die Aufgabe ist nicht mehr offen. Laden Sie die Aufgaben neu und versuchen Sie es erneut.');
-    task.done = true;
+    setTaskDone(task, true);
     const revision = await window.club.saveMeeting(meeting, record.revision);
     record.meeting = meeting;
     record.revision = revision;
@@ -384,7 +406,7 @@ app.addEventListener('input', event => {
   const target = event.target;
   if (target.dataset.taskFilter) {
     taskView[target.dataset.taskFilter] = target.value;
-    document.querySelector('#task-results').innerHTML = taskResults();
+    refreshTaskResults();
     return;
   }
   if (!target.dataset.field || !state.meeting) return;
@@ -392,7 +414,13 @@ app.addEventListener('input', event => {
   if (target.dataset.person !== undefined) item = item.attendance[Number(target.dataset.person)];
   if (target.dataset.point !== undefined) item = item.points[Number(target.dataset.point)];
   if (target.dataset.task !== undefined) item = item.tasks[Number(target.dataset.task)];
-  item[target.dataset.field] = target.type === 'checkbox' ? target.checked : target.value;
+  if (target.dataset.field === 'done' && target.dataset.task !== undefined) {
+    setTaskDone(item, target.checked);
+    target.closest('.meeting-task-row').querySelector('.task-completed-date').textContent =
+      item.completedDate ? `Erledigt am: ${formatDate(item.completedDate)}` : '';
+  } else {
+    item[target.dataset.field] = target.type === 'checkbox' ? target.checked : target.value;
+  }
   state.dirty = true;
   const status = document.querySelector('.status');
   if (status) status.textContent = 'Ungespeicherte Änderungen';

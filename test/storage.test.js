@@ -92,3 +92,24 @@ test('persists optional due dates and rejects invalid calendar dates', async t =
   await storage.saveMeeting(folder, data, revision);
   assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].dueDate, undefined);
 });
+
+test('preserves legacy completed tasks and validates optional completion dates', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  const task = data.points[0].tasks[0];
+  task.done = true;
+  let revision = await storage.saveMeeting(folder, data, null);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].completedDate, undefined);
+  task.completedDate = '2028-02-29';
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].completedDate, '2028-02-29');
+  for (const invalid of ['', '2026-02-29', null, 123]) {
+    task.completedDate = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültiges Erledigungsdatum/);
+  }
+  task.done = false;
+  task.completedDate = '2026-11-10';
+  await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültiges Erledigungsdatum/);
+  delete task.completedDate;
+  await storage.saveMeeting(folder, data, revision);
+});

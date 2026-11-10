@@ -164,6 +164,8 @@ async function main() {
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
         saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false, dueDate: today });
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(saved, null, 2) + '\n');
+        window.setSize(850, 700);
+        await new Promise(resolve => setTimeout(resolve, 200));
         const table = await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async (test) => {
             for (let i = 0; i < 200; i++) {
@@ -183,9 +185,19 @@ async function main() {
           };
           document.querySelector('[data-action="refresh-tasks"]').click();
           await waitFor(() => rows().length === 2);
-          const overdueRows = [...document.querySelectorAll('.tasks-table tbody tr')].filter(row => row.querySelector('.overdue')).map(row => row.cells[1].textContent);
+          const viewport = document.querySelector('.table-scroll');
+          const taskTable = document.querySelector('.tasks-table');
+          const columnWidths = [...taskTable.querySelectorAll('thead th')].map(cell => cell.getBoundingClientRect().width);
+          const horizontalOverflow = viewport.scrollWidth > viewport.clientWidth;
+          viewport.scrollLeft = viewport.scrollWidth;
+          const scrollAtEnd = viewport.scrollLeft;
           document.querySelector('[data-sort="dueDate"]').click();
           await waitFor(() => document.querySelector('[data-sort="dueDate"]').closest('th').getAttribute('aria-sort') === 'ascending');
+          const scrollAfterSort = document.querySelector('.table-scroll').scrollLeft;
+          filter('search', 'Budget');
+          const scrollAfterFilter = document.querySelector('.table-scroll').scrollLeft;
+          filter('search', '');
+          const overdueRows = [...document.querySelectorAll('.tasks-table tbody tr')].filter(row => row.querySelector('.overdue')).map(row => row.cells[1].textContent);
           const dueOrder = rows();
           document.querySelector('[data-sort="description"]').click();
           await waitFor(() => document.querySelector('[aria-sort="ascending"]'));
@@ -205,8 +217,16 @@ async function main() {
           const remainingFiltered = document.querySelector('#task-results').textContent;
           document.querySelector('[data-action="clear-task-filters"]').click();
           await waitFor(() => rows().length === 1);
-          return { ascending, descending, keptFocus, filtered, noMatch, remainingFiltered, remaining: rows(), overdueRows, dueOrder };
+          return { ascending, descending, keptFocus, filtered, noMatch, remainingFiltered, remaining: rows(), overdueRows, dueOrder,
+            columnWidths, horizontalOverflow, scrollAtEnd, scrollAfterSort, scrollAfterFilter };
         })()`);
+        assert.ok(table.horizontalOverflow, 'Table should scroll horizontally in a narrow window');
+        assert.ok(table.columnWidths[1] >= 180, 'Task column should have room for descriptions');
+        assert.ok(table.columnWidths[2] >= 120, 'Responsible column should remain readable');
+        assert.ok(table.columnWidths[6] >= 120, 'Deadline column should remain readable');
+        assert.ok(table.scrollAtEnd > 0);
+        assert.equal(table.scrollAfterSort, table.scrollAtEnd);
+        assert.equal(table.scrollAfterFilter, table.scrollAtEnd);
         assert.deepEqual(table.ascending, ['Budget prüfen', 'Veranstaltungsort kontaktieren']);
         assert.deepEqual(table.overdueRows, ['Veranstaltungsort kontaktieren']);
         assert.deepEqual(table.dueOrder, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
@@ -218,6 +238,7 @@ async function main() {
         assert.deepEqual(table.remaining, ['Veranstaltungsort kontaktieren']);
         const afterTable = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(afterTable.meeting.points[0].tasks[0].done, true);
+        assert.equal(afterTable.meeting.points[0].tasks[0].completedDate, today);
         assert.equal(afterTable.meeting.points[1].tasks[0].done, false);
         assert.equal(afterTable.meeting.points[0].tasks[0].dueDate, today);
         afterTable.meeting.points[1].tasks[0].responsible = 'Updated externally';
@@ -257,7 +278,42 @@ async function main() {
         assert.ok(completion.openAvailable);
         const completed = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(completed.meeting.points[1].tasks[0].done, true);
+        assert.equal(completed.meeting.points[1].tasks[0].completedDate, today);
         assert.equal(completed.meeting.points[1].tasks[0].responsible, 'Updated externally');
+        const reopen = await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async (test) => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for meeting save');
+          };
+          const checkbox = document.querySelector('[data-point="1"][data-field="done"]');
+          const priorLabel = checkbox.closest('.meeting-task-row').querySelector('.task-completed-date').textContent;
+          checkbox.click();
+          const clearedLabel = checkbox.closest('.meeting-task-row').querySelector('.task-completed-date').textContent;
+          document.querySelector('[data-action="save"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Sitzung gespeichert.');
+          return { priorLabel, clearedLabel };
+        })()`);
+        assert.match(reopen.priorLabel, /Erledigt am:/);
+        assert.equal(reopen.clearedLabel, '');
+        const reopened = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
+        assert.equal(reopened.meeting.points[1].tasks[0].done, false);
+        assert.equal(reopened.meeting.points[1].tasks[0].completedDate, undefined);
+        await window.webContents.executeJavaScript(`(async () => {
+          const checkbox = document.querySelector('[data-point="1"][data-field="done"]');
+          checkbox.click();
+          document.querySelector('[data-action="save"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (!checkbox.isConnected && document.querySelector('.notice')?.textContent === 'Sitzung gespeichert.') return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for meeting save');
+        })()`);
+        const recompleted = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
+        assert.equal(recompleted.meeting.points[1].tasks[0].completedDate, today);
         openError = 'Testfehler';
         const openFailure = await window.webContents.executeJavaScript(`(async () => {
           document.querySelector('[data-action="open-protocol"]').click();
