@@ -14,17 +14,17 @@ function sampleMeeting() {
   const today = new Date();
   const date = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-');
   return {
-    ...blankMeeting(), title: 'Sample: committee meeting', date,
-    attendance: [{ name: 'Alex Example', status: 'attending' }, { name: 'Sam Example', status: 'excused' }],
+    ...blankMeeting(), title: 'Beispiel: Vorstandssitzung', date,
+    attendance: [{ name: 'Alex Beispiel', status: 'attending' }, { name: 'Sam Beispiel', status: 'excused' }],
     points: [
-      { headline: 'Upcoming event', type: 'discussion', details: 'Discuss the **event plan** and venue.', tasks: [{ description: 'Contact the venue', responsible: 'Alex Example', done: false }] },
-      { headline: 'Budget', type: 'decision', details: 'Agree on a budget at the next meeting.', tasks: [] }
+      { headline: 'Kommende Veranstaltung', type: 'discussion', details: 'Den **Veranstaltungsplan** und den Veranstaltungsort besprechen.', tasks: [{ description: 'Veranstaltungsort kontaktieren', responsible: 'Alex Beispiel', done: false }] },
+      { headline: 'Budget', type: 'decision', details: 'Bei der nächsten Sitzung ein Budget festlegen.', tasks: [] }
     ]
   };
 }
 
 function confirmDiscard() {
-  return !state.dirty || window.confirm('Discard unsaved changes?');
+  return !state.dirty || window.confirm('Ungespeicherte Änderungen verwerfen?');
 }
 
 function notice() {
@@ -37,13 +37,13 @@ function setMessage(message, error = false) {
 }
 
 function meetingList() {
-  return `<aside class="list"><h2>Meetings</h2>
-    ${button('new', '+ New meeting', 'primary')}
-    ${button('sample', '+ Sample meeting')}
+  return `<aside class="list"><h2>Sitzungen</h2>
+    ${button('new', '+ Neue Sitzung', 'primary')}
+    ${button('sample', '+ Beispielsitzung')}
     ${state.meetings.length ? state.meetings.map(({ meeting }) =>
       `<button class="list-item ${state.meeting?.id === meeting.id ? 'selected' : ''}" data-action="select" data-id="${escape(meeting.id)}">
-      <strong>${escape(meeting.title || 'Untitled meeting')}</strong><small>${escape(meeting.date || 'No date')}</small></button>`).join('') :
-      '<p>No saved meetings yet.</p>'}
+      <strong>${escape(meeting.title || 'Sitzung ohne Titel')}</strong><small>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</small></button>`).join('') :
+      '<p>Noch keine Sitzungen gespeichert.</p>'}
   </aside>`;
 }
 
@@ -51,70 +51,75 @@ function options(values, selected) {
   return values.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
 }
 
+function formatDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
+}
+
 function meetingEditor(meeting) {
-  return `<div class="topline"><div><h1>Meeting editor</h1><p class="status">${state.dirty ? 'Unsaved changes' : 'Saved'}</p></div>
-    <div class="row">${button('export', 'Export PDF')}${button('save', 'Save meeting', 'primary')}</div></div>
+  return `<div class="topline"><div><h1>Sitzung bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
+    <div class="row">${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
     <div class="card"><div class="fields">
-      <label>Meeting title<input data-field="title" value="${escape(meeting.title)}" placeholder="Meeting title"></label>
-      <label>Date<input type="date" data-field="date" value="${escape(meeting.date)}"></label>
+      <label>Titel der Sitzung<input data-field="title" value="${escape(meeting.title)}" placeholder="Titel der Sitzung"></label>
+      <label>Datum<input type="date" data-field="date" value="${escape(meeting.date)}"></label>
     </div></div>
-    <div class="card"><div class="card-header"><h2>Attendance</h2>${button('add-person', '+ Add person')}</div>
+    <div class="card"><div class="card-header"><h2>Anwesenheit</h2>${button('add-person', '+ Person hinzufügen')}</div>
       ${meeting.attendance.length ? meeting.attendance.map((person, i) => `<div class="row">
-        <label>Name<input data-person="${i}" data-field="name" value="${escape(person.name)}" placeholder="Person's name"></label>
-        <label>Status<select data-person="${i}" data-field="status">${options([['attending', 'Attending'], ['excused', 'Absent with excuse'], ['unexcused', 'Absent without excuse']], person.status)}</select></label>
-        <button class="action" data-action="remove-person" data-index="${i}" aria-label="Remove person">Remove</button>
-      </div>`).join('') : '<p>No attendance recorded.</p>'}</div>
-    <div class="topline"><h2>Meeting points</h2>${button('add-point', '+ Add point')}</div>
+        <label>Name<input data-person="${i}" data-field="name" value="${escape(person.name)}" placeholder="Name der Person"></label>
+        <label>Status<select data-person="${i}" data-field="status">${options(Object.entries(clubDeutsch.attendance), person.status)}</select></label>
+        <button class="action" data-action="remove-person" data-index="${i}" aria-label="Person entfernen">Entfernen</button>
+      </div>`).join('') : '<p>Keine Anwesenheit erfasst.</p>'}</div>
+    <div class="topline"><h2>Traktanden</h2>${button('add-point', '+ Traktandum hinzufügen')}</div>
     ${meeting.points.length ? meeting.points.map((point, i) => `<section class="card">
-      <div class="card-header"><h3>Point ${i + 1}</h3><div class="row">
-        <button class="action" data-action="move-up" data-index="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Move point up">↑</button>
-        <button class="action" data-action="move-down" data-index="${i}" ${i === meeting.points.length - 1 ? 'disabled' : ''} aria-label="Move point down">↓</button>
-        <button class="action" data-action="remove-point" data-index="${i}">Delete</button></div></div>
+      <div class="card-header"><h3>Traktandum ${i + 1}</h3><div class="row">
+        <button class="action" data-action="move-up" data-index="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Traktandum nach oben verschieben">↑</button>
+        <button class="action" data-action="move-down" data-index="${i}" ${i === meeting.points.length - 1 ? 'disabled' : ''} aria-label="Traktandum nach unten verschieben">↓</button>
+        <button class="action" data-action="remove-point" data-index="${i}">Löschen</button></div></div>
       <div class="fields">
-        <label>Headline<input data-point="${i}" data-field="headline" value="${escape(point.headline)}" placeholder="Headline"></label>
-        <label>Type<select data-point="${i}" data-field="type">${options([['discussion', 'Discussion'], ['decision', 'Decision'], ['info', 'Info']], point.type)}</select></label>
+        <label>Überschrift<input data-point="${i}" data-field="headline" value="${escape(point.headline)}" placeholder="Überschrift"></label>
+        <label>Typ<select data-point="${i}" data-field="type">${options(Object.entries(clubDeutsch.pointType), point.type)}</select></label>
       </div>
-      <label>Details <span class="muted">(Markdown)</span><textarea data-point="${i}" data-field="details" placeholder="Write details in Markdown">${escape(point.details)}</textarea></label>
-      <div class="card-header"><h3>Tasks</h3><button class="action" data-action="add-task" data-index="${i}">+ Add task</button></div>
+      <label>Details <span class="muted">(Markdown)</span><textarea data-point="${i}" data-field="details" placeholder="Details in Markdown schreiben">${escape(point.details)}</textarea></label>
+      <div class="card-header"><h3>Aufgaben</h3><button class="action" data-action="add-task" data-index="${i}">+ Aufgabe hinzufügen</button></div>
       ${point.tasks.map((task, j) => `<div class="row">
-        <label>Task<input data-point="${i}" data-task="${j}" data-field="description" value="${escape(task.description)}" placeholder="Task"></label>
-        <label>Responsible persons<input data-point="${i}" data-task="${j}" data-field="responsible" value="${escape(task.responsible)}" placeholder="Names"></label>
-        <label class="checkbox"><input type="checkbox" data-point="${i}" data-task="${j}" data-field="done" ${task.done ? 'checked' : ''}> Done</label>
-        <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Remove task">Remove</button>
-      </div>`).join('')}</section>`).join('') : '<p>No meeting points yet.</p>'}`;
+        <label>Aufgabe<input data-point="${i}" data-task="${j}" data-field="description" value="${escape(task.description)}" placeholder="Aufgabe"></label>
+        <label>Verantwortliche Personen<input data-point="${i}" data-task="${j}" data-field="responsible" value="${escape(task.responsible)}" placeholder="Namen"></label>
+        <label class="checkbox"><input type="checkbox" data-point="${i}" data-task="${j}" data-field="done" ${task.done ? 'checked' : ''}> Erledigt</label>
+        <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Aufgabe entfernen">Entfernen</button>
+      </div>`).join('')}</section>`).join('') : '<p>Noch keine Traktanden vorhanden.</p>'}`;
 }
 
 function tasksView() {
   const tasks = state.meetings.flatMap(({ meeting }) => meeting.points.flatMap((point, pointIndex) =>
     point.tasks.flatMap((task, taskIndex) => task.done ? [] : [{ meeting, point, task, pointIndex, taskIndex }])));
-  return `<div class="topline"><div><h1>Open tasks</h1><p>Outstanding tasks from saved meetings.</p></div>${button('refresh-tasks', 'Reload tasks')}</div>
+  return `<div class="topline"><div><h1>Offene Aufgaben</h1><p>Offene Aufgaben aus gespeicherten Sitzungen.</p></div>${button('refresh-tasks', 'Aufgaben neu laden')}</div>
     ${tasks.length ? tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => `<div class="card">
       <label class="checkbox"><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}">
-      <strong>${escape(task.description || 'Untitled task')}</strong> <span class="muted">Mark done</span></label>
-      <p>${escape(meeting.title || 'Untitled meeting')} · ${escape(point.headline || 'Untitled point')}</p>
-      <span class="badge">${escape(task.responsible || 'Unassigned')}</span>
-      <button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Open meeting</button></div>`).join('') :
-      '<div class="card"><p>No open tasks.</p></div>'}`;
+      <strong>${escape(task.description || 'Aufgabe ohne Titel')}</strong> <span class="muted">Als erledigt markieren</span></label>
+      <p>${escape(meeting.title || 'Sitzung ohne Titel')} · ${escape(point.headline || 'Traktandum ohne Titel')}</p>
+      <span class="badge">${escape(task.responsible || clubDeutsch.unassigned)}</span>
+      <button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></div>`).join('') :
+      '<div class="card"><p>Keine offenen Aufgaben.</p></div>'}`;
 }
 
 function render() {
   document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
   let content = '';
   if (state.view === 'settings') {
-    content = `<h1>Settings</h1><div class="card"><h2>Data folder</h2>
-      <p>Choose where ClubManager stores its data. Each module has its own subfolder.</p>
-      <p class="path">${escape(state.folder || 'No folder selected')}</p>
-      ${button('choose-folder', state.folder ? 'Change folder' : 'Choose folder', 'primary')}
-      <p>Changing folders opens the data already in the new location; existing data is not moved.</p></div>`;
+    content = `<h1>Einstellungen</h1><div class="card"><h2>Datenordner</h2>
+      <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
+      <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
+      ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
+      <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>`;
   } else if (!state.folder) {
-    content = `<div class="empty"><h1>Welcome to ClubManager</h1><p>Choose a data folder in Settings to get started.</p>${button('open-settings', 'Open Settings', 'primary')}</div>`;
+    content = `<div class="empty"><h1>Willkommen bei ClubManager</h1><p>Wählen Sie zunächst in den Einstellungen einen Datenordner aus.</p>${button('open-settings', 'Einstellungen öffnen', 'primary')}</div>`;
   } else if (state.view === 'meetings') {
-    content = state.meeting ? meetingEditor(state.meeting) : '<div class="empty"><h1>Meetings</h1><p>Create a meeting or choose one from the list.</p></div>';
+    content = state.meeting ? meetingEditor(state.meeting) : '<div class="empty"><h1>Sitzungen</h1><p>Erstellen Sie eine Sitzung oder wählen Sie eine aus der Liste aus.</p></div>';
   } else if (state.view === 'tasks') {
     content = tasksView();
   } else {
-    const titles = { members: 'Members', invoices: 'Invoices', letters: 'Letters' };
-    content = `<h1>${titles[state.view]}</h1><div class="card"><p>This module is planned for a future version.</p></div>`;
+    const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
+    content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
     <div class="content"><div class="content-inner">${notice()}${content}</div></div></div>`;
@@ -148,7 +153,7 @@ async function run(action, target) {
         state.revision = null;
         state.dirty = false;
         await refresh();
-        setMessage('Storage folder selected. Module folders are ready.');
+        setMessage('Datenordner ausgewählt. Die Modulordner sind bereit.');
       }
       break;
     }
@@ -158,14 +163,14 @@ async function run(action, target) {
       state.meeting = action === 'sample' ? sampleMeeting() : blankMeeting();
       state.revision = null;
       state.dirty = true;
-      setMessage(action === 'sample' ? 'This is sample data. Save it if you want to keep it.' : '');
+      setMessage(action === 'sample' ? 'Dies sind Beispieldaten. Speichern Sie die Sitzung, um sie zu behalten.' : '');
       break;
     case 'select':
     case 'select-task-meeting': {
       if (!confirmDiscard()) return;
       await refresh();
       const selected = state.meetings.find(item => item.meeting.id === target.dataset.id);
-      if (!selected) throw new Error('Meeting no longer exists on disk.');
+      if (!selected) throw new Error('Die Sitzung ist auf dem Datenträger nicht mehr vorhanden.');
       state.meeting = structuredClone(selected.meeting);
       state.revision = selected.revision;
       state.dirty = false;
@@ -175,24 +180,24 @@ async function run(action, target) {
     }
     case 'refresh-tasks':
       await refresh();
-      setMessage('Tasks reloaded.');
+      setMessage('Aufgaben neu geladen.');
       break;
     case 'save':
-      if (!meeting.title.trim()) throw new Error('Enter a meeting title before saving.');
+      if (!meeting.title.trim()) throw new Error('Geben Sie vor dem Speichern einen Titel für die Sitzung ein.');
       state.revision = await window.club.saveMeeting(meeting, state.revision);
       state.dirty = false;
       await refresh();
-      setMessage('Meeting saved.');
+      setMessage('Sitzung gespeichert.');
       break;
     case 'export':
-      if (state.dirty || !state.revision) throw new Error('Save the meeting before exporting its PDF.');
-      setMessage(`PDF saved to ${await window.club.exportMeeting(meeting, state.revision)}`);
+      if (state.dirty || !state.revision) throw new Error('Speichern Sie die Sitzung, bevor Sie das PDF exportieren.');
+      setMessage(`PDF gespeichert unter: ${await window.club.exportMeeting(meeting, state.revision)}`);
       break;
     case 'add-person': meeting.attendance.push({ name: '', status: 'attending' }); state.dirty = true; break;
     case 'remove-person': meeting.attendance.splice(i, 1); state.dirty = true; break;
     case 'add-point': meeting.points.push({ headline: '', type: 'discussion', details: '', tasks: [] }); state.dirty = true; break;
     case 'remove-point':
-      if (window.confirm('Delete this point and its tasks?')) { meeting.points.splice(i, 1); state.dirty = true; }
+      if (window.confirm('Dieses Traktandum und seine Aufgaben löschen?')) { meeting.points.splice(i, 1); state.dirty = true; }
       break;
     case 'move-up':
     case 'move-down': {
@@ -227,17 +232,17 @@ app.addEventListener('change', async event => {
   document.body.inert = true;
   try {
     const record = state.meetings.find(item => item.meeting.id === target.dataset.id);
-    if (!record) throw new Error('Meeting no longer exists. Reload tasks and try again.');
+    if (!record) throw new Error('Die Sitzung ist nicht mehr vorhanden. Laden Sie die Aufgaben neu und versuchen Sie es erneut.');
     const meeting = structuredClone(record.meeting);
     const task = meeting.points[Number(target.dataset.pointIndex)]?.tasks[Number(target.dataset.taskIndex)];
-    if (!task || task.done) throw new Error('Task is no longer open. Reload tasks and try again.');
+    if (!task || task.done) throw new Error('Die Aufgabe ist nicht mehr offen. Laden Sie die Aufgaben neu und versuchen Sie es erneut.');
     task.done = true;
     const revision = await window.club.saveMeeting(meeting, record.revision);
     record.meeting = meeting;
     record.revision = revision;
-    setMessage('Task marked done.');
+    setMessage('Aufgabe als erledigt markiert.');
   } catch (error) {
-    setMessage(`${error.message} Reload tasks to see the latest saved data.`, true);
+    setMessage(`${error.message} Laden Sie die Aufgaben neu, um den aktuellen Stand anzuzeigen.`, true);
   } finally {
     document.body.inert = false;
     render();
@@ -254,7 +259,7 @@ app.addEventListener('input', event => {
   item[target.dataset.field] = target.type === 'checkbox' ? target.checked : target.value;
   state.dirty = true;
   const status = document.querySelector('.status');
-  if (status) status.textContent = 'Unsaved changes';
+  if (status) status.textContent = 'Ungespeicherte Änderungen';
 });
 
 window.addEventListener('beforeunload', event => {

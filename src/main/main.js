@@ -1,9 +1,8 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { marked } = require('marked');
-const sanitizeHtml = require('sanitize-html');
 const storage = require('./storage');
+const { protocolHtml } = require('./protocol');
 
 let mainWindow;
 let folder;
@@ -16,21 +15,8 @@ function serializeWrite(operation) {
 }
 
 function requireFolder() {
-  if (!folder) throw new Error('Choose a storage folder in Settings first.');
+  if (!folder) throw new Error('Wählen Sie zuerst einen Datenordner in den Einstellungen aus.');
   return folder;
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[char]);
-}
-
-function markdown(value) {
-  return sanitizeHtml(marked.parse(value), {
-    allowedTags: ['p', 'br', 'strong', 'em', 'del', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'hr'],
-    allowedAttributes: {}
-  });
 }
 
 async function loadFolder() {
@@ -42,9 +28,15 @@ async function loadFolder() {
     if (error.code !== 'ENOENT') throw error;
     return;
   }
-  const config = JSON.parse(content);
+  let config;
+  try {
+    config = JSON.parse(content);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new Error('Die gespeicherten Einstellungen enthalten ungültiges JSON.');
+  }
   if (typeof config.folder !== 'string' || !path.isAbsolute(config.folder)) {
-    throw new Error('The saved storage folder is invalid.');
+    throw new Error('Der gespeicherte Datenordner ist ungültig.');
   }
   // Do not recreate a missing location automatically, e.g. an unmounted drive.
   let info;
@@ -52,34 +44,19 @@ async function loadFolder() {
     info = await fs.stat(config.folder);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    throw new Error('The saved storage folder is unavailable. Select it again in Settings.');
+    throw new Error('Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie ihn in den Einstellungen erneut aus.');
   }
-  if (!info.isDirectory()) throw new Error('The saved storage location is not a folder.');
+  if (!info.isDirectory()) throw new Error('Der gespeicherte Speicherort ist kein Ordner.');
   await storage.initializeFolder(config.folder);
   folder = config.folder;
-}
-
-function protocolHtml(meeting, css) {
-  const attendance = meeting.attendance.map(person =>
-    `<li>${escapeHtml(person.name)} — ${escapeHtml({ attending: 'Attending', excused: 'Absent with excuse', unexcused: 'Absent without excuse' }[person.status])}</li>`
-  ).join('');
-  const points = meeting.points.map((point, index) => `
-    <section><h2>${index + 1}. ${escapeHtml(point.headline)}</h2>
-    <p class="type">${escapeHtml(point.type)}</p>${markdown(point.details)}
-    ${point.tasks.length ? `<h3>Tasks</h3><ul>${point.tasks.map(task =>
-      `<li>${task.done ? '[Done]' : '[Open]'} ${escapeHtml(task.description)} — ${escapeHtml(task.responsible || 'Unassigned')}</li>`
-    ).join('')}</ul>` : ''}</section>`).join('');
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head>
-    <body><h1>${escapeHtml(meeting.title)}</h1><p>${escapeHtml(meeting.date)}</p>
-    <h2>Attendance</h2>${attendance ? `<ul>${attendance}</ul>` : '<p>No attendance recorded.</p>'}
-    <h2>Meeting points</h2>${points || '<p>No meeting points.</p>'}</body></html>`;
 }
 
 function registerHandlers() {
   ipcMain.handle('folder:get', () => folder || null);
   ipcMain.handle('folder:choose', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Choose a ClubManager data folder',
+      title: 'Datenordner für ClubManager auswählen',
+      buttonLabel: 'Ordner auswählen',
       properties: ['openDirectory', 'createDirectory']
     });
     if (result.canceled) return null;
@@ -102,7 +79,7 @@ function registerHandlers() {
     storage.validateMeeting(meeting);
     const current = (await storage.listMeetings(currentFolder)).find(item => item.meeting.id === meeting.id);
     if (!current || current.revision !== revision) {
-      throw new Error('The saved meeting changed. Reload it before exporting.');
+      throw new Error('Die gespeicherte Sitzung wurde geändert. Laden Sie sie vor dem Export erneut.');
     }
     const css = await fs.readFile(path.join(__dirname, '../shared/document.css'), 'utf8');
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
@@ -121,6 +98,24 @@ function registerHandlers() {
 }
 
 app.whenReady().then(async () => {
+  const menu = [
+    ...(process.platform === 'darwin' ? [{ label: 'ClubManager', submenu: [
+      { role: 'about', label: 'Über ClubManager' }, { type: 'separator' },
+      { role: 'hide', label: 'ClubManager ausblenden' }, { role: 'hideOthers', label: 'Andere ausblenden' },
+      { role: 'unhide', label: 'Alle einblenden' }, { type: 'separator' }, { role: 'quit', label: 'ClubManager beenden' }
+    ] }] : []),
+    { label: 'Bearbeiten', submenu: [
+      { role: 'undo', label: 'Rückgängig' }, { role: 'redo', label: 'Wiederholen' }, { type: 'separator' },
+      { role: 'cut', label: 'Ausschneiden' }, { role: 'copy', label: 'Kopieren' },
+      { role: 'paste', label: 'Einfügen' }, { role: 'selectAll', label: 'Alles auswählen' }
+    ] },
+    { label: 'Ansicht', submenu: [
+      { role: 'reload', label: 'Neu laden' }, { role: 'toggleDevTools', label: 'Entwicklertools' },
+      { type: 'separator' }, { role: 'togglefullscreen', label: 'Vollbild umschalten' }
+    ] },
+    { label: 'Fenster', submenu: [{ role: 'minimize', label: 'Minimieren' }, { role: 'close', label: 'Schließen' }] }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   let startupError;
   try {
     await loadFolder();
@@ -133,7 +128,7 @@ app.whenReady().then(async () => {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  if (startupError) await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Could not open the saved storage folder', detail: startupError });
+  if (startupError) await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Der gespeicherte Datenordner konnte nicht geöffnet werden', detail: startupError, buttons: ['OK'] });
   app.on('activate', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
 });
 

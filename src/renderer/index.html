@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,18 +8,19 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <aside class="activity" aria-label="Modules">
+  <aside class="activity" aria-label="Module">
     <div class="brand" title="ClubManager">C</div>
     <nav id="navigation">
-      <button data-view="meetings" title="Meetings" aria-label="Meetings">▤</button>
-      <button data-view="tasks" title="Open tasks" aria-label="Open tasks">✓</button>
-      <button data-view="members" title="Members" aria-label="Members">♙</button>
-      <button data-view="invoices" title="Invoices" aria-label="Invoices">▧</button>
-      <button data-view="letters" title="Letters" aria-label="Letters">✉</button>
+      <button data-view="meetings" title="Sitzungen" aria-label="Sitzungen">▤</button>
+      <button data-view="tasks" title="Offene Aufgaben" aria-label="Offene Aufgaben">✓</button>
+      <button data-view="members" title="Mitglieder" aria-label="Mitglieder">♙</button>
+      <button data-view="invoices" title="Rechnungen" aria-label="Rechnungen">▧</button>
+      <button data-view="letters" title="Briefe" aria-label="Briefe">✉</button>
     </nav>
-    <button class="settings-nav" data-view="settings" title="Settings" aria-label="Settings">⚙</button>
+    <button class="settings-nav" data-view="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
   </aside>
   <main id="app"></main>
+  <script src="../shared/de.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

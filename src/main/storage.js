@@ -12,7 +12,7 @@ async function initializeFolder(folder) {
 }
 
 function meetingPath(folder, id) {
-  if (typeof id !== 'string' || !ID.test(id)) throw new Error('Invalid meeting ID.');
+  if (typeof id !== 'string' || !ID.test(id)) throw new Error('Ungültige Sitzungs-ID.');
   return path.join(folder, 'meetings', `${id}.json`);
 }
 
@@ -34,20 +34,20 @@ function validateMeeting(meeting) {
   const string = value => typeof value === 'string';
   if (!meeting || !ID.test(meeting.id) || !string(meeting.title) ||
       !string(meeting.date) || !Array.isArray(meeting.attendance) ||
-      !Array.isArray(meeting.points)) throw new Error('Invalid meeting data.');
+      !Array.isArray(meeting.points)) throw new Error('Ungültige Sitzungsdaten.');
   for (const person of meeting.attendance) {
     if (!person || !string(person.name) ||
         !['attending', 'excused', 'unexcused'].includes(person.status)) {
-      throw new Error('Invalid attendance data.');
+      throw new Error('Ungültige Anwesenheitsdaten.');
     }
   }
   for (const point of meeting.points) {
     if (!point || !string(point.headline) || !string(point.details) ||
         !['discussion', 'decision', 'info'].includes(point.type) ||
-        !Array.isArray(point.tasks)) throw new Error('Invalid meeting point.');
+        !Array.isArray(point.tasks)) throw new Error('Ungültiges Traktandum.');
     for (const task of point.tasks) {
       if (!task || !string(task.description) || !string(task.responsible) ||
-          typeof task.done !== 'boolean') throw new Error('Invalid task.');
+          typeof task.done !== 'boolean') throw new Error('Ungültige Aufgabe.');
     }
   }
 }
@@ -64,10 +64,10 @@ async function listMeetings(folder) {
     try {
       record = JSON.parse(content);
     } catch {
-      throw new Error(`Could not read ${entry.name}: invalid JSON.`);
+      throw new Error(`${entry.name} konnte nicht gelesen werden: ungültiges JSON.`);
     }
     if (record.version !== 1 || record.meeting?.id !== id) {
-      throw new Error(`Could not read ${entry.name}: unsupported or invalid record.`);
+      throw new Error(`${entry.name} konnte nicht gelesen werden: nicht unterstützter oder ungültiger Datensatz.`);
     }
     validateMeeting(record.meeting);
     meetings.push({ meeting: record.meeting, revision: revision(content) });
@@ -85,7 +85,7 @@ async function saveMeeting(folder, meeting, expectedRevision) {
     if (error.code !== 'ENOENT') throw error;
   }
   if ((existing === undefined ? null : revision(existing)) !== expectedRevision) {
-    throw new Error('This meeting changed on disk. Reload it before saving to avoid overwriting changes.');
+    throw new Error('Die Sitzung wurde auf dem Datenträger geändert. Laden Sie sie vor dem Speichern neu, um keine Änderungen zu überschreiben.');
   }
   const content = JSON.stringify({ version: 1, meeting }, null, 2) + '\n';
   await atomicWrite(file, content);

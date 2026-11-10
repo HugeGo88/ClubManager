@@ -31,6 +31,11 @@ folder with multiple app instances at the same time. Data is not encrypted.
 Run the storage tests with `npm test`. With a graphical desktop available, run
 the Electron smoke test with `npm run test:electron`.
 
+The interface and generated protocol labels are German. Write new user-facing
+text in German, including accessibility labels, dialogs, errors, and document
+output. Reuse shared terms from `src/shared/de.js` in the UI and documents.
+Existing user-entered content is not translated automatically.
+
 ## Debug
 
 In VS Code, choose **Launch Electron main** in Run and Debug and press F5.

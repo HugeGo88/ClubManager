@@ -26,6 +26,8 @@ refined later. It is an idea document, not a finalized specification.
 - Use a left-side icon bar, similar to the Visual Studio Code activity bar, to
   switch between modules.
 - Place Settings at the bottom of the icon bar.
+- The interface and generated document labels are in German. New UI elements
+  should also use German; shared terminology must stay consistent.
 
 ## First version
 

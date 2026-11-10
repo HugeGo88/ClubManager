@@ -37,24 +37,24 @@ test('does not overwrite a meeting changed or removed on disk', async t => {
   const folder = await fixture(t);
   const data = meeting();
   const revision = await storage.saveMeeting(folder, data, null);
-  await assert.rejects(storage.saveMeeting(folder, data, null), /changed on disk/);
+  await assert.rejects(storage.saveMeeting(folder, data, null), /auf dem Datenträger geändert/);
   const file = path.join(folder, 'meetings', `${data.id}.json`);
   const external = '{"external":true}\n';
   await fs.writeFile(file, external);
-  await assert.rejects(storage.saveMeeting(folder, data, revision), /changed on disk/);
+  await assert.rejects(storage.saveMeeting(folder, data, revision), /auf dem Datenträger geändert/);
   assert.equal(await fs.readFile(file, 'utf8'), external);
   await fs.unlink(file);
-  await assert.rejects(storage.saveMeeting(folder, data, revision), /changed on disk/);
+  await assert.rejects(storage.saveMeeting(folder, data, revision), /auf dem Datenträger geändert/);
 });
 
 test('rejects invalid meeting data and reports corrupt records', async t => {
   const folder = await fixture(t);
   const data = meeting();
   data.points[0].type = 'invalid';
-  await assert.rejects(storage.saveMeeting(folder, data, null), /Invalid meeting point/);
+  await assert.rejects(storage.saveMeeting(folder, data, null), /Ungültiges Traktandum/);
   data.id = '../escape';
-  await assert.rejects(storage.saveMeeting(folder, data, null), /Invalid meeting data/);
+  await assert.rejects(storage.saveMeeting(folder, data, null), /Ungültige Sitzungsdaten/);
   const file = path.join(folder, 'meetings', `${crypto.randomUUID()}.json`);
   await fs.writeFile(file, '{broken');
-  await assert.rejects(storage.listMeetings(folder), /invalid JSON/);
+  await assert.rejects(storage.listMeetings(folder), /ungültiges JSON/);
 });
