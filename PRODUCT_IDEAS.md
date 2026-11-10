@@ -28,6 +28,7 @@ refined later. It is an idea document, not a finalized specification.
 - Place Settings at the bottom of the icon bar.
 - The interface and generated document labels are in German. New UI elements
   should also use German; shared terminology must stay consistent.
+- Refer to meeting agenda items as TOPs (Tagesordnungspunkte).
 
 ## First version
 

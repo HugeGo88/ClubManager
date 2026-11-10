@@ -30,7 +30,7 @@ function protocolHtml(meeting, css) {
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head>
     <body><h1>${escapeHtml(meeting.title)}</h1><p>${escapeHtml(date)}</p>
     <h2>Anwesenheit</h2>${attendance ? `<ul>${attendance}</ul>` : '<p>Keine Anwesenheit erfasst.</p>'}
-    <h2>Traktanden</h2>${points || '<p>Keine Traktanden vorhanden.</p>'}</body></html>`;
+    <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}</body></html>`;
 }
 
 module.exports = { protocolHtml };

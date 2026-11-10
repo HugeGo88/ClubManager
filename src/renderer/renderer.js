@@ -72,11 +72,11 @@ function meetingEditor(meeting) {
         <label>Status<select data-person="${i}" data-field="status">${options(Object.entries(clubDeutsch.attendance), person.status)}</select></label>
         <button class="action" data-action="remove-person" data-index="${i}" aria-label="Person entfernen">Entfernen</button>
       </div>`).join('') : '<p>Keine Anwesenheit erfasst.</p>'}</div>
-    <div class="topline"><h2>Traktanden</h2>${button('add-point', '+ Traktandum hinzufügen')}</div>
+    <div class="topline"><h2>TOPs</h2>${button('add-point', '+ TOP hinzufügen')}</div>
     ${meeting.points.length ? meeting.points.map((point, i) => `<section class="card">
-      <div class="card-header"><h3>Traktandum ${i + 1}</h3><div class="row">
-        <button class="action" data-action="move-up" data-index="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Traktandum nach oben verschieben">↑</button>
-        <button class="action" data-action="move-down" data-index="${i}" ${i === meeting.points.length - 1 ? 'disabled' : ''} aria-label="Traktandum nach unten verschieben">↓</button>
+      <div class="card-header"><h3>TOP ${i + 1}</h3><div class="row">
+        <button class="action" data-action="move-up" data-index="${i}" ${i === 0 ? 'disabled' : ''} aria-label="TOP nach oben verschieben">↑</button>
+        <button class="action" data-action="move-down" data-index="${i}" ${i === meeting.points.length - 1 ? 'disabled' : ''} aria-label="TOP nach unten verschieben">↓</button>
         <button class="action" data-action="remove-point" data-index="${i}">Löschen</button></div></div>
       <div class="fields">
         <label>Überschrift<input data-point="${i}" data-field="headline" value="${escape(point.headline)}" placeholder="Überschrift"></label>
@@ -89,7 +89,7 @@ function meetingEditor(meeting) {
         <label>Verantwortliche Personen<input data-point="${i}" data-task="${j}" data-field="responsible" value="${escape(task.responsible)}" placeholder="Namen"></label>
         <label class="checkbox"><input type="checkbox" data-point="${i}" data-task="${j}" data-field="done" ${task.done ? 'checked' : ''}> Erledigt</label>
         <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Aufgabe entfernen">Entfernen</button>
-      </div>`).join('')}</section>`).join('') : '<p>Noch keine Traktanden vorhanden.</p>'}`;
+      </div>`).join('')}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}`;
 }
 
 function taskResults() {
@@ -119,14 +119,14 @@ function taskResults() {
     ${allTasks.length === 0 ? '<p>Keine offenen Aufgaben.</p>' : tasks.length === 0 ? '<p>Keine Aufgaben entsprechen den Filtern.</p>' :
       `<div class="table-scroll"><table class="tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption><thead><tr>
         <th scope="col">Erledigt</th>${header('description', 'Aufgabe')}${header('responsible', 'Verantwortlich')}
-        ${header('meeting', 'Sitzung')}${header('point', 'Traktandum')}${header('date', 'Sitzungsdatum')}
+        ${header('meeting', 'Sitzung')}${header('point', 'TOP')}${header('date', 'Sitzungsdatum')}
         <th scope="col">Aktion</th></tr></thead><tbody>
       ${tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => `<tr>
         <td><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}" aria-label="${escape(`${task.description || 'Aufgabe ohne Titel'} – ${meeting.title || 'Sitzung ohne Titel'} als erledigt markieren`)}"></td>
         <td>${escape(task.description || 'Aufgabe ohne Titel')}</td>
         <td>${escape(task.responsible || clubDeutsch.unassigned)}</td>
         <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
-        <td>${escape(point.headline || 'Traktandum ohne Titel')}</td>
+        <td>${escape(point.headline || 'TOP ohne Titel')}</td>
         <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
         <td><button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
       </tr>`).join('')}</tbody></table></div>`}`;
@@ -136,7 +136,7 @@ function tasksView() {
   return `<div class="topline"><div><h1>Offene Aufgaben</h1><p>Offene Aufgaben aus gespeicherten Sitzungen.</p></div>${button('refresh-tasks', 'Aufgaben neu laden')}</div>
     <div class="card">
       <div class="task-filters">
-        <label>Aufgaben suchen<input type="search" data-task-filter="search" value="${escape(taskView.search)}" placeholder="Aufgabe, Sitzung, Traktandum oder Datum"></label>
+        <label>Aufgaben suchen<input type="search" data-task-filter="search" value="${escape(taskView.search)}" placeholder="Aufgabe, Sitzung, TOP oder Datum"></label>
         <label>Verantwortliche filtern<input type="search" data-task-filter="responsible" value="${escape(taskView.responsible)}" placeholder="Name"></label>
         ${button('clear-task-filters', 'Filter zurücksetzen')}
       </div>
@@ -260,7 +260,7 @@ async function run(action, target) {
     case 'remove-person': meeting.attendance.splice(i, 1); state.dirty = true; break;
     case 'add-point': meeting.points.push({ headline: '', type: 'discussion', details: '', tasks: [] }); state.dirty = true; break;
     case 'remove-point':
-      if (window.confirm('Dieses Traktandum und seine Aufgaben löschen?')) { meeting.points.splice(i, 1); state.dirty = true; }
+      if (window.confirm('Diesen TOP und seine Aufgaben löschen?')) { meeting.points.splice(i, 1); state.dirty = true; }
       break;
     case 'move-up':
     case 'move-down': {

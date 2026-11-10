@@ -15,6 +15,7 @@ test('protocol labels and statuses are German and stored values are unchanged', 
   const html = protocolHtml(meeting, '');
   assert.match(html, /<html lang="de">/);
   assert.match(html, /10\.11\.2026/);
+  assert.match(html, /<h2>TOPs<\/h2>/);
   for (const label of [...Object.values(de.attendance), ...Object.values(de.pointType)]) {
     assert.ok(html.includes(label), `Missing label: ${label}`);
   }

@@ -61,7 +61,7 @@ function validateMeeting(meeting) {
   for (const point of meeting.points) {
     if (!point || !string(point.headline) || !string(point.details) ||
         !['discussion', 'decision', 'info'].includes(point.type) ||
-        !Array.isArray(point.tasks)) throw new Error('Ungültiges Traktandum.');
+        !Array.isArray(point.tasks)) throw new Error('Ungültiger TOP.');
     for (const task of point.tasks) {
       if (!task || !string(task.description) || !string(task.responsible) ||
           typeof task.done !== 'boolean') throw new Error('Ungültige Aufgabe.');

@@ -51,7 +51,7 @@ test('rejects invalid meeting data and reports corrupt records', async t => {
   const folder = await fixture(t);
   const data = meeting();
   data.points[0].type = 'invalid';
-  await assert.rejects(storage.saveMeeting(folder, data, null), /Ungültiges Traktandum/);
+  await assert.rejects(storage.saveMeeting(folder, data, null), /Ungültiger TOP/);
   data.id = '../escape';
   await assert.rejects(storage.saveMeeting(folder, data, null), /Ungültige Sitzungsdaten/);
   const file = path.join(folder, 'meetings', `${crypto.randomUUID()}.json`);
