@@ -40,6 +40,9 @@ refined later. It is an idea document, not a finalized specification.
 - Package the macOS app for Apple Silicon first.
 - Prepare an installer build for Windows; Linux packaging can follow later.
 - Initial macOS builds are for testing and are not signed or notarized.
+- Later, publish app releases through GitHub Releases and use them to deliver
+  app updates. Decide on the update workflow, signing, release permissions, and
+  user experience before implementing it.
 
 ## Initial modules
 
