@@ -80,7 +80,7 @@ function meetingEditor(meeting) {
         <label>Status<select data-person="${i}" data-field="status">${options(Object.entries(clubDeutsch.attendance), person.status)}</select></label>
         <button class="action" data-action="remove-person" data-index="${i}" aria-label="Person entfernen">Entfernen</button>
       </div>`).join('') : '<p>Keine Anwesenheit erfasst.</p>'}</div>
-    <div class="topline"><h2>TOPs</h2>${button('add-point', '+ TOP hinzufügen')}</div>
+    <div class="topline"><h2>TOPs</h2></div>
     ${meeting.points.length ? meeting.points.map((point, i) => `<section class="card">
       <div class="card-header"><h3>TOP ${i + 1}</h3><div class="row">
         <button class="action" data-action="move-up" data-index="${i}" ${i === 0 ? 'disabled' : ''} aria-label="TOP nach oben verschieben">↑</button>
@@ -99,7 +99,8 @@ function meetingEditor(meeting) {
         <label class="checkbox"><input type="checkbox" data-point="${i}" data-task="${j}" data-field="done" ${task.done ? 'checked' : ''}> Erledigt</label>
         <span class="task-completed-date">${task.done && task.completedDate ? `Erledigt am: ${escape(formatDate(task.completedDate))}` : ''}</span>
         <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Aufgabe entfernen">Entfernen</button>
-      </div>`).join('')}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}`;
+      </div>`).join('')}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}
+    ${button('add-point', '+ TOP hinzufügen')}`;
 }
 
 function taskResults() {

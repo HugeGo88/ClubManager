@@ -41,8 +41,26 @@ async function main() {
           await click('[data-action="choose-folder"]');
           await waitFor(() => document.querySelector('.path')?.textContent.includes('data'));
           await click('[data-view="meetings"]');
+          await click('[data-action="new"]');
+          const addButton = await waitFor(() => document.querySelector('[data-action="add-point"]'));
+          const emptyMessage = [...document.querySelectorAll('main p')].find(p => p.textContent === 'Noch keine TOPs vorhanden.');
+          if (!emptyMessage || !(emptyMessage.compareDocumentPosition(addButton) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            throw new Error('TOP button should follow the empty list');
+          }
+          await click('[data-action="add-point"]');
+          await waitFor(() => document.querySelector('[data-point="0"][data-field="headline"]'));
+          await click('[data-action="add-point"]');
+          await waitFor(() => document.querySelector('[data-point="1"][data-field="headline"]'));
+          const pointSections = [...document.querySelectorAll('main section.card')];
+          const lastAddButton = document.querySelector('[data-action="add-point"]');
+          if (pointSections.length !== 2 || !(pointSections[1].compareDocumentPosition(lastAddButton) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            throw new Error('TOP button should follow all added points');
+          }
+          const originalConfirm = window.confirm;
+          window.confirm = () => true;
           await click('[data-action="sample"]');
-          await waitFor(() => document.querySelector('[data-field="title"]'));
+          await waitFor(() => document.querySelector('[data-field="title"]')?.value === 'Beispiel: Vorstandssitzung');
+          window.confirm = originalConfirm;
           const absentBeforeExport = !document.querySelector('[data-action="open-protocol"]');
           const language = document.documentElement.lang;
           const navigation = [...document.querySelectorAll('[data-view]')].map(button => button.getAttribute('aria-label'));
