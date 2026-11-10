@@ -1,0 +1,6 @@
+body { color: #24292f; font: 11pt/1.5 sans-serif; margin: 2cm; }
+h1 { font-size: 24pt; margin-bottom: 0; }
+h2 { font-size: 15pt; margin-top: 1.5em; }
+h3 { font-size: 11pt; }
+section { break-inside: avoid; border-top: 1px solid #d5dbe2; }
+.type { color: #596575; text-transform: capitalize; }

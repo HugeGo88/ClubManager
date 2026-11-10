@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'">
+  <title>ClubManager</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="activity" aria-label="Modules">
+    <div class="brand" title="ClubManager">C</div>
+    <nav id="navigation">
+      <button data-view="meetings" title="Meetings" aria-label="Meetings">▤</button>
+      <button data-view="tasks" title="Open tasks" aria-label="Open tasks">✓</button>
+      <button data-view="members" title="Members" aria-label="Members">♙</button>
+      <button data-view="invoices" title="Invoices" aria-label="Invoices">▧</button>
+      <button data-view="letters" title="Letters" aria-label="Letters">✉</button>
+    </nav>
+    <button class="settings-nav" data-view="settings" title="Settings" aria-label="Settings">⚙</button>
+  </aside>
+  <main id="app"></main>
+  <script src="renderer.js"></script>
+</body>
+</html>

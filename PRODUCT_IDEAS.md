@@ -11,22 +11,33 @@ refined later. It is an idea document, not a finalized specification.
 - Allow modules to share data through clear, intentional interfaces when needed.
 - Prefer a simple modular app to separate services at the beginning.
 
-## Data and synchronization
+## Data storage
 
-- Synchronize all stored app data through Nextcloud files, including data from
-  every module and any stored attachments or generated documents.
-- Support working offline and syncing changes when Nextcloud is available again.
-- Consider storing records in small, separate files instead of one large file to
-  reduce the scope of conflicts. This alone does not guarantee reliable sync.
-- Design for interrupted writes, simultaneous edits, deletion, and conflict
-  detection and resolution without silently losing data.
-- Define a versioned file format, safe writes, and backup and recovery
-  procedures before implementing synchronization.
+- For now, store app data locally in a user-selected folder; Nextcloud
+  synchronization is not part of the current scope.
+- Provide a Settings page at the bottom of the left sidebar where the storage
+  folder can be selected.
+- Create a separate subfolder for each module inside the selected folder.
+- Consider storing records in separate files and using a versioned file format
+  and safe writes.
 
 ## UI
 
 - Use a left-side icon bar, similar to the Visual Studio Code activity bar, to
   switch between modules.
+- Place Settings at the bottom of the icon bar.
+
+## First version
+
+- Build a working Meetings module first, with placeholders for the other modules.
+- Include clearly marked sample data.
+- Store data in the selected local folder.
+
+## Distribution
+
+- Package the macOS app for Apple Silicon first.
+- Prepare an installer build for Windows; Linux packaging can follow later.
+- Initial macOS builds are for testing and are not signed or notarized.
 
 ## Initial modules
 
@@ -83,7 +94,5 @@ refined later. It is an idea document, not a finalized specification.
   single-person recipients can be non-members.
 - How invoices are numbered and stored, and what PDF export or printing options
   are needed.
-- Whether to synchronize through the Nextcloud desktop client, WebDAV, or
-  another supported approach, and how conflicts are presented and resolved.
 - Data storage format, encryption, access control, and backup requirements.
 - The final visual design and module icon choices.

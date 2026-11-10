@@ -1,0 +1,95 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+const MODULES = ['meetings', 'invoices', 'members', 'letters'];
+const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function initializeFolder(folder) {
+  for (const name of MODULES) {
+    await fs.mkdir(path.join(folder, name), { recursive: true });
+  }
+}
+
+function meetingPath(folder, id) {
+  if (typeof id !== 'string' || !ID.test(id)) throw new Error('Invalid meeting ID.');
+  return path.join(folder, 'meetings', `${id}.json`);
+}
+
+function revision(content) {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+async function atomicWrite(file, content) {
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temporary, content, { flag: 'wx' });
+    await fs.rename(temporary, file);
+  } finally {
+    await fs.rm(temporary, { force: true });
+  }
+}
+
+function validateMeeting(meeting) {
+  const string = value => typeof value === 'string';
+  if (!meeting || !ID.test(meeting.id) || !string(meeting.title) ||
+      !string(meeting.date) || !Array.isArray(meeting.attendance) ||
+      !Array.isArray(meeting.points)) throw new Error('Invalid meeting data.');
+  for (const person of meeting.attendance) {
+    if (!person || !string(person.name) ||
+        !['attending', 'excused', 'unexcused'].includes(person.status)) {
+      throw new Error('Invalid attendance data.');
+    }
+  }
+  for (const point of meeting.points) {
+    if (!point || !string(point.headline) || !string(point.details) ||
+        !['discussion', 'decision', 'info'].includes(point.type) ||
+        !Array.isArray(point.tasks)) throw new Error('Invalid meeting point.');
+    for (const task of point.tasks) {
+      if (!task || !string(task.description) || !string(task.responsible) ||
+          typeof task.done !== 'boolean') throw new Error('Invalid task.');
+    }
+  }
+}
+
+async function listMeetings(folder) {
+  const entries = await fs.readdir(path.join(folder, 'meetings'), { withFileTypes: true });
+  const meetings = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    const id = entry.name.slice(0, -5);
+    const file = meetingPath(folder, id);
+    const content = await fs.readFile(file, 'utf8');
+    let record;
+    try {
+      record = JSON.parse(content);
+    } catch {
+      throw new Error(`Could not read ${entry.name}: invalid JSON.`);
+    }
+    if (record.version !== 1 || record.meeting?.id !== id) {
+      throw new Error(`Could not read ${entry.name}: unsupported or invalid record.`);
+    }
+    validateMeeting(record.meeting);
+    meetings.push({ meeting: record.meeting, revision: revision(content) });
+  }
+  return meetings.sort((a, b) => b.meeting.date.localeCompare(a.meeting.date));
+}
+
+async function saveMeeting(folder, meeting, expectedRevision) {
+  validateMeeting(meeting);
+  const file = meetingPath(folder, meeting.id);
+  let existing;
+  try {
+    existing = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if ((existing === undefined ? null : revision(existing)) !== expectedRevision) {
+    throw new Error('This meeting changed on disk. Reload it before saving to avoid overwriting changes.');
+  }
+  const content = JSON.stringify({ version: 1, meeting }, null, 2) + '\n';
+  await atomicWrite(file, content);
+  return revision(content);
+}
+
+module.exports = { initializeFolder, listMeetings, saveMeeting, atomicWrite, validateMeeting };
