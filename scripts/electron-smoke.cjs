@@ -74,9 +74,30 @@ async function main() {
           const tasksBefore = [...editor.querySelectorAll('.markdown-task')].map(element => element.checked);
           editor.querySelector('.markdown-task').click();
           await waitFor(() => editor.querySelector('.markdown-task')?.checked);
+          const content = document.querySelector('.content');
+          const dueInput = document.querySelector('[data-point="0"][data-task="0"][data-field="dueDate"]');
+          dueInput.value = '2000-01-01';
+          dueInput.dispatchEvent(new Event('input', { bubbles: true }));
+          const toolbar = document.querySelector('.meeting-toolbar');
+          const topBefore = toolbar.getBoundingClientRect().top;
+          content.scrollTop = content.scrollHeight;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const toolbarTop = toolbar.getBoundingClientRect().top;
+          const containerTop = content.getBoundingClientRect().top;
+          const scrolled = content.scrollTop;
+          const firstSaveRect = document.querySelector('[data-action="save"]').getBoundingClientRect();
+          const stickyVisible = firstSaveRect.top >= containerTop && firstSaveRect.bottom <= content.getBoundingClientRect().bottom;
+          editor.focus({ preventScroll: true });
+          editor.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
+          await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('Sitzung gespeichert'));
+          const savedScroll = document.querySelector('.content').scrollTop;
           await click('[data-action="move-down"][data-index="0"]');
           const persistedChecks = [...document.querySelectorAll('[data-markdown-editor="1"] .markdown-task')].map(element => element.checked);
-          await click('[data-action="save"]');
+          const title = document.querySelector('[data-field="title"]');
+          title.focus();
+          title.value = 'Beispiel: Vorstandssitzung aktualisiert';
+          title.dispatchEvent(new Event('input', { bubbles: true }));
+          title.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }));
           await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('Sitzung gespeichert'));
           await click('[data-action="export"]');
           const notice = await waitFor(() => {
@@ -84,13 +105,31 @@ async function main() {
             return text?.includes('PDF gespeichert') && text;
           });
           await waitFor(() => document.querySelector('[data-action="open-protocol"]'));
+          const afterExportContent = document.querySelector('.content');
+          afterExportContent.scrollTop = afterExportContent.scrollHeight;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const toolbarRect = document.querySelector('.meeting-toolbar').getBoundingClientRect();
+          const actionRects = [...document.querySelectorAll('.meeting-actions button')].map(element => {
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+          });
+          const noOverlap = actionRects.every((rect, index) => actionRects.slice(index + 1).every(other =>
+            rect.right <= other.left || other.right <= rect.left || rect.bottom <= other.top || other.bottom <= rect.top));
+          const afterExportVisible = actionRects.every(rect => rect.left >= toolbarRect.left && rect.right <= toolbarRect.right &&
+            rect.top >= afterExportContent.getBoundingClientRect().top && rect.bottom <= afterExportContent.getBoundingClientRect().bottom);
           await click('[data-action="open-protocol"]');
           await waitFor(() => !document.body.inert);
           await click('[data-view="tasks"]');
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
-          return { notice, tasks: document.querySelector('main').textContent, language, navigation, attendanceOptions, typeOptions, absentBeforeExport, previewText, rawVisible, editedPreview, renderedLink, bullets, numbers, tasksBefore, persistedChecks };
+          return { notice, tasks: document.querySelector('main').textContent, overdue: document.querySelectorAll('.overdue').length, language, navigation, attendanceOptions, typeOptions, absentBeforeExport, previewText, rawVisible, editedPreview, renderedLink, bullets, numbers, tasksBefore, persistedChecks, topBefore, toolbarTop, containerTop, scrolled, stickyVisible, savedScroll, afterExportVisible, noOverlap };
         })()`);
         assert.equal(result.language, 'de');
+        assert.ok(result.scrolled > 100, 'Meeting must scroll for the sticky toolbar test');
+        assert.ok(Math.abs(result.toolbarTop - result.containerTop) <= 1, 'Toolbar must stick to the top');
+        assert.ok(result.stickyVisible);
+        assert.ok(Math.abs(result.savedScroll - result.scrolled) <= 1, 'Saving must preserve scroll position');
+        assert.ok(result.afterExportVisible);
+        assert.ok(result.noOverlap);
         assert.ok(!result.previewText.includes('**'));
         assert.ok(result.rawVisible);
         assert.ok(!result.editedPreview.includes('**'));
@@ -105,18 +144,25 @@ async function main() {
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
         assert.deepEqual(result.typeOptions, ['Diskussion', 'Entscheidung', 'Information']);
         assert.match(result.tasks, /Veranstaltungsort kontaktieren/);
+        assert.match(result.tasks, /01\.01\.2000/);
+        assert.match(result.tasks, /Überfällig/);
+        assert.equal(result.overdue, 1);
         const meetingsDir = path.join(data, 'meetings');
         const files = await fs.readdir(meetingsDir);
         const jsonFile = files.find(file => file.endsWith('.json'));
         assert.ok(jsonFile);
         const saved = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
+        assert.equal(saved.meeting.title, 'Beispiel: Vorstandssitzung aktualisiert');
         assert.equal(saved.meeting.points[0].headline, 'Budget');
         assert.equal(saved.meeting.points[1].headline, 'Kommende Veranstaltung');
+        assert.equal(saved.meeting.points[1].tasks[0].dueDate, '2000-01-01');
         assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
-        saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false });
+        const now = new Date();
+        const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+        saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false, dueDate: today });
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(saved, null, 2) + '\n');
         const table = await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async (test) => {
@@ -137,6 +183,10 @@ async function main() {
           };
           document.querySelector('[data-action="refresh-tasks"]').click();
           await waitFor(() => rows().length === 2);
+          const overdueRows = [...document.querySelectorAll('.tasks-table tbody tr')].filter(row => row.querySelector('.overdue')).map(row => row.cells[1].textContent);
+          document.querySelector('[data-sort="dueDate"]').click();
+          await waitFor(() => document.querySelector('[data-sort="dueDate"]').closest('th').getAttribute('aria-sort') === 'ascending');
+          const dueOrder = rows();
           document.querySelector('[data-sort="description"]').click();
           await waitFor(() => document.querySelector('[aria-sort="ascending"]'));
           const ascending = rows();
@@ -155,9 +205,11 @@ async function main() {
           const remainingFiltered = document.querySelector('#task-results').textContent;
           document.querySelector('[data-action="clear-task-filters"]').click();
           await waitFor(() => rows().length === 1);
-          return { ascending, descending, keptFocus, filtered, noMatch, remainingFiltered, remaining: rows() };
+          return { ascending, descending, keptFocus, filtered, noMatch, remainingFiltered, remaining: rows(), overdueRows, dueOrder };
         })()`);
         assert.deepEqual(table.ascending, ['Budget prüfen', 'Veranstaltungsort kontaktieren']);
+        assert.deepEqual(table.overdueRows, ['Veranstaltungsort kontaktieren']);
+        assert.deepEqual(table.dueOrder, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
         assert.deepEqual(table.descending, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
         assert.ok(table.keptFocus);
         assert.deepEqual(table.filtered, ['Budget prüfen']);
@@ -167,6 +219,7 @@ async function main() {
         const afterTable = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(afterTable.meeting.points[0].tasks[0].done, true);
         assert.equal(afterTable.meeting.points[1].tasks[0].done, false);
+        assert.equal(afterTable.meeting.points[0].tasks[0].dueDate, today);
         afterTable.meeting.points[1].tasks[0].responsible = 'Updated externally';
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(afterTable, null, 2) + '\n');
         const completion = await window.webContents.executeJavaScript(`(async () => {

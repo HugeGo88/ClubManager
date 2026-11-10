@@ -73,3 +73,22 @@ test('locates protocol PDFs safely and rejects non-files', async t => {
   await fs.mkdir(file);
   await assert.rejects(storage.hasProtocol(folder, data.id), /keine reguläre Datei/);
 });
+
+test('persists optional due dates and rejects invalid calendar dates', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  const task = data.points[0].tasks[0];
+  task.dueDate = '2028-02-29';
+  let revision = await storage.saveMeeting(folder, data, null);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].dueDate, '2028-02-29');
+  for (const invalid of ['2026-02-29', '2026-13-01', 'not a date', null, 123]) {
+    task.dueDate = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültiges Fälligkeitsdatum/);
+  }
+  task.dueDate = '';
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].dueDate, '');
+  delete task.dueDate;
+  await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].dueDate, undefined);
+});

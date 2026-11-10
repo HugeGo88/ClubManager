@@ -1,6 +1,7 @@
 const { marked } = require('marked');
 const sanitizeHtml = require('sanitize-html');
 const de = require('../shared/de');
+const { formatDate } = require('../shared/dates');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -28,10 +29,9 @@ function protocolHtml(meeting, css) {
     <section><h2>${index + 1}. ${escapeHtml(point.headline)}</h2>
     <p class="type">${escapeHtml(de.pointType[point.type])}</p>${markdown(point.details)}
     ${point.tasks.length ? `<h3>Aufgaben</h3><ul>${point.tasks.map(task =>
-      `<li>[${escapeHtml(task.done ? de.taskStatus.done : de.taskStatus.open)}] ${escapeHtml(task.description)} — ${escapeHtml(task.responsible || de.unassigned)}</li>`
+      `<li>[${escapeHtml(task.done ? de.taskStatus.done : de.taskStatus.open)}] ${escapeHtml(task.description)} — ${escapeHtml(task.responsible || de.unassigned)}${task.dueDate ? ` — Fällig: ${escapeHtml(formatDate(task.dueDate))}` : ''}</li>`
     ).join('')}</ul>` : ''}</section>`).join('');
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(meeting.date);
-  const date = match ? `${match[3]}.${match[2]}.${match[1]}` : meeting.date;
+  const date = formatDate(meeting.date);
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head>
     <body><h1>${escapeHtml(meeting.title)}</h1><p>${escapeHtml(date)}</p>
     <h2>Anwesenheit</h2>${attendance ? `<ul>${attendance}</ul>` : '<p>Keine Anwesenheit erfasst.</p>'}

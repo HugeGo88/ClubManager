@@ -43,3 +43,15 @@ test('protocol displays Markdown checklists as disabled checkboxes', () => {
   assert.match(html, /<input type="checkbox" disabled="disabled"\s*\/?> Offen/);
   assert.match(html, /<input type="checkbox" disabled="disabled" checked="checked"\s*\/?> Fertig/);
 });
+
+test('protocol includes optional task deadlines', () => {
+  const html = protocolHtml({
+    title: 'Sitzung', date: '', attendance: [],
+    points: [{ headline: 'Punkt', type: 'info', details: '', tasks: [
+      { description: 'Mit Frist', responsible: '', done: false, dueDate: '2026-11-10' },
+      { description: 'Ohne Frist', responsible: '', done: false }
+    ] }]
+  }, '');
+  assert.match(html, /Mit Frist — Nicht zugewiesen — Fällig: 10\.11\.2026/);
+  assert.match(html, /Ohne Frist — Nicht zugewiesen<\/li>/);
+});

@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { isDate } = require('../shared/dates');
 
 const MODULES = ['meetings', 'invoices', 'members', 'letters'];
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,6 +66,9 @@ function validateMeeting(meeting) {
     for (const task of point.tasks) {
       if (!task || !string(task.description) || !string(task.responsible) ||
           typeof task.done !== 'boolean') throw new Error('Ungültige Aufgabe.');
+      if (task.dueDate !== undefined && task.dueDate !== '' && !isDate(task.dueDate)) {
+        throw new Error('Ungültiges Fälligkeitsdatum für die Aufgabe.');
+      }
     }
   }
 }

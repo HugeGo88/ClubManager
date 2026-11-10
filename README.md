@@ -29,11 +29,15 @@ used for PDF export, where task checkboxes are shown as non-editable. The Open
 Tasks view lists tasks from saved meetings.
 After export, **Gespeichertes PDF öffnen** opens the last exported protocol in
 the system's default PDF viewer. It does not include subsequent meeting changes
-until the PDF is exported again.
+until the PDF is exported again. The save and PDF actions remain at the top
+while scrolling through a meeting. Save the open meeting with **Ctrl+S** (also
+**Cmd+S** on macOS), including while editing Markdown.
 In **Offene Aufgaben**, filter the table by text and responsible person, and
 click a column heading to change its sort order. Check a task to mark it done
 and save immediately. Use **Aufgaben neu laden** to refresh the list, including
-after an on-disk conflict.
+after an on-disk conflict. Meeting tasks can have an optional due date; an open
+task becomes overdue after that date in the computer's local time zone. The
+deadline is also included in newly exported protocols.
 
 The app warns if a meeting has changed on disk since it was opened. This is not
 a synchronization system or a substitute for backups; avoid editing the same
