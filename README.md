@@ -29,6 +29,18 @@ folder with multiple app instances at the same time. Data is not encrypted.
 Run the storage tests with `npm test`. With a graphical desktop available, run
 the Electron smoke test with `npm run test:electron`.
 
+## Debug
+
+In VS Code, choose **Launch Electron main** in Run and Debug and press F5.
+VS Code starts Electron and attaches the debugger automatically. Set breakpoints
+in the main process, such as `src/main/main.js`; stop debugging to close the
+launched app. Install dependencies first with `npm install`. To debug renderer
+code, use the Electron window's Developer Tools.
+
+Alternatively, run the **Electron: debug main process** task and select
+**Attach to Electron main** to attach to that running instance. Its inspector
+listens on `127.0.0.1:9231`; stop the task when finished.
+
 ## Package the app
 
 On an Apple Silicon Mac, build a DMG containing the app with:

@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Electron: debug main process",
+			"type": "shell",
+			"command": "${workspaceFolder}/node_modules/.bin/electron",
+			"args": [
+				"--inspect=127.0.0.1:9231",
+				"."
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

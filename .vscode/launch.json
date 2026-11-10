@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Electron main",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+      "windows": {
+        "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/electron.exe"
+      },
+      "cwd": "${workspaceFolder}",
+      "args": ["${workspaceFolder}"],
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Attach to Electron main",
+      "type": "node",
+      "request": "attach",
+      "address": "127.0.0.1",
+      "port": 9231,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}
