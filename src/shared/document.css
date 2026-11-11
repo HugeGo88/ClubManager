@@ -30,3 +30,6 @@ section { break-inside: avoid; border-top: 1px solid #d5dbe2; }
 .type[data-type="info"] { color: #724316; background: #fff0cf; }
 .protocol-tasks { list-style: none; padding-left: 0; }
 .protocol-tasks input { margin-right: 0.4em; }
+.open-task-group h3 { margin-bottom: 0.4em; overflow-wrap: anywhere; }
+.open-task-group .protocol-tasks { margin-top: 0; }
+.open-task-group li { overflow-wrap: anywhere; }

@@ -25,7 +25,34 @@ function cssString(value) {
   return `"${Array.from(value, char => `\\${char.codePointAt(0).toString(16)} `).join('')}"`;
 }
 
-function protocolHtml(meeting, css) {
+function openTasksHtml(meetings) {
+  const groups = new Map();
+  for (const meeting of meetings) {
+    for (const point of meeting.points) {
+      for (const task of point.tasks) {
+        if (task.done) continue;
+        const names = task.responsible.split(/[,;]/).map(name => name.trim()).filter(Boolean);
+        const seen = new Set();
+        for (const name of names.length ? names : [de.unassigned]) {
+          const key = name.toLocaleLowerCase('de');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (!groups.has(key)) groups.set(key, { name, tasks: [] });
+          groups.get(key).tasks.push({ meeting, point, task });
+        }
+      }
+    }
+  }
+  const sorted = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
+  return `<h2>Offene Aufgaben</h2>${sorted.length ? sorted.map(({ name, tasks }) =>
+    `<div class="open-task-group"><h3>${escapeHtml(name)}</h3><ul class="protocol-tasks">${tasks.map(({ meeting, point, task }) =>
+      `<li><input type="checkbox" disabled="disabled" aria-label="Offen"> ${escapeHtml(task.description || 'Aufgabe ohne Titel')}` +
+      ` — ${escapeHtml(point.headline || 'TOP ohne Titel')} (${escapeHtml(meeting.title || 'Sitzung ohne Titel')}${meeting.date ? `, ${escapeHtml(formatDate(meeting.date))}` : ''})` +
+      `${task.dueDate ? ` — Fällig: ${escapeHtml(formatDate(task.dueDate))}` : ''}</li>`
+    ).join('')}</ul></div>`).join('') : '<p>Keine offenen Aufgaben.</p>'}`;
+}
+
+function protocolHtml(meeting, css, earlierMeetings = []) {
   const attendance = Object.entries(de.attendance).map(([status, label]) => {
     const names = meeting.attendance.filter(person => person.status === status).map(person => escapeHtml(person.name));
     return names.length ? `<p class="attendance-group"><strong>${escapeHtml(label)}:</strong> ${names.join(', ')}</p>` : '';
@@ -55,7 +82,8 @@ function protocolHtml(meeting, css) {
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><style>${pageLayout}</style><style>${css.replace(/<\/style/gi, '<\\/style')}</style></head>
     <body><main><h1>${escapeHtml(meeting.title)}${date ? ` — ${escapeHtml(date)}` : ''}</h1>
     <h2>Anwesenheit</h2>${attendance || '<p>Keine Anwesenheit erfasst.</p>'}
-    <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}</main></body></html>`;
+    <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}
+    ${openTasksHtml([meeting, ...earlierMeetings])}</main></body></html>`;
 }
 
 module.exports = { protocolHtml };

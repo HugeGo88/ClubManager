@@ -36,6 +36,7 @@ main { flex: 1; min-width: 0; }
 .meeting-toolbar { position: sticky; top: -34px; z-index: 5; margin: -34px -42px 24px; padding: 18px 42px; background: #f5f7fa; border-bottom: 1px solid #e1e6ed; flex-wrap: wrap; }
 .meeting-toolbar .status { margin: 4px 0 0; }
 .meeting-actions { flex-wrap: wrap; }
+.meeting-actions .export-option { flex: 0 1 190px; margin: 0; }
 .content:has(.meeting-toolbar) { scroll-padding-top: 140px; }
 h1 { margin: 0; font-size: 27px; } h2 { font-size: 18px; } h3 { font-size: 15px; }
 p, .muted { color: #667487; }

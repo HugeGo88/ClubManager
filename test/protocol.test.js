@@ -140,6 +140,30 @@ test('protocol includes optional task deadlines', () => {
   assert.match(html, /Ohne Frist — Nicht zugewiesen<\/li>/);
 });
 
+test('groups open tasks by responsible person at the end of the protocol', () => {
+  const meeting = { title: 'Aktuell & <Sitzung>', date: '2026-11-10', attendance: [], points: [
+    { headline: 'Planung', type: 'discussion', details: '', tasks: [
+      { description: 'Gemeinsam <testen>', responsible: ' Alex, Sam; alex ; ', done: false, dueDate: '2026-11-20' },
+      { description: 'Ohne Person', responsible: ' , ; ', done: false },
+      { description: 'Bereits erledigt', responsible: 'Alex', done: true }
+    ] }
+  ] };
+  const earlier = { title: 'Früher', date: '2026-10-01', points: [
+    { headline: 'Alt', tasks: [{ description: 'Offen früher', responsible: 'sam', done: false }] }
+  ] };
+  const html = protocolHtml(meeting, '', [earlier]);
+  const summary = html.slice(html.lastIndexOf('<h2>Offene Aufgaben</h2>'));
+  assert.ok(html.indexOf('<h2>Offene Aufgaben</h2>') > html.indexOf('<h2>TOPs</h2>'));
+  assert.equal((summary.match(/Gemeinsam &lt;testen&gt;/g) || []).length, 2);
+  assert.equal((summary.match(/<h3>Alex<\/h3>/g) || []).length, 1);
+  assert.equal((summary.match(/<h3>Sam<\/h3>/g) || []).length, 1);
+  assert.match(summary, /<h3>Nicht zugewiesen<\/h3>/);
+  assert.match(summary, /Offen früher — Alt \(Früher, 01\.10\.2026\)/);
+  assert.match(summary, /Planung \(Aktuell &amp; &lt;Sitzung&gt;, 10\.11\.2026\) — Fällig: 20\.11\.2026/);
+  assert.doesNotMatch(summary, /Bereits erledigt/);
+  assert.match(protocolHtml({ ...meeting, points: [] }, ''), /<h2>Offene Aufgaben<\/h2><p>Keine offenen Aufgaben\.<\/p>/);
+});
+
 test('keeps CSS inside the stylesheet and blocks external resources', () => {
   const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [] },
     'body::after { content: "</style><script>bad</script>"; }');

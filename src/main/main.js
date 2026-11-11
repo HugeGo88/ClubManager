@@ -4,6 +4,7 @@ const path = require('node:path');
 const storage = require('./storage');
 const settings = require('./settings');
 const { protocolHtml } = require('./protocol');
+const { isDate } = require('../shared/dates');
 
 let mainWindow;
 let folder;
@@ -111,17 +112,24 @@ function registerHandlers() {
     const error = await shell.openPath(storage.protocolPath(currentFolder, id));
     if (error) throw new Error(`Das Protokoll-PDF konnte nicht geöffnet werden: ${error}`);
   });
-  ipcMain.handle('meetings:export', (event, meeting, revision) => serializeWrite(async () => {
+  ipcMain.handle('meetings:export', (event, meeting, revision, includeEarlierTasks) => serializeWrite(async () => {
     const currentFolder = requireFolder();
     storage.validateMeeting(meeting);
-    const current = (await storage.listMeetings(currentFolder)).find(item => item.meeting.id === meeting.id);
+    if (typeof includeEarlierTasks !== 'boolean') throw new Error('Ungültige Einstellung für frühere Aufgaben.');
+    const records = await storage.listMeetings(currentFolder);
+    const current = records.find(item => item.meeting.id === meeting.id);
     if (!current || current.revision !== revision) {
       throw new Error('Die gespeicherte Sitzung wurde geändert. Laden Sie sie vor dem Export erneut.');
     }
+    if (includeEarlierTasks && !isDate(current.meeting.date)) {
+      throw new Error('Geben Sie ein gültiges Sitzungsdatum ein, um offene Aufgaben früherer Sitzungen einzubeziehen.');
+    }
+    const earlierMeetings = includeEarlierTasks ? records.map(record => record.meeting)
+      .filter(other => other.id !== current.meeting.id && isDate(other.date) && other.date < current.meeting.date) : [];
     const css = await readProtocolCss(protocolCss || path.join(__dirname, '../shared/document.css'));
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
     try {
-      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(current.meeting, css))}`);
+      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(current.meeting, css, earlierMeetings))}`);
       const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
       const directory = path.join(currentFolder, 'meetings', 'protocols');
       await fs.mkdir(directory, { recursive: true });

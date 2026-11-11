@@ -37,6 +37,15 @@ as a colored label beside its heading. Custom stylesheets can style
 Individual TOP headings use `h3`, and their task headings use `h4`.
 The attendance section groups names by status, with one compact paragraph
 per nonempty status.
+At the end, the PDF lists open tasks grouped by responsible person. Separate
+multiple people with commas or semicolons to list the task under each person;
+tasks without a name appear under **Nicht zugewiesen**. Each entry shows its
+TOP, meeting and optional deadline. Before exporting, optionally check
+**Offene Aufgaben früherer Sitzungen einbeziehen** (off by default). This adds
+open tasks from saved meetings with a valid date strictly before the current
+meeting; same-day, future and undated meetings are excluded. The current
+meeting must have a valid date when this option is enabled. Existing task
+lists under each TOP remain unchanged.
 
 Use **Neue Sitzung** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its

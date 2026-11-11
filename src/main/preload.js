@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld('club', {
   resetProtocolCss: () => invoke('protocol-css:reset'),
   listMeetings: () => invoke('meetings:list'),
   saveMeeting: (meeting, revision) => invoke('meetings:save', meeting, revision),
-  exportMeeting: (meeting, revision) => invoke('meetings:export', meeting, revision),
+  exportMeeting: (meeting, revision, includeEarlierTasks) => invoke('meetings:export', meeting, revision, includeEarlierTasks),
   hasProtocol: id => invoke('meetings:has-protocol', id),
   openProtocol: id => invoke('meetings:open-protocol', id)
 });

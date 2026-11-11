@@ -2,6 +2,7 @@ const app = document.querySelector('#app');
 const state = { view: 'meetings', folder: null, protocolCss: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '' };
+let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 let meetingNavExpanded = true;
 let markdownEditors = [];
@@ -71,7 +72,9 @@ function decisionFields(point, i) {
 
 function meetingEditor(meeting) {
   return `<div class="topline meeting-toolbar"><div><h1>Sitzung bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
-    <div class="row meeting-actions">${state.hasProtocol ? button('open-protocol', 'Gespeichertes PDF öffnen') : ''}${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
+    <div class="row meeting-actions">${state.hasProtocol ? button('open-protocol', 'Gespeichertes PDF öffnen') : ''}
+      <label class="checkbox export-option"><input type="checkbox" data-include-earlier-tasks ${includeEarlierTasks ? 'checked' : ''}> Offene Aufgaben früherer Sitzungen einbeziehen</label>
+      ${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
     ${state.hasProtocol ? '<p class="muted">Das gespeicherte PDF zeigt den Stand des letzten Exports. Änderungen an der Sitzung werden erst nach einem erneuten Export übernommen.</p>' : ''}
     <div class="card"><div class="fields">
       <label>Titel der Sitzung<input data-field="title" value="${escape(meeting.title)}" placeholder="Titel der Sitzung"></label>
@@ -316,6 +319,7 @@ async function changeView(view) {
   state.meeting = null;
   state.revision = null;
   state.hasProtocol = false;
+  includeEarlierTasks = false;
   state.dirty = false;
   state.view = view;
   setMessage('');
@@ -358,6 +362,7 @@ async function run(action, target) {
       state.meeting = blankMeeting();
       state.revision = null;
       state.hasProtocol = false;
+      includeEarlierTasks = false;
       state.dirty = true;
       setMessage('');
       break;
@@ -372,6 +377,7 @@ async function run(action, target) {
       state.meeting = structuredClone(selected.meeting);
       state.revision = selected.revision;
       state.hasProtocol = hasProtocol;
+      includeEarlierTasks = false;
       state.dirty = false;
       state.view = 'meetings';
       setMessage('');
@@ -406,7 +412,7 @@ async function run(action, target) {
       break;
     case 'export':
       if (state.dirty || !state.revision) throw new Error('Speichern Sie die Sitzung, bevor Sie das PDF exportieren.');
-      setMessage(`PDF gespeichert unter: ${await window.club.exportMeeting(meeting, state.revision)}`);
+      setMessage(`PDF gespeichert unter: ${await window.club.exportMeeting(meeting, state.revision, includeEarlierTasks)}`);
       state.hasProtocol = true;
       break;
     case 'open-protocol':
@@ -468,6 +474,10 @@ document.addEventListener('keydown', event => {
 
 app.addEventListener('change', async event => {
   const target = event.target;
+  if (target.hasAttribute('data-include-earlier-tasks')) {
+    includeEarlierTasks = target.checked;
+    return;
+  }
   if (!target.matches('[data-complete-task]') || !target.checked) return;
   document.body.inert = true;
   try {

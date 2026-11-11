@@ -22,6 +22,7 @@ async function main() {
   const pdfColors = [];
   const pdfPointHeadings = [];
   const pdfVoteResults = [];
+  const pdfOpenTasks = [];
   app.on('browser-window-created', (event, window) => {
     if (window.isVisible()) return;
     const printToPDF = window.webContents.printToPDF.bind(window.webContents);
@@ -31,6 +32,9 @@ async function main() {
         `Array.from(document.querySelectorAll('.point-heading h3'), element => element.textContent)`));
       pdfVoteResults.push(await window.webContents.executeJavaScript(
         `Array.from(document.querySelectorAll('.vote-result'), element => element.textContent)`));
+      pdfOpenTasks.push(await window.webContents.executeJavaScript(
+        `Array.from(document.querySelectorAll('.open-task-group'), group => ({ name: group.querySelector('h3').textContent,
+          tasks: [...group.querySelectorAll('li')].map(item => item.textContent) }))`));
       return printToPDF(options);
     };
   });
@@ -367,6 +371,66 @@ async function main() {
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: cssFile });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
+        const earlierFiles = [];
+        let undatedId;
+        for (const [date, description] of [['2000-01-01', 'Alte offene Aufgabe'], [saved.meeting.date, 'Gleicher Tag'], ['9999-12-31', 'Zukünftige Aufgabe'], ['', 'Ohne Datum']]) {
+          const record = { version: 1, meeting: { id: randomUUID(), title: 'Andere Sitzung', date, attendance: [],
+            points: [{ headline: 'Alter TOP', type: 'discussion', details: '', tasks: [
+              { description, responsible: 'Alex Beispiel; Sam', done: false },
+              { description: 'Alte erledigte Aufgabe', responsible: 'Sam', done: true }
+            ] }] } };
+          const file = path.join(meetingsDir, `${record.meeting.id}.json`);
+          if (!date) undatedId = record.meeting.id;
+          earlierFiles.push(file);
+          await fs.writeFile(file, JSON.stringify(record));
+        }
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              if (test()) return;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for PDF export');
+          };
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="select"][data-id="${saved.meeting.id}"]'));
+          document.querySelector('[data-action="select"][data-id="${saved.meeting.id}"]').click();
+          await waitFor(() => document.querySelector('[data-include-earlier-tasks]'));
+          const option = document.querySelector('[data-include-earlier-tasks]');
+          if (option.checked) throw new Error('Earlier tasks must be unchecked by default');
+          option.click();
+          document.querySelector('[data-action="export"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+          if (!document.querySelector('[data-include-earlier-tasks]').checked) throw new Error('Export option should survive rerender');
+          document.querySelector('[data-include-earlier-tasks]').click();
+          document.querySelector('[data-action="export"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert') && !document.body.inert);
+        })()`);
+        const included = pdfOpenTasks.at(-2);
+        const excluded = pdfOpenTasks.at(-1);
+        for (const name of ['Alex Beispiel', 'Sam']) {
+          assert.ok(included.find(group => group.name === name)?.tasks.some(task => task.includes('Alte offene Aufgabe')));
+        }
+        assert.ok(included.some(group => group.tasks.some(task => task.includes('Veranstaltungsort kontaktieren'))));
+        assert.ok(!included.some(group => group.tasks.some(task => /Gleicher Tag|Zukünftige Aufgabe|Ohne Datum|Alte erledigte Aufgabe/.test(task))));
+        assert.ok(!excluded.some(group => group.tasks.some(task => task.includes('Alte offene Aufgabe'))));
+        const missingDateError = await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for date validation');
+          };
+          document.querySelector('[data-action="select"][data-id="${undatedId}"]').click();
+          await waitFor(() => document.querySelector('[data-field="title"]')?.value === 'Andere Sitzung');
+          document.querySelector('[data-include-earlier-tasks]').click();
+          document.querySelector('[data-action="export"]').click();
+          return await waitFor(() => document.querySelector('.notice.error')?.textContent);
+        })()`);
+        assert.match(missingDateError, /gültiges Sitzungsdatum/);
+        for (const file of earlierFiles) await fs.unlink(file);
         const fixture = structuredClone(saved);
         fixture.meeting.points.push(
           { headline: 'Alt <Beschluss>', type: 'decision', details: '', tasks: [] },
@@ -664,7 +728,7 @@ async function main() {
           document.querySelector('[data-action="export"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);
-        assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
+        assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: null });
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
