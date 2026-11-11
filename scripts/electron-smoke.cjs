@@ -4,6 +4,7 @@ const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 
 async function main() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-electron-test-'));
@@ -91,6 +92,11 @@ async function main() {
           await waitFor(() => document.querySelector('.path')?.textContent.includes('data'));
           await click('[data-view="meetings"]');
           await waitFor(() => document.querySelector('.list'));
+          await click('[data-view="decisions"]');
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Entscheidungen');
+          if (!document.querySelector('main').textContent.includes('Keine Entscheidungen vorhanden.')) throw new Error('Empty decisions view missing');
+          await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('.list'));
           if (document.querySelector('[data-action="sample"]') || document.querySelector('.list').textContent.includes('Beispielsitzung')) {
             throw new Error('Sample meeting button must not be present');
           }
@@ -115,6 +121,23 @@ async function main() {
             element.dispatchEvent(new Event('input', { bubbles: true }));
           };
           setInput('[data-field="title"]', 'Beispiel: Vorstandssitzung');
+          const dirtyEditor = document.querySelector('[data-markdown-editor="0"] .cm-editor');
+          const meetingToggle = document.querySelector('[data-action="toggle-meeting-nav"]');
+          meetingToggle.click();
+          meetingToggle.click();
+          if (document.querySelector('[data-markdown-editor="0"] .cm-editor') !== dirtyEditor ||
+              document.querySelector('[data-field="title"]').value !== 'Beispiel: Vorstandssitzung') {
+            throw new Error('Collapsing navigation must preserve unsaved editor state');
+          }
+          const originalConfirm = window.confirm;
+          window.confirm = () => false;
+          await click('[data-view="decisions"]');
+          await waitFor(() => !document.body.inert);
+          window.confirm = originalConfirm;
+          if (document.querySelector('main h1')?.textContent !== 'Sitzung bearbeiten' ||
+              document.querySelector('[data-field="title"]').value !== 'Beispiel: Vorstandssitzung') {
+            throw new Error('Declining to discard must preserve the meeting');
+          }
           setInput('[data-field="date"]', clubDates.localDate());
           await click('[data-action="add-person"]');
           await waitFor(() => document.querySelector('[data-person="0"][data-field="name"]'));
@@ -159,6 +182,15 @@ async function main() {
           const absentBeforeExport = !document.querySelector('[data-action="open-protocol"]');
           const language = document.documentElement.lang;
           const navigation = [...document.querySelectorAll('[data-view]')].map(button => button.getAttribute('aria-label'));
+          const visibleNavigation = [...document.querySelectorAll('[data-view]')].map(button => {
+            const label = button.querySelector('.nav-label');
+            const icon = button.querySelector('.nav-icon');
+            const labelRect = label.getBoundingClientRect();
+            const iconRect = icon.getBoundingClientRect();
+            const buttonRect = button.getBoundingClientRect();
+            return { text: label.textContent, visible: getComputedStyle(label).visibility === 'visible' &&
+              labelRect.width > 0 && labelRect.left >= iconRect.right && labelRect.right <= buttonRect.right };
+          });
           const attendanceOptions = [...document.querySelector('[data-person="0"][data-field="status"]').options].map(option => option.textContent);
           const typeOptions = [...document.querySelector('[data-point="0"][data-field="type"]').options].map(option => option.textContent);
           const editor = document.querySelector('[data-markdown-editor="0"] .cm-content');
@@ -278,9 +310,15 @@ async function main() {
             rect.top >= afterExportContent.getBoundingClientRect().top && rect.bottom <= afterExportContent.getBoundingClientRect().bottom);
           await click('[data-action="open-protocol"]');
           await waitFor(() => !document.body.inert);
+          const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
+          toggle.click();
+          if (toggle.getAttribute('aria-expanded') !== 'false' || !document.querySelector('#meeting-subnav').hidden ||
+              document.querySelector('main h1')?.textContent !== 'Sitzung bearbeiten') throw new Error('Meeting navigation did not collapse independently');
+          toggle.click();
+          if (toggle.getAttribute('aria-expanded') !== 'true' || document.querySelector('#meeting-subnav').hidden) throw new Error('Meeting navigation did not expand');
           await click('[data-view="tasks"]');
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
-          return { notice, tasks: document.querySelector('main').textContent, overdue: document.querySelectorAll('.overdue').length, language, navigation, attendanceOptions, typeOptions, absentBeforeExport, previewText, rawVisible, editedPreview, renderedLink, bullets, numbers, tasksBefore, persistedChecks, topBefore, toolbarTop, containerTop, scrolled, stickyVisible, savedScroll, afterExportVisible, noOverlap };
+          return { notice, tasks: document.querySelector('main').textContent, overdue: document.querySelectorAll('.overdue').length, language, navigation, visibleNavigation, attendanceOptions, typeOptions, absentBeforeExport, previewText, rawVisible, editedPreview, renderedLink, bullets, numbers, tasksBefore, persistedChecks, topBefore, toolbarTop, containerTop, scrolled, stickyVisible, savedScroll, afterExportVisible, noOverlap };
         })()`);
         assert.equal(result.language, 'de');
         assert.ok(result.scrolled > 100, 'Meeting must scroll for the sticky toolbar test');
@@ -299,7 +337,9 @@ async function main() {
         assert.deepEqual(result.tasksBefore, [false, true]);
         assert.deepEqual(result.persistedChecks, [true, true]);
         assert.ok(result.absentBeforeExport);
-        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
+        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
+        assert.deepEqual(result.visibleNavigation.map(item => item.text), result.navigation);
+        assert.ok(result.visibleNavigation.every(item => item.visible), 'Navigation labels must be visible next to their icons');
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
         assert.deepEqual(result.typeOptions, ['Diskussion', 'Entscheidung', 'Information']);
         assert.match(result.tasks, /Veranstaltungsort kontaktieren/);
@@ -327,6 +367,86 @@ async function main() {
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: cssFile });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
+        const fixture = structuredClone(saved);
+        fixture.meeting.points.push(
+          { headline: 'Alt <Beschluss>', type: 'decision', details: '', tasks: [] },
+          { headline: 'Ablehnung', type: 'decision', details: '', tasks: [], vote: { result: 'unanimous_rejected', yes: null, no: null, abstain: null } },
+          { headline: 'Keine Entscheidung', type: 'info', details: '', tasks: [], vote: { result: 'accepted', yes: 2, no: null, abstain: null } }
+        );
+        await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(fixture, null, 2) + '\n');
+        const second = structuredClone(saved);
+        second.meeting.id = randomUUID();
+        second.meeting.title = 'Weitere Sitzung';
+        second.meeting.date = '';
+        second.meeting.points = [{ headline: 'Weitere Entscheidung', type: 'decision', details: '', tasks: [],
+          vote: { result: 'accepted', yes: null, no: null, abstain: null } }];
+        const secondFile = path.join(meetingsDir, `${second.meeting.id}.json`);
+        await fs.writeFile(secondFile, JSON.stringify(second, null, 2) + '\n');
+        const decisions = await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              if (test()) return;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for decisions');
+          };
+          document.querySelector('[data-view="decisions"]').click();
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Entscheidungen');
+          const rows = [...document.querySelectorAll('.decisions-table tbody tr')].map(row => ({
+            cells: [...row.querySelectorAll('td')].map(cell => cell.textContent),
+            color: getComputedStyle(row.querySelector('.decision-result')).backgroundColor
+          }));
+          if (document.querySelector('.decisions-table img')) throw new Error('Decision title was not escaped');
+          const search = document.querySelector('[data-decision-search]');
+          const filter = value => {
+            search.focus();
+            search.value = value;
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            if (document.activeElement !== search) throw new Error('Search must retain focus while filtering');
+            return [...document.querySelectorAll('.decisions-table tbody tr')].map(row => row.cells[0].textContent);
+          };
+          const searches = {
+            title: filter('  bUDgEt  '),
+            result: filter('einstimmig abgelehnt'),
+            meeting: filter('weitere sitzung'),
+            date: filter(clubDates.formatDate(clubDates.localDate())),
+            isoDate: filter(clubDates.localDate()),
+            none: filter('kein treffer'),
+            emptyMessage: document.querySelector('#decision-results').textContent,
+            cleared: filter('')
+          };
+          filter('budget');
+          document.querySelector('[data-action="refresh-decisions"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Entscheidungen neu geladen.');
+          if (document.querySelector('[data-decision-search]').value !== 'budget' ||
+              document.querySelectorAll('.decisions-table tbody tr').length !== 1) throw new Error('Reload must preserve the search');
+          document.querySelector('[data-action="select-decision-meeting"]').click();
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Sitzung bearbeiten');
+          const title = document.querySelector('[data-field="title"]').value;
+          document.querySelector('[data-view="tasks"]').click();
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
+          return { rows, title, searches };
+        })()`);
+        assert.equal(decisions.rows.length, 4);
+        assert.deepEqual(decisions.rows.map(row => row.cells[0]), ['Budget', 'Alt <Beschluss>', 'Ablehnung', 'Weitere Entscheidung']);
+        assert.match(decisions.rows[0].cells[1], /Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen/);
+        assert.equal(decisions.rows[1].cells[1], 'Kein Ergebnis ausgewählt');
+        assert.equal(decisions.rows[2].cells[1], 'Einstimmig abgelehnt');
+        assert.equal(decisions.rows[3].cells[1], 'Angenommen');
+        assert.equal(decisions.rows[3].cells[2], 'Weitere Sitzung');
+        assert.equal(decisions.rows[3].cells[3], 'Kein Datum');
+        assert.equal(decisions.rows[0].color, 'rgb(255, 240, 207)');
+        assert.equal(decisions.rows[2].color, 'rgb(253, 225, 225)');
+        assert.deepEqual(decisions.searches.title, ['Budget']);
+        assert.deepEqual(decisions.searches.result, ['Ablehnung']);
+        assert.deepEqual(decisions.searches.meeting, ['Weitere Entscheidung']);
+        assert.deepEqual(decisions.searches.date, ['Budget', 'Alt <Beschluss>', 'Ablehnung']);
+        assert.deepEqual(decisions.searches.isoDate, decisions.searches.date);
+        assert.deepEqual(decisions.searches.none, []);
+        assert.match(decisions.searches.emptyMessage, /Keine Entscheidungen entsprechen der Suche/);
+        assert.equal(decisions.searches.cleared.length, 4);
+        assert.equal(decisions.title, saved.meeting.title);
+        await fs.unlink(secondFile);
         const now = new Date();
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
         saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false, dueDate: today });
@@ -435,6 +555,7 @@ async function main() {
           document.querySelector('[data-action="select"]').click();
           await waitFor(() => document.querySelector('[data-point="1"][data-field="done"]'));
           return { conflict, stillOpen, empty, checked: document.querySelector('[data-point="1"][data-field="done"]').checked,
+            contentOverflows: document.querySelector('.content').scrollWidth > document.querySelector('.content').clientWidth,
             responsible: document.querySelector('[data-point="1"][data-field="responsible"]').value,
             vote: document.querySelector('[data-point="0"][data-vote-result]').value,
             legacyTask: !!document.querySelector('[data-point="0"][data-task="0"][data-field="description"]'),
@@ -445,6 +566,7 @@ async function main() {
         assert.doesNotMatch(completion.conflict, /Error invoking remote method/);
         assert.ok(completion.stillOpen);
         assert.ok(completion.empty);
+        assert.equal(completion.contentOverflows, false, 'Meeting editor should fit at the minimum window width');
         assert.ok(completion.checked);
         assert.equal(completion.responsible, 'TOP Leitung & Team');
         assert.equal(completion.vote, 'accepted');

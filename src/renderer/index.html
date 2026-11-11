@@ -11,13 +11,21 @@
   <aside class="activity" aria-label="Module">
     <div class="brand" title="ClubManager">C</div>
     <nav id="navigation">
-      <button data-view="meetings" title="Sitzungen" aria-label="Sitzungen">▤</button>
-      <button data-view="tasks" title="Offene Aufgaben" aria-label="Offene Aufgaben">✓</button>
-      <button data-view="members" title="Mitglieder" aria-label="Mitglieder">♙</button>
-      <button data-view="invoices" title="Rechnungen" aria-label="Rechnungen">▧</button>
-      <button data-view="letters" title="Briefe" aria-label="Briefe">✉</button>
+      <div class="meeting-nav">
+        <div class="meeting-nav-heading">
+          <button data-view="meetings" title="Sitzungen" aria-label="Sitzungen"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Sitzungen</span></button>
+          <button class="nav-toggle" data-action="toggle-meeting-nav" aria-label="Sitzungsunterpunkte einklappen" aria-expanded="true" aria-controls="meeting-subnav">▾</button>
+        </div>
+        <div id="meeting-subnav" class="meeting-subnav">
+          <button data-view="tasks" title="Offene Aufgaben" aria-label="Offene Aufgaben"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Offene Aufgaben</span></button>
+          <button data-view="decisions" title="Entscheidungen" aria-label="Entscheidungen"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Entscheidungen</span></button>
+        </div>
+      </div>
+      <button data-view="members" title="Mitglieder" aria-label="Mitglieder"><span class="nav-icon" aria-hidden="true">♙</span><span class="nav-label">Mitglieder</span></button>
+      <button data-view="invoices" title="Rechnungen" aria-label="Rechnungen"><span class="nav-icon" aria-hidden="true">▧</span><span class="nav-label">Rechnungen</span></button>
+      <button data-view="letters" title="Briefe" aria-label="Briefe"><span class="nav-icon" aria-hidden="true">✉</span><span class="nav-label">Briefe</span></button>
     </nav>
-    <button class="settings-nav" data-view="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+    <button class="settings-nav" data-view="settings" title="Einstellungen" aria-label="Einstellungen"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Einstellungen</span></button>
   </aside>
   <main id="app"></main>
   <script src="../shared/de.js"></script>

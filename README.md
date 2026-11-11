@@ -62,7 +62,13 @@ decision TOPs with tasks retain them and can still be edited.
 Markdown task checkboxes can be toggled directly; these are separate from the
 meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
 used for PDF export, where task checkboxes are shown as non-editable. The Open
-Tasks view lists tasks from saved meetings.
+Tasks view lists tasks from saved meetings. The sidebar shows names alongside
+the module icons. The meeting icon's arrow expands or
+collapses the **Offene Aufgaben** and **Entscheidungen** subviews.
+**Entscheidungen** lists decision TOPs and their results from saved meetings,
+including those without a selected result. It can reload the list and open the
+source meeting. The search filters TOP titles, results, meeting titles and
+dates as you type. Vote counts are shown when recorded.
 After export, **Gespeichertes PDF öffnen** opens the last exported protocol in
 the system's default PDF viewer. It does not include subsequent meeting changes
 until the PDF is exported again. The save and PDF actions remain at the top

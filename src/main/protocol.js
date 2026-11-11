@@ -34,13 +34,7 @@ function protocolHtml(meeting, css) {
     let vote = '';
     if (point.type === 'decision' && point.vote?.result) {
       const result = point.vote.result;
-      const counts = [['yes', 'Ja-Stimmen'], ['no', 'Gegenstimmen'], ['abstain', 'Enthaltungen']]
-        .filter(([key]) => point.vote[key] !== null)
-        .map(([key, label]) => `${point.vote[key]} ${label}`);
-      const label = de.voteResult[result];
-      const description = result === 'accepted' || result === 'rejected'
-        ? (counts.length ? `${label} ${counts.join(', ')}` : label.replace(/ mit$/, ''))
-        : label;
+      const description = de.voteDescription(point.vote);
       vote = `<p class="vote-result"><span class="vote-badge" data-result="${escapeHtml(result)}">Abstimmung: ${escapeHtml(description)}</span></p>`;
     }
     return `

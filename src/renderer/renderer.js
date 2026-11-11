@@ -1,7 +1,9 @@
 const app = document.querySelector('#app');
 const state = { view: 'meetings', folder: null, protocolCss: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
+const decisionView = { search: '' };
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
+let meetingNavExpanded = true;
 let markdownEditors = [];
 let taskDateRefresh;
 let displayedTaskDate;
@@ -167,6 +169,47 @@ function tasksView() {
     </div>`;
 }
 
+function decisionResults() {
+  const allDecisions = state.meetings.flatMap(({ meeting }) => meeting.points
+    .filter(point => point.type === 'decision')
+    .map(point => ({ meeting, point })));
+  const search = decisionView.search.trim().toLocaleLowerCase('de');
+  const decisions = allDecisions.filter(({ meeting, point }) =>
+    [point.headline || 'TOP ohne Titel', clubDeutsch.voteDescription(point.vote),
+      meeting.title || 'Sitzung ohne Titel', meeting.date || 'Kein Datum', formatDate(meeting.date)]
+      .join(' ').toLocaleLowerCase('de').includes(search));
+  return `<p class="task-count" role="status">${decisions.length} von ${allDecisions.length} Entscheidungen</p>
+    ${allDecisions.length === 0 ? '<p>Keine Entscheidungen vorhanden.</p>' : decisions.length === 0 ? '<p>Keine Entscheidungen entsprechen der Suche.</p>' :
+      `<div class="table-scroll" role="region" aria-label="Entscheidungstabelle, horizontal scrollbar" tabindex="0">
+      <table class="tasks-table decisions-table"><caption class="sr-only">Entscheidungen aus Sitzungen</caption>
+      <thead><tr><th scope="col">TOP</th><th scope="col">Ergebnis</th><th scope="col">Sitzung</th><th scope="col">Sitzungsdatum</th><th scope="col">Aktion</th></tr></thead>
+      <tbody>${decisions.map(({ meeting, point }) => `<tr>
+        <td>${escape(point.headline || 'TOP ohne Titel')}</td>
+        <td><span class="decision-result" data-result="${escape(point.vote?.result || '')}">${escape(clubDeutsch.voteDescription(point.vote))}</span></td>
+        <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
+        <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
+        <td><button class="action" data-action="select-decision-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
+      </tr>`).join('')}</tbody></table></div>`}`;
+}
+
+function decisionsView() {
+  return `<div class="topline"><div><h1>Entscheidungen</h1><p>Entscheidungen aus gespeicherten Sitzungen.</p></div>${button('refresh-decisions', 'Entscheidungen neu laden')}</div>
+    <div class="card">
+      <div class="task-filters"><label>Entscheidungen suchen<input type="search" data-decision-search value="${escape(decisionView.search)}" placeholder="TOP, Ergebnis, Sitzung oder Datum"></label></div>
+      <div id="decision-results">${decisionResults()}</div>
+    </div>`;
+}
+
+function renderNavigation() {
+  document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
+  document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', state.view === 'tasks' || state.view === 'decisions');
+  const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
+  toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
+  toggle.setAttribute('aria-label', `Sitzungsunterpunkte ${meetingNavExpanded ? 'einklappen' : 'ausklappen'}`);
+  toggle.textContent = meetingNavExpanded ? '▾' : '▸';
+  document.querySelector('#meeting-subnav').hidden = !meetingNavExpanded;
+}
+
 function render() {
   const previousContent = app.querySelector('.content');
   const tableScroll = app.querySelector('.table-scroll')?.scrollLeft ?? 0;
@@ -176,7 +219,7 @@ function render() {
   const scrollLeft = preserveScroll ? previousContent.scrollLeft : 0;
   for (const editor of markdownEditors) editor.destroy();
   markdownEditors = [];
-  document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
+  renderNavigation();
   let content = '';
   if (state.view === 'settings') {
     content = `<h1>Einstellungen</h1><div class="card"><h2>Datenordner</h2>
@@ -195,12 +238,14 @@ function render() {
     content = state.meeting ? meetingEditor(state.meeting) : '<div class="empty"><h1>Sitzungen</h1><p>Erstellen Sie eine Sitzung oder wählen Sie eine aus der Liste aus.</p></div>';
   } else if (state.view === 'tasks') {
     content = tasksView();
+  } else if (state.view === 'decisions') {
+    content = decisionsView();
   } else {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
-    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${state.view === 'tasks' ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
+    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
   app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
     const index = Number(parent.dataset.markdownEditor);
     const point = state.meeting.points[index];
@@ -216,7 +261,7 @@ function render() {
     newContent.scrollTop = scrollTop;
     newContent.scrollLeft = scrollLeft;
   }
-  if (preserveScroll && state.view === 'tasks') {
+  if (preserveScroll && (state.view === 'tasks' || state.view === 'decisions')) {
     const table = app.querySelector('.table-scroll');
     if (table) table.scrollLeft = tableScroll;
   }
@@ -253,6 +298,14 @@ function refreshTaskResults() {
   const results = document.querySelector('#task-results');
   const scrollLeft = results.querySelector('.table-scroll')?.scrollLeft ?? 0;
   results.innerHTML = taskResults();
+  const table = results.querySelector('.table-scroll');
+  if (table) table.scrollLeft = scrollLeft;
+}
+
+function refreshDecisionResults() {
+  const results = document.querySelector('#decision-results');
+  const scrollLeft = results.querySelector('.table-scroll')?.scrollLeft ?? 0;
+  results.innerHTML = decisionResults();
   const table = results.querySelector('.table-scroll');
   if (table) table.scrollLeft = scrollLeft;
 }
@@ -309,7 +362,8 @@ async function run(action, target) {
       setMessage('');
       break;
     case 'select':
-    case 'select-task-meeting': {
+    case 'select-task-meeting':
+    case 'select-decision-meeting': {
       if (!confirmDiscard()) return;
       await refresh();
       const selected = state.meetings.find(item => item.meeting.id === target.dataset.id);
@@ -326,6 +380,10 @@ async function run(action, target) {
     case 'refresh-tasks':
       await refresh();
       setMessage('Aufgaben neu geladen.');
+      break;
+    case 'refresh-decisions':
+      await refresh();
+      setMessage('Entscheidungen neu geladen.');
       break;
     case 'clear-task-filters':
       taskView.search = '';
@@ -377,6 +435,11 @@ async function run(action, target) {
 document.addEventListener('click', async event => {
   const target = event.target.closest('button');
   if (!target || target.disabled) return;
+  if (target.dataset.action === 'toggle-meeting-nav') {
+    meetingNavExpanded = !meetingNavExpanded;
+    renderNavigation();
+    return;
+  }
   document.body.inert = true;
   try {
     if (target.dataset.view) await changeView(target.dataset.view);
@@ -428,6 +491,11 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.hasAttribute('data-decision-search')) {
+    decisionView.search = target.value;
+    refreshDecisionResults();
+    return;
+  }
   if (target.dataset.taskFilter) {
     taskView[target.dataset.taskFilter] = target.value;
     refreshTaskResults();
