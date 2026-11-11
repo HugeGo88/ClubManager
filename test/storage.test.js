@@ -47,6 +47,23 @@ test('does not overwrite a meeting changed or removed on disk', async t => {
   await assert.rejects(storage.saveMeeting(folder, data, revision), /auf dem Datenträger geändert/);
 });
 
+test('preserves optional TOP responsibility and rejects invalid values', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  let revision = await storage.saveMeeting(folder, data, null);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].responsible, undefined);
+  data.points[0].responsible = 'Alex & Sam';
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].responsible, 'Alex & Sam');
+  for (const invalid of [null, 123, {}, []]) {
+    data.points[0].responsible = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültige verantwortliche Person/);
+  }
+  data.points[0].responsible = '';
+  await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].responsible, '');
+});
+
 test('rejects invalid meeting data and reports corrupt records', async t => {
   const folder = await fixture(t);
   const data = meeting();

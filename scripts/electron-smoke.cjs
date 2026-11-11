@@ -19,11 +19,14 @@ async function main() {
     ? (cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
     : { canceled: false, filePaths: [data] };
   const pdfColors = [];
+  const pdfPointHeadings = [];
   app.on('browser-window-created', (event, window) => {
     if (window.isVisible()) return;
     const printToPDF = window.webContents.printToPDF.bind(window.webContents);
     window.webContents.printToPDF = async options => {
       pdfColors.push(await window.webContents.executeJavaScript('getComputedStyle(document.body).color'));
+      pdfPointHeadings.push(await window.webContents.executeJavaScript(
+        `Array.from(document.querySelectorAll('.point-heading h3'), element => element.textContent)`));
       return printToPDF(options);
     };
   });
@@ -84,6 +87,10 @@ async function main() {
           await click('[data-action="choose-folder"]');
           await waitFor(() => document.querySelector('.path')?.textContent.includes('data'));
           await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('.list'));
+          if (document.querySelector('[data-action="sample"]') || document.querySelector('.list').textContent.includes('Beispielsitzung')) {
+            throw new Error('Sample meeting button must not be present');
+          }
           await click('[data-action="new"]');
           const addButton = await waitFor(() => document.querySelector('[data-action="add-point"]'));
           const emptyMessage = [...document.querySelectorAll('main p')].find(p => p.textContent === 'Noch keine TOPs vorhanden.');
@@ -99,11 +106,31 @@ async function main() {
           if (pointSections.length !== 2 || !(pointSections[1].compareDocumentPosition(lastAddButton) & Node.DOCUMENT_POSITION_FOLLOWING)) {
             throw new Error('TOP button should follow all added points');
           }
-          const originalConfirm = window.confirm;
-          window.confirm = () => true;
-          await click('[data-action="sample"]');
-          await waitFor(() => document.querySelector('[data-field="title"]')?.value === 'Beispiel: Vorstandssitzung');
-          window.confirm = originalConfirm;
+          const setInput = (selector, value) => {
+            const element = document.querySelector(selector);
+            element.value = value;
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          setInput('[data-field="title"]', 'Beispiel: Vorstandssitzung');
+          setInput('[data-field="date"]', clubDates.localDate());
+          await click('[data-action="add-person"]');
+          await waitFor(() => document.querySelector('[data-person="0"][data-field="name"]'));
+          setInput('[data-person="0"][data-field="name"]', 'Alex Beispiel');
+          await click('[data-action="add-person"]');
+          await waitFor(() => document.querySelector('[data-person="1"][data-field="name"]'));
+          setInput('[data-person="1"][data-field="name"]', 'Sam Beispiel');
+          setInput('[data-person="1"][data-field="status"]', 'excused');
+          setInput('[data-point="0"][data-field="headline"]', 'Kommende Veranstaltung');
+          setInput('[data-point="0"][data-field="responsible"]', 'TOP Leitung & Team');
+          setInput('[data-point="1"][data-field="headline"]', 'Budget');
+          setInput('[data-point="1"][data-field="type"]', 'decision');
+          const initialEditor = document.querySelector('[data-markdown-editor="0"] .cm-content');
+          initialEditor.focus();
+          document.execCommand('insertText', false, 'Den **Veranstaltungsplan** und den Veranstaltungsort besprechen.');
+          await click('[data-action="add-task"][data-index="0"]');
+          await waitFor(() => document.querySelector('[data-point="0"][data-task="0"][data-field="description"]'));
+          setInput('[data-point="0"][data-task="0"][data-field="description"]', 'Veranstaltungsort kontaktieren');
+          setInput('[data-point="0"][data-task="0"][data-field="responsible"]', 'Alex Beispiel');
           const absentBeforeExport = !document.querySelector('[data-action="open-protocol"]');
           const language = document.documentElement.lang;
           const navigation = [...document.querySelectorAll('[data-view]')].map(button => button.getAttribute('aria-label'));
@@ -216,11 +243,15 @@ async function main() {
         assert.equal(saved.meeting.title, 'Beispiel: Vorstandssitzung aktualisiert');
         assert.equal(saved.meeting.points[0].headline, 'Budget');
         assert.equal(saved.meeting.points[1].headline, 'Kommende Veranstaltung');
+        assert.equal(saved.meeting.points[1].responsible, 'TOP Leitung & Team');
+        assert.equal(saved.meeting.points[0].responsible, undefined);
+        assert.equal(saved.meeting.points[1].tasks[0].responsible, 'Alex Beispiel');
         assert.equal(saved.meeting.points[1].tasks[0].dueDate, '2000-01-01');
         assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)']);
+        assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: cssFile });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const now = new Date();
@@ -331,6 +362,7 @@ async function main() {
           document.querySelector('[data-action="select"]').click();
           await waitFor(() => document.querySelector('[data-point="1"][data-field="done"]'));
           return { conflict, stillOpen, empty, checked: document.querySelector('[data-point="1"][data-field="done"]').checked,
+            responsible: document.querySelector('[data-point="1"][data-field="responsible"]').value,
             openAvailable: !!document.querySelector('[data-action="open-protocol"]') };
         })()`);
         assert.match(completion.conflict, /auf dem Datenträger geändert/);
@@ -338,6 +370,7 @@ async function main() {
         assert.ok(completion.stillOpen);
         assert.ok(completion.empty);
         assert.ok(completion.checked);
+        assert.equal(completion.responsible, 'TOP Leitung & Team');
         assert.ok(completion.openAvailable);
         const completed = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(completed.meeting.points[1].tasks[0].done, true);

@@ -38,9 +38,12 @@ Individual TOP headings use `h3`, and their task headings use `h4`.
 The attendance section groups names by status, with one compact paragraph
 per nonempty status.
 
-Use **New meeting** or **Sample meeting** to begin, then save. Meeting data is
+Use **Neue Sitzung** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its
 PDF to `meetings/protocols`, replacing the previous PDF for that meeting. Meeting
+TOPs can optionally name a responsible person, independently of task
+responsibilities; newly exported PDFs show the name in parentheses after
+the TOP heading. Meeting
 details support Markdown with an inline live preview. Bold, italic, headings,
 inline code, links, lists and task checkboxes are formatted in the editor; their
 Markdown markers become visible when the cursor is inside the formatting.

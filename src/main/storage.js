@@ -63,6 +63,9 @@ function validateMeeting(meeting) {
     if (!point || !string(point.headline) || !string(point.details) ||
         !['discussion', 'decision', 'info'].includes(point.type) ||
         !Array.isArray(point.tasks)) throw new Error('Ungültiger TOP.');
+    if (point.responsible !== undefined && !string(point.responsible)) {
+      throw new Error('Ungültige verantwortliche Person für den TOP.');
+    }
     for (const task of point.tasks) {
       if (!task || !string(task.description) || !string(task.responsible) ||
           typeof task.done !== 'boolean') throw new Error('Ungültige Aufgabe.');

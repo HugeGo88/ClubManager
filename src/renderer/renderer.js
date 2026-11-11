@@ -15,18 +15,6 @@ function blankMeeting() {
   return { id: crypto.randomUUID(), title: '', date: '', attendance: [], points: [] };
 }
 
-function sampleMeeting() {
-  const date = clubDates.localDate();
-  return {
-    ...blankMeeting(), title: 'Beispiel: Vorstandssitzung', date,
-    attendance: [{ name: 'Alex Beispiel', status: 'attending' }, { name: 'Sam Beispiel', status: 'excused' }],
-    points: [
-      { headline: 'Kommende Veranstaltung', type: 'discussion', details: 'Den **Veranstaltungsplan** und den Veranstaltungsort besprechen.', tasks: [{ description: 'Veranstaltungsort kontaktieren', responsible: 'Alex Beispiel', done: false }] },
-      { headline: 'Budget', type: 'decision', details: 'Bei der nächsten Sitzung ein Budget festlegen.', tasks: [] }
-    ]
-  };
-}
-
 function confirmDiscard() {
   return !state.dirty || window.confirm('Ungespeicherte Änderungen verwerfen?');
 }
@@ -43,7 +31,6 @@ function setMessage(message, error = false) {
 function meetingList() {
   return `<aside class="list"><h2>Sitzungen</h2>
     ${button('new', '+ Neue Sitzung', 'primary')}
-    ${button('sample', '+ Beispielsitzung')}
     ${state.meetings.length ? state.meetings.map(({ meeting }) =>
       `<button class="list-item ${state.meeting?.id === meeting.id ? 'selected' : ''}" data-action="select" data-id="${escape(meeting.id)}">
       <strong>${escape(meeting.title || 'Sitzung ohne Titel')}</strong><small>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</small></button>`).join('') :
@@ -89,6 +76,7 @@ function meetingEditor(meeting) {
       <div class="fields">
         <label>Überschrift<input data-point="${i}" data-field="headline" value="${escape(point.headline)}" placeholder="Überschrift"></label>
         <label>Typ<select data-point="${i}" data-field="type">${options(Object.entries(clubDeutsch.pointType), point.type)}</select></label>
+        <label>Verantwortliche Person für den TOP (optional)<input data-point="${i}" data-field="responsible" value="${escape(point.responsible ?? '')}" placeholder="Name der Person"></label>
       </div>
       <div class="markdown-field"><span class="markdown-label">Details <span class="muted">(Markdown mit Live-Vorschau)</span></span><div data-markdown-editor="${i}"></div></div>
       <div class="card-header"><h3>Aufgaben</h3><button class="action" data-action="add-task" data-index="${i}">+ Aufgabe hinzufügen</button></div>
@@ -297,13 +285,12 @@ async function run(action, target) {
       setMessage('Das Standardlayout für PDF-Protokolle wird verwendet.');
       break;
     case 'new':
-    case 'sample':
       if (!confirmDiscard()) return;
-      state.meeting = action === 'sample' ? sampleMeeting() : blankMeeting();
+      state.meeting = blankMeeting();
       state.revision = null;
       state.hasProtocol = false;
       state.dirty = true;
-      setMessage(action === 'sample' ? 'Dies sind Beispieldaten. Speichern Sie die Sitzung, um sie zu behalten.' : '');
+      setMessage('');
       break;
     case 'select':
     case 'select-task-meeting': {

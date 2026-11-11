@@ -38,6 +38,18 @@ test('omits the heading date separator when no date is provided', () => {
   assert.match(html, /<main><h1>Sitzung<\/h1>/);
 });
 
+test('includes escaped TOP responsibility only when provided', () => {
+  const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [
+    { headline: 'Eins', type: 'info', details: '', tasks: [], responsible: 'Alex & <Sam>' },
+    { headline: 'Zwei', type: 'info', details: '', tasks: [] },
+    { headline: 'Drei', type: 'info', details: '', tasks: [], responsible: '   ' }
+  ] }, '');
+  assert.match(html, /<h3>1\. Eins \(Alex &amp; &lt;Sam&gt;\)<\/h3>/);
+  assert.match(html, /<h3>2\. Zwei<\/h3>/);
+  assert.match(html, /<h3>3\. Drei<\/h3>/);
+  assert.doesNotMatch(html, /class="point-responsible"/);
+});
+
 test('protocol escapes user content and strips unsafe Markdown', () => {
   const html = protocolHtml({
     title: '<script>bad</script>', date: '', attendance: [],
