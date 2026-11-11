@@ -5,12 +5,14 @@ const storage = require('./storage');
 const settings = require('./settings');
 const { protocolHtml } = require('./protocol');
 const { isDate } = require('../shared/dates');
+const { startUpdates } = require('./updates');
 
 let mainWindow;
 let folder;
 let configuredFolder = null;
 let protocolCss = null;
 let writeQueue = Promise.resolve();
+let downloadedUpdate = false;
 
 function serializeWrite(operation) {
   const result = writeQueue.then(operation);
@@ -58,6 +60,13 @@ async function readProtocolCss(file) {
 }
 
 function registerHandlers() {
+  ipcMain.handle('update:install', event => {
+    if (event.sender !== mainWindow?.webContents || !downloadedUpdate) {
+      throw new Error('Es liegt kein heruntergeladenes Update zur Installation bereit.');
+    }
+    downloadedUpdate = false;
+    require('electron-updater').autoUpdater.quitAndInstall(false, true);
+  });
   ipcMain.handle('folder:get', () => folder || null);
   ipcMain.handle('protocol-css:get', () => protocolCss);
   ipcMain.handle('protocol-css:choose', async () => {
@@ -174,6 +183,11 @@ app.whenReady().then(async () => {
   });
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   if (startupError) await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden', detail: startupError, buttons: ['OK'] });
+  if (app.isPackaged) {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.on('update-downloaded', () => { downloadedUpdate = true; });
+    startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow });
+  }
   app.on('activate', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
 });
 

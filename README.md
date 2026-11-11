@@ -160,9 +160,9 @@ On an Apple Silicon Mac, build a DMG containing the app with:
 npm run dist:mac
 ```
 
-The output is in `dist/`. This initial build is unsigned and not notarized;
-macOS Gatekeeper may block it or display a warning. A public release will need
-an Apple Developer ID, code signing, and notarization.
+The output is in `dist/`. Without a configured signing identity the local build
+is unsigned and not notarized; macOS Gatekeeper may block it or display a
+warning. The release workflow below requires signing and notarization.
 
 A Windows x64 NSIS installer target is prepared for a future Windows build:
 
@@ -170,5 +170,47 @@ A Windows x64 NSIS installer target is prepared for a future Windows build:
 npm run dist:win
 ```
 
-Run this on Windows for the most reliable results. It has not yet been
-validated on Windows. Windows code signing and Linux packaging are deferred.
+Run this on Windows for the most reliable results. Windows code signing and
+Linux packaging are deferred.
+
+## GitHub releases and updates
+
+The **Build and publish release** workflow is started manually from the
+repository's **Actions** tab. It builds a macOS Apple Silicon DMG and ZIP and
+a Windows x64 NSIS installer, then publishes them together as a GitHub Release.
+Both builds and their update metadata must succeed before the release is
+published. The workflow uses the commit and `package.json` version of the
+selected branch; use a new stable version such as `0.2.0` and update
+`package-lock.json` (for example with `npm version 0.2.0 --no-git-tag-version`)
+before starting it. It creates tag `v<version>` and refuses to reuse an
+existing tag. A failed publishing step can leave a draft release or tag that
+must be inspected and resolved before retrying.
+
+Set these repository **Actions secrets** before running the workflow:
+
+| Secret | Value |
+| --- | --- |
+| `CSC_LINK` | Base64-encoded `.p12` export containing the Developer ID Application certificate **and private key** |
+| `CSC_KEY_PASSWORD` | Password for the `.p12` file |
+| `APPLE_ID` | Apple account used for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple account |
+| `APPLE_TEAM_ID` | Apple Developer team ID |
+
+Use an active Apple Developer Program membership, a Developer ID Application
+certificate, and an account authorized for notarization. Generate the base64
+value locally with `base64 -i certificate.p12` and add it directly as a GitHub
+secret; do not commit credentials. The workflow fails if the signing or
+notarization secrets are missing or signing fails. The Windows installer is
+currently **unsigned** and may trigger SmartScreen warnings.
+
+Packaged macOS and Windows apps check the public GitHub Releases feed on startup.
+An available update downloads in the background and asks before installing and
+restarting. If there are unsaved meeting edits, the app asks before discarding
+them; declining leaves the meeting open. Choosing **Später** does not install
+on exit; the app checks again at the next startup. Update errors are reported
+in the app. Updates are disabled when running from source with `npm start`.
+The repository and release assets must be public; this workflow does not
+configure private-release credentials. macOS automatic updates require the
+signed ZIP, so existing unsigned installations must first be replaced manually
+with a signed release. Test a release on each target platform before relying on
+automatic updates.

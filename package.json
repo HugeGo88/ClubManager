@@ -27,6 +27,7 @@
     "@codemirror/language": "^6.12.0",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.39.0",
+    "electron-updater": "^6.8.11",
     "marked": "^12.0.2",
     "sanitize-html": "^2.18.1"
   },
@@ -38,16 +39,22 @@
   "build": {
     "appId": "app.clubmanager.desktop",
     "productName": "ClubManager",
+    "artifactName": "ClubManager-${version}-${os}-${arch}.${ext}",
     "files": [
       "src/**/*",
       "package.json"
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "identity": null
+      "target": ["dmg", "zip"]
     },
     "win": {
       "target": "nsis"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "HugeGo88",
+      "repo": "ClubManager"
     }
   }
 }

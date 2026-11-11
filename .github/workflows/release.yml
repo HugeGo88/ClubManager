@@ -1,0 +1,120 @@
+name: Build and publish release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clubmanager-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:editor
+      - name: Validate Apple signing configuration
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "$(printenv "$name")" ]; then
+              echo "::error::Missing required secret: $name"
+              exit 1
+            fi
+          done
+      - name: Build signed and notarized macOS ARM64 packages
+        if: matrix.platform == 'mac'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac dmg zip --arm64 --publish never --config.forceCodeSigning=true
+      - name: Build Windows x64 installer
+        if: matrix.platform == 'win'
+        run: npx electron-builder --win nsis --x64 --publish never
+      - name: Upload macOS packages
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mac-release
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
+          if-no-files-found: error
+      - name: Upload Windows packages
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: win-release
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          pattern: "*-release"
+          path: release
+          merge-multiple: true
+      - name: Verify and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The package version must be a stable version (for example 1.2.3)."
+            exit 1
+          fi
+          tag="v$version"
+          for file in release/latest.yml release/latest-mac.yml; do
+            test -s "$file" || { echo "::error::Missing $file"; exit 1; }
+          done
+          compgen -G 'release/*.exe' >/dev/null
+          compgen -G 'release/*.dmg' >/dev/null
+          compgen -G 'release/*.zip' >/dev/null
+          existing="$(git ls-remote --tags origin "refs/tags/$tag")"
+          if [ -n "$existing" ]; then
+            echo "::error::Tag $tag already exists; increase the version before releasing."
+            exit 1
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA" >/dev/null
+          gh release create "$tag" release/* --verify-tag --title "ClubManager $version" --generate-notes --draft
+          gh release edit "$tag" --draft=false --latest

@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('club', {
   listMeetings: () => invoke('meetings:list'),
   saveMeeting: (meeting, revision) => invoke('meetings:save', meeting, revision),
   exportMeeting: (meeting, revision, includeEarlierTasks) => invoke('meetings:export', meeting, revision, includeEarlierTasks),
+  onPrepareUpdate: callback => ipcRenderer.on('update:prepare-install', () => callback()),
+  installUpdate: () => invoke('update:install'),
   hasProtocol: id => invoke('meetings:has-protocol', id),
   openProtocol: id => invoke('meetings:open-protocol', id)
 });

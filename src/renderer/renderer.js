@@ -560,6 +560,19 @@ window.addEventListener('beforeunload', event => {
   if (state.dirty) { event.preventDefault(); event.returnValue = ''; }
 });
 
+window.club.onPrepareUpdate(async () => {
+  if (!confirmDiscard()) return;
+  const wasDirty = state.dirty;
+  state.dirty = false;
+  try {
+    await window.club.installUpdate();
+  } catch (error) {
+    state.dirty = wasDirty;
+    setMessage(error.message, true);
+    render();
+  }
+});
+
 (async () => {
   try {
     state.folder = await window.club.getFolder();

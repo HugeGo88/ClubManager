@@ -47,9 +47,12 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Prepare an installer build configuration for Windows.
 - [ ] Prepare Linux packaging.
 - [x] Initial macOS builds are for testing and are not signed or notarized.
-- [ ] Later, publish app releases through GitHub Releases and use them to deliver
-  app updates. Decide on the update workflow, signing, release permissions, and
-  user experience before implementing it.
+- [x] Add a manually started GitHub Releases workflow and startup update checks,
+  with user confirmation before installation.
+- [ ] Configure Apple Developer credentials and verify the signed macOS release
+  and updates on a real Mac.
+- [ ] Verify the Windows release and updates on Windows; configure Windows code
+  signing for distribution.
 
 ## Initial modules
 
