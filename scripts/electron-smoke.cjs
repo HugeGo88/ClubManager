@@ -1,4 +1,4 @@
-const { app, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell } = require('electron');
 const assert = require('node:assert/strict');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
@@ -434,6 +434,69 @@ async function main() {
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: null });
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
+        }
+        const { protocolHtml } = require('../src/main/protocol');
+        const defaultCss = await fs.readFile(path.join(__dirname, '../src/shared/document.css'), 'utf8');
+        const layoutMeeting = {
+          title: 'Layouttest', date: '', attendance: [
+            ...['Alex', 'Sam', 'Kim', 'Jo', 'Max', 'Mia'].map(name => ({ name, status: 'attending' })),
+            { name: 'Lisa', status: 'excused' }
+          ],
+          points: ['discussion', 'decision', 'info'].map(type => ({
+            type, headline: 'LangeÜberschrift'.repeat(12), details: 'Details', tasks: []
+          }))
+        };
+        const layoutWindow = new BrowserWindow({ show: false, width: 650, height: 800, webPreferences: { sandbox: true } });
+        try {
+          await layoutWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(layoutMeeting, defaultCss))}`);
+          const pills = await layoutWindow.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.point-heading'), heading => {
+            const title = heading.querySelector('h3');
+            const pill = heading.querySelector('.type');
+            const titleRect = title.getBoundingClientRect();
+            const pillRect = pill.getBoundingClientRect();
+            const headingRect = heading.getBoundingClientRect();
+            const style = getComputedStyle(pill);
+            return { text: pill.textContent, color: style.backgroundColor, radius: style.borderTopLeftRadius,
+              titleRight: titleRect.right, pillLeft: pillRect.left, pillRight: pillRect.right,
+              headingRight: headingRect.right, pillTop: pillRect.top, headingTop: headingRect.top };
+          })`);
+          assert.deepEqual(pills.map(pill => pill.text), ['Diskussion', 'Entscheidung', 'Information']);
+          assert.equal(new Set(pills.map(pill => pill.color)).size, 3);
+          for (const pill of pills) {
+            assert.notEqual(pill.color, 'rgba(0, 0, 0, 0)');
+            assert.ok(parseFloat(pill.radius) > 0);
+            assert.ok(pill.titleRight <= pill.pillLeft && Math.abs(pill.pillRight - pill.headingRight) < 1);
+            assert.ok(Math.abs(pill.pillTop - pill.headingTop) < 1);
+          }
+          const attendanceLayout = await layoutWindow.webContents.executeJavaScript(`(() => {
+            const groups = [...document.querySelectorAll('.attendance-group')];
+            const first = groups[0];
+            const lineHeight = parseFloat(getComputedStyle(first).lineHeight);
+            return { text: groups.map(group => group.textContent), height: first.getBoundingClientRect().height, lineHeight };
+          })()`);
+          assert.deepEqual(attendanceLayout.text, [
+            'Anwesend: Alex, Sam, Kim, Jo, Max, Mia',
+            'Entschuldigt abwesend: Lisa'
+          ]);
+          assert.ok(attendanceLayout.height <= attendanceLayout.lineHeight * 1.1, 'Multiple participants should fit on one line');
+          const logo = await layoutWindow.webContents.executeJavaScript(`(async () => {
+            const page = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules])
+              .find(rule => rule.cssRules && [...rule.cssRules].some(child =>
+                child.cssText.startsWith('@top-right') && child.style.backgroundImage !== ''));
+            const rule = [...page.cssRules].find(child => child.cssText.startsWith('@top-right'));
+            const background = rule.style.backgroundImage;
+            const url = background.slice(4, -1).replace(/^["']|["']$/g, '');
+            const image = new Image();
+            image.src = url;
+            await image.decode();
+            return { width: image.naturalWidth, height: image.naturalHeight, background };
+          })()`);
+          assert.ok(logo.width > 0 && logo.height > 0);
+          assert.match(logo.background, /data:image\/svg\+xml/);
+          const layoutPdf = await layoutWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+          assert.equal(layoutPdf.subarray(0, 5).toString(), '%PDF-');
+        } finally {
+          layoutWindow.destroy();
         }
         console.log('Electron smoke test passed: task table filtering, sorting, completion, conflict recovery, and PDF export.');
         clearTimeout(timeout);

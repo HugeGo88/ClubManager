@@ -15,16 +15,27 @@ test('protocol labels and statuses are German and stored values are unchanged', 
   const html = protocolHtml(meeting, '');
   assert.match(html, /<html lang="de">/);
   assert.match(html, /10\.11\.2026/);
+  assert.match(html, /<main><h1>Sitzung — 10\.11\.2026<\/h1>/);
   assert.match(html, /<h2>TOPs<\/h2>/);
   for (const label of [...Object.values(de.attendance), ...Object.values(de.pointType)]) {
     assert.ok(html.includes(label), `Missing label: ${label}`);
   }
+  for (const [type, label] of Object.entries(de.pointType)) {
+    assert.ok(html.includes(`<span class="type" data-type="${type}">${label}</span></div>`));
+  }
+  assert.match(html, /<div class="point-heading"><h3>1\. Punkt<\/h3>/);
+  assert.match(html, /<h4>Aufgaben<\/h4>/);
   assert.match(html, /<input type="checkbox" disabled="disabled" aria-label="Offen"> Aufgabe — Nicht zugewiesen/);
   assert.match(html, /<input type="checkbox" disabled="disabled" checked="checked" aria-label="Erledigt"> Fertig — Sam — Erledigt am: 11\.11\.2026/);
   assert.match(html, /checked="checked" aria-label="Erledigt"> Alt — Nicht zugewiesen<\/li>/);
   assert.doesNotMatch(html, /\[Offen\]|\[Erledigt\]/);
   assert.match(html, /<strong>Text<\/strong>/);
   assert.equal(meeting.points[0].type, 'discussion');
+});
+
+test('omits the heading date separator when no date is provided', () => {
+  const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [] }, '');
+  assert.match(html, /<main><h1>Sitzung<\/h1>/);
 });
 
 test('protocol escapes user content and strips unsafe Markdown', () => {
@@ -38,6 +49,33 @@ test('protocol escapes user content and strips unsafe Markdown', () => {
   assert.match(html, /&lt;img&gt;/);
   assert.match(html, /&lt;img onerror=&quot;bad&quot;&gt; — &lt;script&gt;bad&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test('groups attendance by status without losing names or rendering empty groups', () => {
+  const meeting = {
+    title: 'Sitzung', date: '', points: [], attendance: [
+      { name: 'Sam & <Alex>', status: 'excused' },
+      { name: 'Alex', status: 'attending' },
+      { name: 'Kim', status: 'excused' },
+      { name: 'Jo', status: 'attending' }
+    ]
+  };
+  const original = structuredClone(meeting);
+  const html = protocolHtml(meeting, '');
+  assert.match(html, /<p class="attendance-group"><strong>Anwesend:<\/strong> Alex, Jo<\/p>/);
+  assert.match(html, /<p class="attendance-group"><strong>Entschuldigt abwesend:<\/strong> Sam &amp; &lt;Alex&gt;, Kim<\/p>/);
+  assert.doesNotMatch(html, /Unentschuldigt abwesend/);
+  assert.equal((html.match(/class="attendance-group"/g) || []).length, 2);
+  assert.deepEqual(meeting, original);
+  const empty = protocolHtml({ ...meeting, attendance: [] }, '');
+  assert.match(empty, /<p>Keine Anwesenheit erfasst\.<\/p>/);
+  assert.doesNotMatch(empty, /class="attendance-group"/);
+  const allStatuses = protocolHtml({ ...meeting, attendance: [
+    { name: 'Alex', status: 'attending' },
+    { name: 'Sam', status: 'excused' },
+    { name: 'Kim', status: 'unexcused' }
+  ] }, '');
+  assert.match(allStatuses, /<strong>Unentschuldigt abwesend:<\/strong> Kim/);
 });
 
 test('protocol displays Markdown checklists as disabled checkboxes', () => {
@@ -77,5 +115,5 @@ test('adds safe page headers and numbered footers for every protocol', () => {
   assert.match(html, /@bottom-right \{ content: "Seite " counter\(page\) " von " counter\(pages\)/);
   assert.match(html, /\\3c \\2f \\73 \\74 \\79 \\6c \\65 \\3e /);
   assert.doesNotMatch(html, /<\/style><script>/);
-  assert.match(html, /<header class="protocol-heading">/);
+  assert.doesNotMatch(html, /<header\b/);
 });

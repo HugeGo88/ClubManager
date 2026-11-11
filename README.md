@@ -22,11 +22,21 @@ is reread for each export. Use **Standardlayout verwenden** to reset it.
 If the selected file is missing or unreadable, export reports an error instead
 of falling back silently. Use self-contained CSS; external resources are
 blocked during PDF generation. Existing PDFs need to be exported again.
-PDF protocols repeat the meeting title in the page header and the meeting date
+The PDF heading combines the meeting title and date. PDF protocols repeat the
+meeting title in the page header and the meeting date
 and page number in the footer. The header and footer use CSS `@page` margin
 boxes; custom stylesheets can change their appearance with `@top-left`,
-`@bottom-left` and `@bottom-right` inside `@page`. Keep suitable page margins
-to leave room for them.
+`@top-right`, `@bottom-left` and `@bottom-right` inside `@page`. The default
+stylesheet includes a placeholder logo at the top right. To use your own logo,
+embed it as a `data:` image in your custom stylesheet; local file paths and
+external image URLs are blocked. Keep suitable page margins to leave room for
+the header and footer. The default PDF stylesheet displays each TOP's type
+as a colored label beside its heading. Custom stylesheets can style
+`.point-heading` and `.type[data-type="discussion"]`, `"decision"`, or
+`"info"`; they replace the default CSS rather than extending it.
+Individual TOP headings use `h3`, and their task headings use `h4`.
+The attendance section groups names by status, with one compact paragraph
+per nonempty status.
 
 Use **New meeting** or **Sample meeting** to begin, then save. Meeting data is
 stored as individual versioned JSON files. Exporting a saved meeting writes its

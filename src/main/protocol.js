@@ -26,13 +26,14 @@ function cssString(value) {
 }
 
 function protocolHtml(meeting, css) {
-  const attendance = meeting.attendance.map(person =>
-    `<li>${escapeHtml(person.name)} — ${escapeHtml(de.attendance[person.status])}</li>`
-  ).join('');
+  const attendance = Object.entries(de.attendance).map(([status, label]) => {
+    const names = meeting.attendance.filter(person => person.status === status).map(person => escapeHtml(person.name));
+    return names.length ? `<p class="attendance-group"><strong>${escapeHtml(label)}:</strong> ${names.join(', ')}</p>` : '';
+  }).join('');
   const points = meeting.points.map((point, index) => `
-    <section><h2>${index + 1}. ${escapeHtml(point.headline)}</h2>
-    <p class="type">${escapeHtml(de.pointType[point.type])}</p>${markdown(point.details)}
-    ${point.tasks.length ? `<h3>Aufgaben</h3><ul class="protocol-tasks">${point.tasks.map(task =>
+    <section><div class="point-heading"><h3>${index + 1}. ${escapeHtml(point.headline)}</h3>
+    <span class="type" data-type="${escapeHtml(point.type)}">${escapeHtml(de.pointType[point.type])}</span></div>${markdown(point.details)}
+    ${point.tasks.length ? `<h4>Aufgaben</h4><ul class="protocol-tasks">${point.tasks.map(task =>
       `<li><input type="checkbox" disabled="disabled"${task.done ? ' checked="checked"' : ''} aria-label="${task.done ? 'Erledigt' : 'Offen'}"> ${escapeHtml(task.description)} — ${escapeHtml(task.responsible || de.unassigned)}${task.dueDate ? ` — Fällig: ${escapeHtml(formatDate(task.dueDate))}` : ''}${task.done && task.completedDate ? ` — Erledigt am: ${escapeHtml(formatDate(task.completedDate))}` : ''}</li>`
     ).join('')}</ul>` : ''}</section>`).join('');
   const date = formatDate(meeting.date);
@@ -44,8 +45,8 @@ function protocolHtml(meeting, css) {
     @bottom-right { content: "Seite " counter(page) " von " counter(pages); font: 9pt sans-serif; }
   }`;
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><style>${pageLayout}</style><style>${css.replace(/<\/style/gi, '<\\/style')}</style></head>
-    <body><header class="protocol-heading"><h1>${escapeHtml(meeting.title)}</h1><p>${escapeHtml(date)}</p></header><main>
-    <h2>Anwesenheit</h2>${attendance ? `<ul>${attendance}</ul>` : '<p>Keine Anwesenheit erfasst.</p>'}
+    <body><main><h1>${escapeHtml(meeting.title)}${date ? ` — ${escapeHtml(date)}` : ''}</h1>
+    <h2>Anwesenheit</h2>${attendance || '<p>Keine Anwesenheit erfasst.</p>'}
     <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}</main></body></html>`;
 }
 

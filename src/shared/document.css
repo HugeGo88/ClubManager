@@ -1,16 +1,28 @@
 @page {
   size: A4;
   margin: 20mm;
-  @top-left { color: #596575; font: 9pt sans-serif; }
+  @top-left { width: 110mm; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #596575; font: 9pt sans-serif; }
+  @top-right {
+    content: "";
+    width: 45mm;
+    height: 16mm;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 80'%3E%3Crect x='1' y='1' width='238' height='78' rx='8' fill='%23f1f3f5' stroke='%23596575' stroke-width='2'/%3E%3Ctext x='120' y='51' text-anchor='middle' font-family='sans-serif' font-size='32' fill='%23596575'%3ELOGO%3C/text%3E%3C/svg%3E") right center / contain no-repeat;
+  }
   @bottom-left { color: #596575; font: 9pt sans-serif; }
   @bottom-right { color: #596575; font: 9pt sans-serif; content: "Seite " counter(page) " von " counter(pages); }
 }
 body { color: #24292f; font: 11pt/1.5 sans-serif; margin: 0; }
 h1 { font-size: 24pt; margin-bottom: 0; }
 h2 { font-size: 15pt; margin-top: 1.5em; }
-h3 { font-size: 11pt; }
-h1, h2, h3 { break-after: avoid; }
+h3, h4 { font-size: 11pt; }
+h1, h2, h3, h4 { break-after: avoid; }
+.attendance-group { margin: 0.25em 0; overflow-wrap: anywhere; }
 section { break-inside: avoid; border-top: 1px solid #d5dbe2; }
-.type { color: #596575; text-transform: capitalize; }
+.point-heading { display: flex; align-items: flex-start; gap: 1em; margin-top: 1.5em; break-after: avoid; }
+.point-heading h3 { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.type { flex: none; border-radius: 999px; padding: 0.25em 0.75em; font-size: 9pt; font-weight: bold; line-height: 1.4; color: #364152; background: #e7ebf0; }
+.type[data-type="discussion"] { color: #174581; background: #dceaff; }
+.type[data-type="decision"] { color: #125c36; background: #d9f3e3; }
+.type[data-type="info"] { color: #724316; background: #fff0cf; }
 .protocol-tasks { list-style: none; padding-left: 0; }
 .protocol-tasks input { margin-right: 0.4em; }
