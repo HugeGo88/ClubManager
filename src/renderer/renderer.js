@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const state = { view: 'meetings', folder: null, protocolCss: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, folder: null, protocolCss: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '' };
 let includeEarlierTasks = false;
@@ -234,7 +234,8 @@ function render() {
       <p>Eine CSS-Datei ersetzt das Standardlayout beim nächsten PDF-Export.</p>
       <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
       <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
-      <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>`;
+      <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>
+      <div class="card"><h2>Über ClubManager</h2><p data-app-version>Version: ${escape(state.version ?? 'Nicht verfügbar')}</p></div>`;
   } else if (!state.folder) {
     content = `<div class="empty"><h1>Willkommen bei ClubManager</h1><p>Wählen Sie zunächst in den Einstellungen einen Datenordner aus.</p>${button('open-settings', 'Einstellungen öffnen', 'primary')}</div>`;
   } else if (state.view === 'meetings') {
@@ -574,6 +575,11 @@ window.club.onPrepareUpdate(async () => {
 });
 
 (async () => {
+  try {
+    state.version = await window.club.getVersion();
+  } catch (error) {
+    setMessage(`Die App-Version konnte nicht geladen werden: ${error.message}`, true);
+  }
   try {
     state.folder = await window.club.getFolder();
     state.protocolCss = await window.club.getProtocolCss();

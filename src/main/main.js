@@ -60,6 +60,7 @@ async function readProtocolCss(file) {
 }
 
 function registerHandlers() {
+  ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('update:install', event => {
     if (event.sender !== mainWindow?.webContents || !downloadedUpdate) {
       throw new Error('Es liegt kein heruntergeladenes Update zur Installation bereit.');

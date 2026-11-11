@@ -47,6 +47,7 @@ npm start
 
 In Settings (the bottom icon), choose a data folder. The app creates `meetings`,
 `members`, `invoices`, and `letters` subfolders without moving existing data.
+The **Über ClubManager** section in Settings shows the running app version.
 Selecting another folder opens that folder's data; it does not migrate it.
 In **Einstellungen**, optionally select a CSS file for PDF protocols. It
 replaces the default stylesheet, is stored as a path in the app settings, and

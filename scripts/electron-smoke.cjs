@@ -56,6 +56,9 @@ async function main() {
             await new Promise(resolve => setTimeout(resolve, 25));
           }
           if (!document.querySelector('[data-protocol-css]').textContent.includes('Standardlayout')) throw new Error('Missing default CSS');
+          if (document.querySelector('[data-app-version]')?.textContent !== 'Version: ${app.getVersion()}') {
+            throw new Error('Settings must display the running app version without a data folder');
+          }
           document.querySelector('[data-action="choose-protocol-css"]').click();
           for (let i = 0; i < 200; i++) {
             if (document.querySelector('[data-action="reset-protocol-css"]')) return;
@@ -94,6 +97,9 @@ async function main() {
           await click('[data-view="settings"]');
           await click('[data-action="choose-folder"]');
           await waitFor(() => document.querySelector('.path')?.textContent.includes('data'));
+          if (document.querySelector('[data-app-version]')?.textContent !== 'Version: ${app.getVersion()}') {
+            throw new Error('Settings must display the running app version with a data folder');
+          }
           await click('[data-view="meetings"]');
           await waitFor(() => document.querySelector('.list'));
           await click('[data-view="decisions"]');

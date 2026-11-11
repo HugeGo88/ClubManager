@@ -18,6 +18,7 @@ async function invoke(channel, ...args) {
 }
 
 contextBridge.exposeInMainWorld('club', {
+  getVersion: () => invoke('app:version'),
   getFolder: () => invoke('folder:get'),
   chooseFolder: () => invoke('folder:choose'),
   getProtocolCss: () => invoke('protocol-css:get'),
