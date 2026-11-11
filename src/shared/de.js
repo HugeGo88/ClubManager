@@ -12,6 +12,12 @@
     decision: 'Entscheidung',
     info: 'Information'
   }),
+  voteResult: Object.freeze({
+    unanimous_accepted: 'Einstimmig angenommen',
+    unanimous_rejected: 'Einstimmig abgelehnt',
+    accepted: 'Angenommen mit',
+    rejected: 'Abgelehnt mit'
+  }),
   taskStatus: Object.freeze({ done: 'Erledigt', open: 'Offen' }),
   unassigned: 'Nicht zugewiesen'
 }));

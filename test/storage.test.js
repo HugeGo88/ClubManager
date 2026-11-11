@@ -64,6 +64,29 @@ test('preserves optional TOP responsibility and rejects invalid values', async t
   assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].responsible, '');
 });
 
+test('stores decision votes and preserves legacy decision tasks', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  let revision = await storage.saveMeeting(folder, data, null);
+  const point = data.points[0];
+  point.vote = { result: 'accepted', yes: 3, no: 1, abstain: 0 };
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.deepEqual((await storage.listMeetings(folder))[0].meeting.points[0], point);
+  for (const invalid of [
+    { result: 'unknown', yes: 1, no: 0, abstain: 0 },
+    { result: 'accepted', yes: -1, no: 0, abstain: 0 },
+    { result: 'accepted', yes: 1.5, no: 0, abstain: 0 },
+    { result: 'accepted', yes: '2', no: 0, abstain: 0 },
+    { result: 'accepted', yes: null, no: null }
+  ]) {
+    point.vote = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültiges Abstimmungsergebnis/);
+  }
+  point.vote = { result: 'unanimous_rejected', yes: null, no: null, abstain: null };
+  await storage.saveMeeting(folder, data, revision);
+  assert.deepEqual((await storage.listMeetings(folder))[0].meeting.points[0].vote, point.vote);
+});
+
 test('rejects invalid meeting data and reports corrupt records', async t => {
   const folder = await fixture(t);
   const data = meeting();

@@ -66,6 +66,15 @@ function validateMeeting(meeting) {
     if (point.responsible !== undefined && !string(point.responsible)) {
       throw new Error('Ungültige verantwortliche Person für den TOP.');
     }
+    if (point.vote !== undefined) {
+      const vote = point.vote;
+      if (!vote || typeof vote !== 'object' || Array.isArray(vote) ||
+          !['', 'unanimous_accepted', 'unanimous_rejected', 'accepted', 'rejected'].includes(vote.result) ||
+          !['yes', 'no', 'abstain'].every(key => vote[key] === null ||
+            (Number.isSafeInteger(vote[key]) && vote[key] >= 0))) {
+        throw new Error('Ungültiges Abstimmungsergebnis für den TOP.');
+      }
+    }
     for (const task of point.tasks) {
       if (!task || !string(task.description) || !string(task.responsible) ||
           typeof task.done !== 'boolean') throw new Error('Ungültige Aufgabe.');

@@ -20,6 +20,7 @@ async function main() {
     : { canceled: false, filePaths: [data] };
   const pdfColors = [];
   const pdfPointHeadings = [];
+  const pdfVoteResults = [];
   app.on('browser-window-created', (event, window) => {
     if (window.isVisible()) return;
     const printToPDF = window.webContents.printToPDF.bind(window.webContents);
@@ -27,6 +28,8 @@ async function main() {
       pdfColors.push(await window.webContents.executeJavaScript('getComputedStyle(document.body).color'));
       pdfPointHeadings.push(await window.webContents.executeJavaScript(
         `Array.from(document.querySelectorAll('.point-heading h3'), element => element.textContent)`));
+      pdfVoteResults.push(await window.webContents.executeJavaScript(
+        `Array.from(document.querySelectorAll('.vote-result'), element => element.textContent)`));
       return printToPDF(options);
     };
   });
@@ -124,6 +127,23 @@ async function main() {
           setInput('[data-point="0"][data-field="responsible"]', 'TOP Leitung & Team');
           setInput('[data-point="1"][data-field="headline"]', 'Budget');
           setInput('[data-point="1"][data-field="type"]', 'decision');
+          if (document.querySelector('[data-action="add-task"][data-index="1"]')) throw new Error('Decision TOP must not allow adding tasks');
+          const voteSelect = document.querySelector('[data-point="1"][data-vote-result]');
+          const voteOptions = [...voteSelect.options].map(option => option.textContent);
+          if (voteOptions.join('|') !== 'Kein Ergebnis ausgewählt|Einstimmig angenommen|Einstimmig abgelehnt|Angenommen mit|Abgelehnt mit') {
+            throw new Error('Unexpected vote options: ' + voteOptions);
+          }
+          setInput('[data-point="1"][data-vote-result]', 'unanimous_accepted');
+          if (!document.querySelector('[data-point="1"][data-vote-count="yes"]').closest('.vote-counts').hidden) throw new Error('Unanimous vote should hide counts');
+          setInput('[data-point="1"][data-vote-result]', 'accepted');
+          if (document.querySelector('[data-point="1"][data-vote-count="yes"]').closest('.vote-counts').hidden) throw new Error('Mixed vote should show counts');
+          setInput('[data-point="1"][data-vote-count="yes"]', '5');
+          setInput('[data-point="1"][data-vote-count="no"]', '1');
+          setInput('[data-point="1"][data-vote-count="abstain"]', '0');
+          setInput('[data-point="1"][data-vote-result]', 'unanimous_rejected');
+          setInput('[data-point="1"][data-vote-result]', 'rejected');
+          if (document.querySelector('[data-point="1"][data-vote-count="yes"]').value !== '5') throw new Error('Vote counts must survive result changes');
+          setInput('[data-point="1"][data-vote-result]', 'accepted');
           const initialEditor = document.querySelector('[data-markdown-editor="0"] .cm-content');
           initialEditor.focus();
           document.execCommand('insertText', false, 'Den **Veranstaltungsplan** und den Veranstaltungsort besprechen.');
@@ -131,6 +151,11 @@ async function main() {
           await waitFor(() => document.querySelector('[data-point="0"][data-task="0"][data-field="description"]'));
           setInput('[data-point="0"][data-task="0"][data-field="description"]', 'Veranstaltungsort kontaktieren');
           setInput('[data-point="0"][data-task="0"][data-field="responsible"]', 'Alex Beispiel');
+          setInput('[data-point="0"][data-field="type"]', 'decision');
+          if (document.querySelector('[data-point="0"][data-field="type"]').value !== 'discussion' ||
+              !document.querySelector('.notice.error')?.textContent.includes('Entfernen Sie zuerst die Aufgaben')) {
+            throw new Error('Changing a TOP with tasks to a decision should be blocked');
+          }
           const absentBeforeExport = !document.querySelector('[data-action="open-protocol"]');
           const language = document.documentElement.lang;
           const navigation = [...document.querySelectorAll('[data-view]')].map(button => button.getAttribute('aria-label'));
@@ -288,6 +313,7 @@ async function main() {
         const saved = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(saved.meeting.title, 'Beispiel: Vorstandssitzung aktualisiert');
         assert.equal(saved.meeting.points[0].headline, 'Budget');
+        assert.deepEqual(saved.meeting.points[0].vote, { result: 'accepted', yes: 5, no: 1, abstain: 0 });
         assert.equal(saved.meeting.points[1].headline, 'Kommende Veranstaltung');
         assert.equal(saved.meeting.points[1].responsible, 'TOP Leitung & Team');
         assert.equal(saved.meeting.points[0].responsible, undefined);
@@ -298,6 +324,7 @@ async function main() {
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)']);
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
+        assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: cssFile });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const now = new Date();
@@ -409,6 +436,9 @@ async function main() {
           await waitFor(() => document.querySelector('[data-point="1"][data-field="done"]'));
           return { conflict, stillOpen, empty, checked: document.querySelector('[data-point="1"][data-field="done"]').checked,
             responsible: document.querySelector('[data-point="1"][data-field="responsible"]').value,
+            vote: document.querySelector('[data-point="0"][data-vote-result]').value,
+            legacyTask: !!document.querySelector('[data-point="0"][data-task="0"][data-field="description"]'),
+            legacyAdd: !!document.querySelector('[data-action="add-task"][data-index="0"]'),
             openAvailable: !!document.querySelector('[data-action="open-protocol"]') };
         })()`);
         assert.match(completion.conflict, /auf dem Datenträger geändert/);
@@ -417,6 +447,9 @@ async function main() {
         assert.ok(completion.empty);
         assert.ok(completion.checked);
         assert.equal(completion.responsible, 'TOP Leitung & Team');
+        assert.equal(completion.vote, 'accepted');
+        assert.ok(completion.legacyTask);
+        assert.equal(completion.legacyAdd, false);
         assert.ok(completion.openAvailable);
         const completed = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(completed.meeting.points[1].tasks[0].done, true);
@@ -521,8 +554,9 @@ async function main() {
             ...['Alex', 'Sam', 'Kim', 'Jo', 'Max', 'Mia'].map(name => ({ name, status: 'attending' })),
             { name: 'Lisa', status: 'excused' }
           ],
-          points: ['discussion', 'decision', 'info'].map(type => ({
-            type, headline: 'LangeÜberschrift'.repeat(12), details: 'Details', tasks: []
+          points: ['discussion', 'decision', 'info'].map((type, i) => ({
+            type, headline: 'LangeÜberschrift'.repeat(12), details: 'Details', tasks: [],
+            ...(i === 1 ? { vote: { result: 'accepted', yes: 5, no: 1, abstain: 0 } } : {})
           }))
         };
         const layoutWindow = new BrowserWindow({ show: false, width: 650, height: 800, webPreferences: { sandbox: true } });
@@ -558,6 +592,23 @@ async function main() {
             'Entschuldigt abwesend: Lisa'
           ]);
           assert.ok(attendanceLayout.height <= attendanceLayout.lineHeight * 1.1, 'Multiple participants should fit on one line');
+          const voteStyles = await layoutWindow.webContents.executeJavaScript(`(() => {
+            const badge = document.querySelector('.vote-badge');
+            const result = {};
+            for (const type of ['accepted', 'unanimous_accepted', 'rejected', 'unanimous_rejected', 'other']) {
+              badge.dataset.result = type;
+              const style = getComputedStyle(badge);
+              result[type] = { background: style.backgroundColor, radius: style.borderTopLeftRadius };
+            }
+            badge.dataset.result = 'accepted';
+            return result;
+          })()`);
+          assert.equal(voteStyles.unanimous_accepted.background, 'rgb(217, 243, 227)');
+          assert.equal(voteStyles.unanimous_rejected.background, 'rgb(253, 225, 225)');
+          assert.equal(voteStyles.accepted.background, 'rgb(255, 240, 207)');
+          assert.equal(voteStyles.rejected.background, voteStyles.accepted.background);
+          assert.equal(voteStyles.other.background, 'rgb(255, 240, 207)');
+          assert.ok(parseFloat(voteStyles.accepted.radius) > 0);
           const logo = await layoutWindow.webContents.executeJavaScript(`(async () => {
             const page = [...document.styleSheets].flatMap(sheet => [...sheet.cssRules])
               .find(rule => rule.cssRules && [...rule.cssRules].some(child =>

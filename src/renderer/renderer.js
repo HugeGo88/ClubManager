@@ -53,6 +53,20 @@ function setTaskDone(task, done) {
   else delete task.completedDate;
 }
 
+function decisionFields(point, i) {
+  const vote = point.vote;
+  const showCounts = vote?.result === 'accepted' || vote?.result === 'rejected';
+  return `<div class="decision-fields">
+    <label>Abstimmungsergebnis (optional)<select data-point="${i}" data-vote-result>
+      ${options([['', 'Kein Ergebnis ausgewählt'], ...Object.entries(clubDeutsch.voteResult)], vote?.result || '')}
+    </select></label>
+    <div class="vote-counts" ${showCounts ? '' : 'hidden'}>
+      ${[['yes', 'Ja-Stimmen'], ['no', 'Gegenstimmen'], ['abstain', 'Enthaltungen']].map(([key, label]) =>
+        `<label>${label} (optional)<input type="number" min="0" step="1" data-point="${i}" data-vote-count="${key}" value="${escape(vote?.[key] ?? '')}"></label>`).join('')}
+    </div>
+  </div>`;
+}
+
 function meetingEditor(meeting) {
   return `<div class="topline meeting-toolbar"><div><h1>Sitzung bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
     <div class="row meeting-actions">${state.hasProtocol ? button('open-protocol', 'Gespeichertes PDF öffnen') : ''}${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
@@ -79,7 +93,9 @@ function meetingEditor(meeting) {
         <label>Verantwortliche Person für den TOP (optional)<input data-point="${i}" data-field="responsible" value="${escape(point.responsible ?? '')}" placeholder="Name der Person"></label>
       </div>
       <div class="markdown-field"><span class="markdown-label">Details <span class="muted">(Markdown mit Live-Vorschau)</span></span><div data-markdown-editor="${i}"></div></div>
-      <div class="card-header"><h3>Aufgaben</h3><button class="action" data-action="add-task" data-index="${i}">+ Aufgabe hinzufügen</button></div>
+      ${point.type === 'decision' ? decisionFields(point, i) : ''}
+      ${point.type !== 'decision' || point.tasks.length ? `<div class="card-header"><h3>Aufgaben</h3>${point.type !== 'decision' ? `<button class="action" data-action="add-task" data-index="${i}">+ Aufgabe hinzufügen</button>` : ''}</div>
+      ${point.type === 'decision' ? '<p>Diese bestehenden Aufgaben bleiben erhalten und können entfernt werden.</p>' : ''}
       ${point.tasks.map((task, j) => `<div class="row meeting-task-row">
         <label>Aufgabe<input data-point="${i}" data-task="${j}" data-field="description" value="${escape(task.description)}" placeholder="Aufgabe"></label>
         <label>Verantwortliche Personen<input data-point="${i}" data-task="${j}" data-field="responsible" value="${escape(task.responsible)}" placeholder="Namen"></label>
@@ -87,7 +103,7 @@ function meetingEditor(meeting) {
         <label class="checkbox"><input type="checkbox" data-point="${i}" data-task="${j}" data-field="done" ${task.done ? 'checked' : ''}> Erledigt</label>
         <span class="task-completed-date">${task.done && task.completedDate ? `Erledigt am: ${escape(formatDate(task.completedDate))}` : ''}</span>
         <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Aufgabe entfernen">Entfernen</button>
-      </div>`).join('')}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}
+      </div>`).join('')}` : ''}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}
     ${button('add-point', '+ TOP hinzufügen')}`;
 }
 
@@ -351,7 +367,9 @@ async function run(action, target) {
       state.dirty = true;
       break;
     }
-    case 'add-task': meeting.points[i].tasks.push({ description: '', responsible: '', done: false }); state.dirty = true; break;
+    case 'add-task':
+      if (meeting.points[i].type === 'decision') throw new Error('Für einen Entscheidungs-TOP können keine Aufgaben hinzugefügt werden.');
+      meeting.points[i].tasks.push({ description: '', responsible: '', done: false }); state.dirty = true; break;
     case 'remove-task': meeting.points[i].tasks.splice(Number(target.dataset.task), 1); state.dirty = true; break;
   }
 }
@@ -415,11 +433,39 @@ app.addEventListener('input', event => {
     refreshTaskResults();
     return;
   }
+  if ((target.hasAttribute('data-vote-result') || target.dataset.voteCount) && state.meeting) {
+    const point = state.meeting.points[Number(target.dataset.point)];
+    point.vote ||= { result: '', yes: null, no: null, abstain: null };
+    if (target.hasAttribute('data-vote-result')) {
+      point.vote.result = target.value;
+      target.closest('.decision-fields').querySelector('.vote-counts').hidden =
+        target.value !== 'accepted' && target.value !== 'rejected';
+    } else {
+      point.vote[target.dataset.voteCount] = target.value === '' ? null : Number(target.value);
+    }
+    state.dirty = true;
+    const status = document.querySelector('.status');
+    if (status) status.textContent = 'Ungespeicherte Änderungen';
+    return;
+  }
   if (!target.dataset.field || !state.meeting) return;
   let item = state.meeting;
   if (target.dataset.person !== undefined) item = item.attendance[Number(target.dataset.person)];
   if (target.dataset.point !== undefined) item = item.points[Number(target.dataset.point)];
   if (target.dataset.task !== undefined) item = item.tasks[Number(target.dataset.task)];
+  if (target.dataset.field === 'type' && target.dataset.point !== undefined) {
+    if (target.value === 'decision' && item.tasks.length) {
+      target.value = item.type;
+      setMessage('Entfernen Sie zuerst die Aufgaben dieses TOPs, bevor Sie den Typ auf Entscheidung ändern.', true);
+      render();
+      return;
+    }
+    item.type = target.value;
+    state.dirty = true;
+    setMessage('');
+    render();
+    return;
+  }
   if (target.dataset.field === 'done' && target.dataset.task !== undefined) {
     setTaskDone(item, target.checked);
     target.closest('.meeting-task-row').querySelector('.task-completed-date').textContent =

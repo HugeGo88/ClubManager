@@ -51,6 +51,14 @@ The formatting buttons apply or remove bold, italic, underline and strikethrough
 around selected text; without a selection they insert markers for typing.
 Underline uses inline `<u>...</u>` HTML because Markdown has no standard
 underline syntax. It is rendered in the live preview and exported PDF.
+Decision TOPs can record a unanimous or non-unanimous result; for the latter,
+yes votes, votes against and abstentions can be entered separately. Results
+are included in newly exported PDFs as colored badges: green for unanimous
+acceptance, red for unanimous rejection, and yellow for non-unanimous results.
+Custom PDF stylesheets can style `.vote-badge`
+and its `data-result` attribute. Decision TOPs do not allow new tasks.
+Remove existing tasks before switching another TOP to a decision; legacy
+decision TOPs with tasks retain them and can still be edited.
 Markdown task checkboxes can be toggled directly; these are separate from the
 meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
 used for PDF export, where task checkboxes are shown as non-editable. The Open

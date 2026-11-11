@@ -30,12 +30,26 @@ function protocolHtml(meeting, css) {
     const names = meeting.attendance.filter(person => person.status === status).map(person => escapeHtml(person.name));
     return names.length ? `<p class="attendance-group"><strong>${escapeHtml(label)}:</strong> ${names.join(', ')}</p>` : '';
   }).join('');
-  const points = meeting.points.map((point, index) => `
+  const points = meeting.points.map((point, index) => {
+    let vote = '';
+    if (point.type === 'decision' && point.vote?.result) {
+      const result = point.vote.result;
+      const counts = [['yes', 'Ja-Stimmen'], ['no', 'Gegenstimmen'], ['abstain', 'Enthaltungen']]
+        .filter(([key]) => point.vote[key] !== null)
+        .map(([key, label]) => `${point.vote[key]} ${label}`);
+      const label = de.voteResult[result];
+      const description = result === 'accepted' || result === 'rejected'
+        ? (counts.length ? `${label} ${counts.join(', ')}` : label.replace(/ mit$/, ''))
+        : label;
+      vote = `<p class="vote-result"><span class="vote-badge" data-result="${escapeHtml(result)}">Abstimmung: ${escapeHtml(description)}</span></p>`;
+    }
+    return `
     <section><div class="point-heading"><h3>${index + 1}. ${escapeHtml(point.headline)}${point.responsible?.trim() ? ` (${escapeHtml(point.responsible.trim())})` : ''}</h3>
-    <span class="type" data-type="${escapeHtml(point.type)}">${escapeHtml(de.pointType[point.type])}</span></div>${markdown(point.details)}
+    <span class="type" data-type="${escapeHtml(point.type)}">${escapeHtml(de.pointType[point.type])}</span></div>${markdown(point.details)}${vote}
     ${point.tasks.length ? `<h4>Aufgaben</h4><ul class="protocol-tasks">${point.tasks.map(task =>
       `<li><input type="checkbox" disabled="disabled"${task.done ? ' checked="checked"' : ''} aria-label="${task.done ? 'Erledigt' : 'Offen'}"> ${escapeHtml(task.description)} — ${escapeHtml(task.responsible || de.unassigned)}${task.dueDate ? ` — Fällig: ${escapeHtml(formatDate(task.dueDate))}` : ''}${task.done && task.completedDate ? ` — Erledigt am: ${escapeHtml(formatDate(task.completedDate))}` : ''}</li>`
-    ).join('')}</ul>` : ''}</section>`).join('');
+    ).join('')}</ul>` : ''}</section>`;
+  }).join('');
   const date = formatDate(meeting.date);
   const pageLayout = `@page {
     size: A4;

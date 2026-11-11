@@ -50,6 +50,27 @@ test('includes escaped TOP responsibility only when provided', () => {
   assert.doesNotMatch(html, /class="point-responsible"/);
 });
 
+test('renders decision results and only provided vote counts', () => {
+  const base = { headline: 'Punkt', type: 'decision', details: '', tasks: [] };
+  const vote = (result, yes = null, no = null, abstain = null) => ({ result, yes, no, abstain });
+  const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [
+    { ...base, vote: vote('unanimous_accepted') },
+    { ...base, vote: vote('unanimous_rejected') },
+    { ...base, vote: vote('accepted', 5, 1, 0) },
+    { ...base, vote: vote('rejected', null, 2, null) },
+    { ...base, vote: vote('accepted') },
+    { ...base, vote: vote('') },
+    { ...base, type: 'info', vote: vote('accepted', 3, 0, 0) },
+    base
+  ] }, '');
+  assert.match(html, /data-result="unanimous_accepted">Abstimmung: Einstimmig angenommen/);
+  assert.match(html, /data-result="unanimous_rejected">Abstimmung: Einstimmig abgelehnt/);
+  assert.match(html, /data-result="accepted">Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen/);
+  assert.match(html, /data-result="rejected">Abstimmung: Abgelehnt mit 2 Gegenstimmen/);
+  assert.match(html, /data-result="accepted">Abstimmung: Angenommen<\/span>/);
+  assert.equal((html.match(/class="vote-result"/g) || []).length, 5);
+});
+
 test('protocol escapes user content and strips unsafe Markdown', () => {
   const html = protocolHtml({
     title: '<script>bad</script>', date: '', attendance: [],
