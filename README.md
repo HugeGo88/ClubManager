@@ -4,6 +4,38 @@ An early Electron desktop app. The first version focuses on meetings; Members,
 Invoices, and Letters are placeholders. See [product ideas](PRODUCT_IDEAS.md)
 for the longer-term direction.
 
+## Screenshots
+
+The following screenshots use fictional example data.
+
+### Meetings
+
+Create and edit meetings, attendance and TOPs.
+
+![Meeting editor showing example attendance and a TOP](docs/screenshots/sitzungen.png)
+
+The TOP editor supports Markdown, responsibilities and tasks.
+
+![TOP editor showing a discussion and example tasks](docs/screenshots/top-editor.png)
+
+### Open tasks
+
+Review and filter open tasks across saved meetings.
+
+![Open tasks table with example tasks and filters](docs/screenshots/offene-aufgaben.png)
+
+### Decisions
+
+Search decisions and see their recorded results.
+
+![Decisions table showing example voting results](docs/screenshots/entscheidungen.png)
+
+### PDF protocol
+
+An example exported protocol using the default PDF stylesheet:
+
+![Example PDF protocol with attendance, TOPs, decision result and open tasks](docs/screenshots/pdf-protokoll.png)
+
 ## Run
 
 Install Node.js 22.12 or newer and npm, then:
