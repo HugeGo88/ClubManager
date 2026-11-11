@@ -11,7 +11,7 @@ function escapeHtml(value) {
 
 function markdown(value) {
   return sanitizeHtml(marked.parse(value), {
-    allowedTags: ['p', 'br', 'strong', 'em', 'del', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'hr', 'input'],
+    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'del', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'hr', 'input'],
     allowedAttributes: { input: ['type', 'checked', 'disabled'] },
     transformTags: {
       input: (tagName, attributes) => attributes.type === 'checkbox'

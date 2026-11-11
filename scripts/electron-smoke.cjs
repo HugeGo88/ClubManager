@@ -138,6 +138,49 @@ async function main() {
           const typeOptions = [...document.querySelector('[data-point="0"][data-field="type"]').options].map(option => option.textContent);
           const editor = document.querySelector('[data-markdown-editor="0"] .cm-content');
           await waitFor(() => editor.querySelector('.markdown-strong'));
+          const markdownToolbar = document.querySelector('[data-markdown-editor="0"] .markdown-toolbar');
+          const formats = [
+            ['Fett', '**Wort**', '.markdown-strong'],
+            ['Kursiv', '*Wort*', '.markdown-emphasis'],
+            ['Unterstrichen', '<u>Wort</u>', '.markdown-underline'],
+            ['Durchgestrichen', '~~Wort~~', '.markdown-strike']
+          ];
+          for (const [label, raw, preview] of formats) {
+            editor.focus();
+            document.execCommand('selectAll');
+            document.execCommand('insertText', false, 'Wort');
+            document.execCommand('selectAll');
+            await new Promise(resolve => setTimeout(resolve, 50));
+            markdownToolbar.querySelector('[aria-label="' + label + '"]').click();
+            if (editor.textContent !== raw) throw new Error(label + ': expected ' + raw + ', got ' + editor.textContent);
+            document.querySelector('[data-field="title"]').focus();
+            await waitFor(() => editor.querySelector(preview) && editor.textContent === 'Wort');
+            editor.focus();
+            markdownToolbar.querySelector('[aria-label="' + label + '"]').click();
+            await waitFor(() => editor.textContent === 'Wort');
+            document.execCommand('selectAll');
+            document.execCommand('delete');
+            await new Promise(resolve => setTimeout(resolve, 50));
+            markdownToolbar.querySelector('[aria-label="' + label + '"]').focus();
+            markdownToolbar.querySelector('[aria-label="' + label + '"]').click();
+            document.execCommand('insertText', false, 'Wort');
+            await waitFor(() => editor.textContent === raw);
+          }
+          editor.focus();
+          document.execCommand('selectAll');
+          document.execCommand('insertText', false, 'Wort');
+          document.execCommand('selectAll');
+          await new Promise(resolve => setTimeout(resolve, 50));
+          markdownToolbar.querySelector('[aria-label="Fett"]').click();
+          markdownToolbar.querySelector('[aria-label="Kursiv"]').click();
+          await waitFor(() => editor.textContent === '***Wort***');
+          markdownToolbar.querySelector('[aria-label="Kursiv"]').click();
+          await waitFor(() => editor.textContent === '**Wort**');
+          editor.focus();
+          document.execCommand('selectAll');
+          document.execCommand('insertText', false, 'Den **Veranstaltungsplan** und den Veranstaltungsort besprechen.');
+          document.querySelector('[data-field="title"]').focus();
+          await waitFor(() => editor.querySelector('.markdown-strong'));
           const previewText = editor.textContent;
           const bold = editor.querySelector('.markdown-strong');
           editor.focus();
@@ -150,11 +193,14 @@ async function main() {
           await waitFor(() => !editor.textContent.includes('**Veranstaltungsplan**'));
           editor.focus();
           document.execCommand('selectAll');
-          document.execCommand('insertText', false, '   # Planung\\n**Fett** und *kursiv* [Web](https://example.com)\\n[x](https://a "mehr\\nZeilen")\\n\\n- Apfel\\n  - Birne\\n\\n1. Eins\\n2. Zwei\\n\\n- [ ] Offen\\n- [x] Fertig');
+          document.execCommand('insertText', false, '   # Planung\\n**Fett** und *kursiv* [Web](https://example.com)\\n<u>Unterstrichen</u> und ~~Durchgestrichen~~\\n[x](https://a "mehr\\nZeilen")\\n\\n- Apfel\\n  - Birne\\n\\n1. Eins\\n2. Zwei\\n\\n- [ ] Offen\\n- [x] Fertig');
           await waitFor(() => document.querySelector('.status').textContent === 'Ungespeicherte Änderungen');
           document.querySelector('[data-field="title"]').focus();
           await waitFor(() => editor.querySelector('.markdown-strong') && editor.querySelector('.markdown-emphasis') && editor.querySelector('.markdown-heading-1'));
           const editedPreview = editor.textContent;
+          if (!editor.querySelector('.markdown-underline') || !editor.querySelector('.markdown-strike')) {
+            throw new Error('Underline and strikethrough must be visible in the preview');
+          }
           const renderedLink = !!editor.querySelector('.markdown-link') && !editedPreview.includes('https://example.com');
           await waitFor(() => editor.querySelectorAll('.markdown-task').length === 2);
           const bullets = editor.querySelectorAll('.markdown-bullet').length;
@@ -247,7 +293,7 @@ async function main() {
         assert.equal(saved.meeting.points[0].responsible, undefined);
         assert.equal(saved.meeting.points[1].tasks[0].responsible, 'Alex Beispiel');
         assert.equal(saved.meeting.points[1].tasks[0].dueDate, '2000-01-01');
-        assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
+        assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n<u>Unterstrichen</u> und ~~Durchgestrichen~~\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)']);

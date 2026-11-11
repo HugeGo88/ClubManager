@@ -58,12 +58,37 @@ function selected(view, from, to) {
 
 function decorations(view) {
   const ranges = [];
+  const underlineTags = new Map();
   const add = (from, to, decoration) => {
     if (from < to && !view.state.doc.sliceString(from, to).includes('\n')) ranges.push(decoration.range(from, to));
   };
   syntaxTree(view.state).iterate({
     enter(node) {
       const name = node.name;
+      if (name === 'HTMLTag' && node.node.parent?.name === 'Paragraph') {
+        const tag = view.state.doc.sliceString(node.from, node.to).toLowerCase();
+        const parent = node.node.parent;
+        const key = `${parent.from}:${parent.to}`;
+        if (tag === '<u>') {
+          const stack = underlineTags.get(key) || [];
+          stack.push({ from: node.from, to: node.to });
+          underlineTags.set(key, stack);
+        } else if (tag === '</u>') {
+          const opening = underlineTags.get(key)?.pop();
+          if (opening) {
+            for (let pos = opening.to; pos < node.from;) {
+              const line = view.state.doc.lineAt(pos);
+              add(pos, Math.min(line.to, node.from), Decoration.mark({ class: 'markdown-underline' }));
+              pos = line.to + 1;
+            }
+            if (!selected(view, opening.from, node.to)) {
+              add(opening.from, opening.to, Decoration.replace({}));
+              add(node.from, node.to, Decoration.replace({}));
+            }
+          }
+        }
+        return;
+      }
       if (name === 'ListMark') {
         const marker = view.state.doc.sliceString(node.from, node.to);
         const task = node.node.parent?.getChild('Task')?.getChild('TaskMarker');
@@ -124,22 +149,95 @@ const livePreview = ViewPlugin.fromClass(class {
   }
 }, { decorations: plugin => plugin.decorations });
 
-window.createMarkdownEditor = (parent, value, onChange, label) => new EditorView({
-  parent,
-  state: EditorState.create({
-    doc: value,
-    extensions: [
-      EditorView.cspNonce.of('clubmanager-editor'),
-      EditorView.contentAttributes.of({ 'aria-label': label, 'aria-multiline': 'true', role: 'textbox' }),
-      EditorView.lineWrapping,
-      history(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
-      markdown({ base: markdownLanguage }),
-      placeholder('Details in Markdown schreiben'),
-      livePreview,
-      EditorView.updateListener.of(update => {
-        if (update.docChanged) onChange(update.state.doc.toString());
-      })
-    ]
-  })
-});
+function toggleFormat(view, open, close) {
+  const { state } = view;
+  const { from, to, anchor, head } = state.selection.main;
+  const text = state.doc.sliceString(from, to);
+  let start = from;
+  let end = to;
+  let replacement;
+  let selectionStart;
+  let selectionEnd;
+  const nestedItalic = open === '*' && from >= 3 && to + 3 <= state.doc.length &&
+    state.doc.sliceString(from - 3, from) === '***' && state.doc.sliceString(to, to + 3) === '***' &&
+    syntaxTree(state).resolveInner(from, 1).matchContext(['Paragraph', 'Emphasis']);
+  if (nestedItalic) {
+    start = from - 3;
+    end = to + 3;
+    replacement = `**${text}**`;
+    selectionStart = start + 2;
+    selectionEnd = selectionStart + text.length;
+  } else if (text.startsWith(open) && text.endsWith(close) && text.length >= open.length + close.length) {
+    replacement = text.slice(open.length, text.length - close.length);
+    selectionStart = from;
+    selectionEnd = from + replacement.length;
+  } else if (from >= open.length && to + close.length <= state.doc.length &&
+      state.doc.sliceString(from - open.length, from) === open &&
+      state.doc.sliceString(to, to + close.length) === close &&
+      (open !== '*' || (state.doc.sliceString(Math.max(0, from - 2), from - 1) !== '*' &&
+        state.doc.sliceString(to + 1, Math.min(state.doc.length, to + 2)) !== '*'))) {
+    start = from - open.length;
+    end = to + close.length;
+    replacement = text;
+    selectionStart = start;
+    selectionEnd = start + text.length;
+  } else {
+    replacement = open + text + close;
+    selectionStart = from + open.length;
+    selectionEnd = selectionStart + text.length;
+  }
+  view.dispatch({
+    changes: { from: start, to: end, insert: replacement },
+    selection: { anchor: anchor <= head ? selectionStart : selectionEnd, head: anchor <= head ? selectionEnd : selectionStart },
+    userEvent: 'input'
+  });
+  view.focus();
+}
+
+window.createMarkdownEditor = (parent, value, onChange, label) => {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'markdown-toolbar';
+  toolbar.setAttribute('role', 'group');
+  toolbar.setAttribute('aria-label', `Formatierung für ${label}`);
+  const formats = [
+    { name: 'Fett', text: 'F', className: 'format-bold', open: '**', close: '**' },
+    { name: 'Kursiv', text: 'K', className: 'format-italic', open: '*', close: '*' },
+    { name: 'Unterstrichen', text: 'U', className: 'format-underline', open: '<u>', close: '</u>' },
+    { name: 'Durchgestrichen', text: 'S', className: 'format-strike', open: '~~', close: '~~' }
+  ];
+  parent.append(toolbar);
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc: value,
+      extensions: [
+        EditorView.cspNonce.of('clubmanager-editor'),
+        EditorView.contentAttributes.of({ 'aria-label': label, 'aria-multiline': 'true', role: 'textbox' }),
+        EditorView.lineWrapping,
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        markdown({ base: markdownLanguage }),
+        placeholder('Details in Markdown schreiben'),
+        livePreview,
+        EditorView.updateListener.of(update => {
+          if (update.docChanged) onChange(update.state.doc.toString());
+        })
+      ]
+    })
+  });
+  for (const format of formats) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `markdown-format ${format.className}`;
+    button.textContent = format.text;
+    button.title = format.name;
+    button.setAttribute('aria-label', format.name);
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      toggleFormat(view, format.open, format.close);
+    });
+    toolbar.append(button);
+  }
+  return view;
+};

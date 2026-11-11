@@ -99,6 +99,14 @@ test('protocol displays Markdown checklists as disabled checkboxes', () => {
   assert.match(html, /<input type="checkbox" disabled="disabled" checked="checked"\s*\/?> Fertig/);
 });
 
+test('renders underlined and struck-through Markdown without unsafe attributes', () => {
+  const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [
+    { headline: 'Punkt', type: 'info', details: '<u onclick="bad()">Unterstrichen</u> und ~~Durchgestrichen~~', tasks: [] }
+  ] }, '');
+  assert.match(html, /<u>Unterstrichen<\/u> und <del>Durchgestrichen<\/del>/);
+  assert.doesNotMatch(html, /onclick/);
+});
+
 test('protocol includes optional task deadlines', () => {
   const html = protocolHtml({
     title: 'Sitzung', date: '', attendance: [],

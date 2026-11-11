@@ -47,6 +47,10 @@ the TOP heading. Meeting
 details support Markdown with an inline live preview. Bold, italic, headings,
 inline code, links, lists and task checkboxes are formatted in the editor; their
 Markdown markers become visible when the cursor is inside the formatting.
+The formatting buttons apply or remove bold, italic, underline and strikethrough
+around selected text; without a selection they insert markers for typing.
+Underline uses inline `<u>...</u>` HTML because Markdown has no standard
+underline syntax. It is rendered in the live preview and exported PDF.
 Markdown task checkboxes can be toggled directly; these are separate from the
 meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
 used for PDF export, where task checkboxes are shown as non-editable. The Open
