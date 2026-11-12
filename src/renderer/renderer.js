@@ -267,8 +267,6 @@ function renderNavigation() {
   document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', ['tasks', 'decisions', 'tops'].includes(state.view));
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
-  toggle.setAttribute('aria-label', `Sitzungsunterpunkte ${meetingNavExpanded ? 'einklappen' : 'ausklappen'}`);
-  toggle.textContent = meetingNavExpanded ? '▾' : '▸';
   document.querySelector('#meeting-subnav').hidden = !meetingNavExpanded;
 }
 
@@ -553,7 +551,7 @@ async function run(action, target) {
 document.addEventListener('click', async event => {
   const target = event.target.closest('button');
   if (!target || target.disabled) return;
-  if (target.dataset.action === 'toggle-meeting-nav') {
+  if (target.dataset.action === 'toggle-meeting-nav' && state.view === 'meetings') {
     meetingNavExpanded = !meetingNavExpanded;
     renderNavigation();
     return;
@@ -561,7 +559,9 @@ document.addEventListener('click', async event => {
   document.body.inert = true;
   try {
     if (target.dataset.view) await changeView(target.dataset.view);
-    if (target.dataset.action) await run(target.dataset.action, target);
+    if (target.dataset.action === 'toggle-meeting-nav') {
+      if (state.view === 'meetings') meetingNavExpanded = !meetingNavExpanded;
+    } else if (target.dataset.action) await run(target.dataset.action, target);
   } catch (error) {
     setMessage(error.message, true);
   } finally {

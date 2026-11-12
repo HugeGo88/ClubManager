@@ -13,14 +13,13 @@ button { cursor: pointer; }
 .activity button:hover, .activity button.active { color: white; background: #303e51; }
 .activity button.active { border-left-color: #79b4ff; }
 .activity button:focus-visible { outline: 2px solid #79b4ff; outline-offset: -2px; }
-.activity .meeting-nav-heading { display: flex; align-items: center; }
-.activity .meeting-nav-heading [data-view="meetings"] { flex: 1; min-width: 0; }
-.activity .nav-toggle { flex: 0 0 28px; width: 28px; justify-content: center; border-left: 0; font-size: 15px; padding: 0; }
+.activity .nav-chevron { width: 16px; height: 16px; margin-left: auto; flex: 0 0 16px; }
+.activity .meeting-nav-heading[aria-expanded="false"] .nav-chevron { transform: rotate(-90deg); }
 .activity .meeting-subnav { padding-left: 16px; }
 .activity .meeting-subnav[hidden] { display: none; }
 .activity .meeting-subnav button { min-height: 42px; border-left-width: 2px; }
 .activity .meeting-subnav .nav-icon { font-size: 19px; }
-.activity .meeting-nav-heading [data-view="meetings"].parent-active { color: white; }
+.activity .meeting-nav-heading.parent-active { color: white; }
 .activity .settings-nav { margin-top: auto; margin-bottom: 12px; }
 .settings-tabs { display: flex; gap: 6px; margin: 20px 0; overflow-x: auto; border-bottom: 1px solid #d5dbe2; }
 .settings-tab { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; padding: 11px 16px; background: transparent; color: #536176; }

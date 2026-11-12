@@ -177,8 +177,21 @@ async function main() {
           setInput('[data-field="title"]', 'Beispiel: Vorstandssitzung');
           const dirtyEditor = document.querySelector('[data-markdown-editor="0"] .cm-editor');
           const meetingToggle = document.querySelector('[data-action="toggle-meeting-nav"]');
+          const assertExpanded = expanded => {
+            if (meetingToggle.getAttribute('aria-expanded') !== String(expanded) ||
+                document.querySelector('#meeting-subnav').hidden === expanded) {
+              throw new Error('Meeting heading did not toggle its subnavigation');
+            }
+          };
+          assertExpanded(true);
+          meetingToggle.querySelector('.nav-icon').click();
+          assertExpanded(false);
+          meetingToggle.querySelector('.nav-label').click();
+          assertExpanded(true);
+          meetingToggle.querySelector('.nav-chevron').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          assertExpanded(false);
           meetingToggle.click();
-          meetingToggle.click();
+          assertExpanded(true);
           if (document.querySelector('[data-markdown-editor="0"] .cm-editor') !== dirtyEditor ||
               document.querySelector('[data-field="title"]').value !== 'Beispiel: Vorstandssitzung') {
             throw new Error('Collapsing navigation must preserve unsaved editor state');

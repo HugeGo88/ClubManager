@@ -32,7 +32,9 @@ The sidebar has a collapsible Meetings group with **Offene Aufgaben**,
 **Entscheidungen** and **Alle TOPs**, plus Settings. Each module has a Settings
 tab and can be disabled; only Meetings is enabled by default. A disabled module
 and its navigation entries are hidden, and the renderer rejects navigation into
-it. Settings remains available even if all modules are disabled.
+it. The entire Meetings heading toggles its subnavigation and opens the meeting
+view when necessary; toggling while already editing a meeting preserves unsaved
+edits. Settings remains available even if all modules are disabled.
 
 ## Processes and data flow
 

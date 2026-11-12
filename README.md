@@ -109,8 +109,9 @@ Markdown task checkboxes can be toggled directly; these are separate from the
 meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
 used for PDF export, where task checkboxes are shown as non-editable. The Open
 Tasks view lists tasks from saved meetings. The sidebar shows names alongside
-the module icons. The meeting icon's arrow expands or
-collapses the **Offene Aufgaben** and **Entscheidungen** subviews.
+the module icons. The whole **Sitzungen** row expands or collapses the
+**Offene Aufgaben**, **Entscheidungen** and **Alle TOPs** subviews and opens the
+meeting view when needed.
 **Entscheidungen** lists decision TOPs and their results from saved meetings,
 including those without a selected result. It can reload the list and open the
 source meeting. The search filters TOP titles, results, meeting titles and
