@@ -1,7 +1,7 @@
 {
   "name": "clubmanager",
   "productName": "ClubManager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "A modular desktop app for managing a club.",
   "author": "ClubManager",
