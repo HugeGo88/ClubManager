@@ -98,6 +98,16 @@ button:disabled { opacity: .45; cursor: default; }
 .tasks-table time { white-space: nowrap; }
 .tasks-table td:last-child { white-space: nowrap; }
 .decisions-table { min-width: 800px; }
+.tops-table { min-width: 1400px; }
+.top-type { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #e7ebf0; color: #364152; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.top-type-discussion { background: #dceaff; color: #174581; }
+.top-type-decision { background: #d9f3e3; color: #125c36; }
+.top-type-info { background: #fff0cf; color: #724316; }
+.top-details-toggle { border: 0; padding: 0; background: none; color: #2867c7; font: inherit; text-align: left; }
+.top-details-toggle:hover { text-decoration: underline; }
+.top-details-toggle:focus-visible { outline: 2px solid #2867c7; outline-offset: 2px; }
+.top-details-row td { background: #f7faff; }
+.top-details-content { white-space: pre-wrap; }
 .decision-result { display: inline-block; border-radius: 999px; padding: 4px 10px; background: #fff0cf; color: #724316; }
 .decision-result[data-result="unanimous_accepted"] { background: #d9f3e3; color: #125c36; }
 .decision-result[data-result="unanimous_rejected"] { background: #fde1e1; color: #8d2028; }

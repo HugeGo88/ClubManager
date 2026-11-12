@@ -2,6 +2,7 @@ const app = document.querySelector('#app');
 const state = { view: 'meetings', version: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '' };
+const topView = { search: '', type: '', meeting: '', expanded: '' };
 let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 let meetingNavExpanded = true;
@@ -210,13 +211,60 @@ function decisionsView() {
     </div>`;
 }
 
+function topResults() {
+  const allTops = state.meetings.flatMap(({ meeting }) => meeting.points
+    .map((point, pointIndex) => ({ meeting, point, pointIndex })));
+  const search = topView.search.trim().toLocaleLowerCase('de');
+  const tops = allTops.filter(({ meeting, point }) => {
+    const text = [
+      point.headline || 'TOP ohne Titel', point.details, point.responsible,
+      clubDeutsch.pointType[point.type], meeting.title || 'Sitzung ohne Titel',
+      meeting.date || 'Kein Datum', formatDate(meeting.date)
+    ].join(' ').toLocaleLowerCase('de');
+    return text.includes(search) &&
+      (!topView.type || point.type === topView.type) &&
+      (!topView.meeting || meeting.id === topView.meeting);
+  });
+  return `<p class="task-count" role="status">${tops.length} von ${allTops.length} TOPs</p>
+    ${allTops.length === 0 ? '<p>Keine TOPs in gespeicherten Sitzungen vorhanden.</p>' : tops.length === 0 ? '<p>Keine TOPs entsprechen den Filtern.</p>' :
+      `<div class="table-scroll" role="region" aria-label="TOP-Tabelle, horizontal scrollbar" tabindex="0">
+      <table class="tasks-table tops-table"><caption class="sr-only">Alle TOPs aus gespeicherten Protokollen</caption>
+      <thead><tr><th scope="col">TOP</th><th scope="col">Typ</th><th scope="col">Details</th><th scope="col">Verantwortlich</th><th scope="col">Sitzung</th><th scope="col">Datum</th><th scope="col">Aktion</th></tr></thead>
+      <tbody>${tops.map(({ meeting, point, pointIndex }) => {
+        const expanded = topView.expanded === `${meeting.id}:${pointIndex}`;
+        const detailsId = `top-details-${meeting.id}-${pointIndex}`;
+        return `<tr data-top-row data-type="${escape(point.type)}" data-meeting-id="${escape(meeting.id)}">
+        <td>${escape(point.headline || 'TOP ohne Titel')}</td>
+        <td><span class="top-type top-type-${escape(point.type)}">${escape(clubDeutsch.pointType[point.type])}</span></td>
+        <td class="top-details"><button class="top-details-toggle" data-action="toggle-top-details" data-id="${escape(meeting.id)}" data-index="${pointIndex}" aria-controls="${escape(detailsId)}" aria-expanded="${expanded}">${expanded ? 'Details ausblenden' : 'Details anzeigen'}</button></td>
+        <td>${escape(point.responsible || '—')}</td>
+        <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
+        <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
+        <td><button class="action" data-action="select-top-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
+      </tr>${expanded ? `<tr class="top-details-row"><td colspan="7"><div class="top-details-content" id="${escape(detailsId)}">${escape(point.details || 'Keine Details vorhanden.')}</div></td></tr>` : ''}`;
+      }).join('')}</tbody></table></div>`}`;
+}
+
+function topsView() {
+  return `<div class="topline"><div><h1>Alle TOPs</h1><p>TOPs aus allen gespeicherten Protokollen.</p></div>${button('refresh-tops', 'TOPs neu laden')}</div>
+    <div class="card">
+      <div class="task-filters">
+        <label>TOPs suchen<input type="search" data-top-filter="search" value="${escape(topView.search)}" placeholder="Überschrift, Details, Verantwortliche, Sitzung oder Datum"></label>
+        <label>Typ filtern<select data-top-filter="type"><option value="">Alle Typen</option>${Object.entries(clubDeutsch.pointType).map(([type, label]) => `<option value="${escape(type)}" ${topView.type === type ? 'selected' : ''}>${escape(label)}</option>`).join('')}</select></label>
+        <label>Protokoll filtern<select data-top-filter="meeting"><option value="">Alle Protokolle</option>${state.meetings.map(({ meeting }) => `<option value="${escape(meeting.id)}" ${topView.meeting === meeting.id ? 'selected' : ''}>${escape(meeting.title || 'Sitzung ohne Titel')}${meeting.date ? ` – ${escape(formatDate(meeting.date))}` : ''}</option>`).join('')}</select></label>
+        ${button('clear-top-filters', 'Filter zurücksetzen')}
+      </div>
+      <div id="top-results">${topResults()}</div>
+    </div>`;
+}
+
 function renderNavigation() {
   document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
   document.querySelectorAll('[data-module-view]').forEach(element => {
     element.hidden = !state.modules[element.dataset.moduleView];
   });
   document.querySelector('[data-module-nav="meetings"]').hidden = !state.modules.meetings;
-  document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', state.view === 'tasks' || state.view === 'decisions');
+  document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', ['tasks', 'decisions', 'tops'].includes(state.view));
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
   toggle.setAttribute('aria-label', `Sitzungsunterpunkte ${meetingNavExpanded ? 'einklappen' : 'ausklappen'}`);
@@ -273,12 +321,14 @@ function render() {
     content = tasksView();
   } else if (state.view === 'decisions') {
     content = decisionsView();
+  } else if (state.view === 'tops') {
+    content = topsView();
   } else {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
-    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
+    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
   app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
     const index = Number(parent.dataset.markdownEditor);
     const point = state.meeting.points[index];
@@ -294,7 +344,7 @@ function render() {
     newContent.scrollTop = scrollTop;
     newContent.scrollLeft = scrollLeft;
   }
-  if (preserveScroll && (state.view === 'tasks' || state.view === 'decisions')) {
+  if (preserveScroll && ['tasks', 'decisions', 'tops'].includes(state.view)) {
     const table = app.querySelector('.table-scroll');
     if (table) table.scrollLeft = tableScroll;
   }
@@ -343,9 +393,17 @@ function refreshDecisionResults() {
   if (table) table.scrollLeft = scrollLeft;
 }
 
+function refreshTopResults() {
+  const results = document.querySelector('#top-results');
+  const scrollLeft = results.querySelector('.table-scroll')?.scrollLeft ?? 0;
+  results.innerHTML = topResults();
+  const table = results.querySelector('.table-scroll');
+  if (table) table.scrollLeft = scrollLeft;
+}
+
 async function changeView(view) {
   if (view === state.view) return;
-  const module = view === 'tasks' || view === 'decisions' ? 'meetings' : view;
+  const module = ['tasks', 'decisions', 'tops'].includes(view) ? 'meetings' : view;
   if (view !== 'settings' && !state.modules[module]) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
@@ -407,7 +465,8 @@ async function run(action, target) {
       break;
     case 'select':
     case 'select-task-meeting':
-    case 'select-decision-meeting': {
+    case 'select-decision-meeting':
+    case 'select-top-meeting': {
       if (!confirmDiscard()) return;
       await refresh();
       const selected = state.meetings.find(item => item.meeting.id === target.dataset.id);
@@ -429,6 +488,20 @@ async function run(action, target) {
     case 'refresh-decisions':
       await refresh();
       setMessage('Entscheidungen neu geladen.');
+      break;
+    case 'refresh-tops':
+      await refresh();
+      setMessage('TOPs neu geladen.');
+      break;
+    case 'toggle-top-details': {
+      const key = `${target.dataset.id}:${target.dataset.index}`;
+      topView.expanded = topView.expanded === key ? '' : key;
+      break;
+    }
+    case 'clear-top-filters':
+      topView.search = '';
+      topView.type = '';
+      topView.meeting = '';
       break;
     case 'clear-task-filters':
       taskView.search = '';
@@ -555,6 +628,11 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.dataset.topFilter === 'search') {
+    topView.search = target.value;
+    refreshTopResults();
+    return;
+  }
   if (target.hasAttribute('data-decision-search')) {
     decisionView.search = target.value;
     refreshDecisionResults();
@@ -608,6 +686,13 @@ app.addEventListener('input', event => {
   state.dirty = true;
   const status = document.querySelector('.status');
   if (status) status.textContent = 'Ungespeicherte Änderungen';
+});
+
+app.addEventListener('change', event => {
+  const target = event.target;
+  if (target.dataset.topFilter !== 'type' && target.dataset.topFilter !== 'meeting') return;
+  topView[target.dataset.topFilter] = target.value;
+  refreshTopResults();
 });
 
 window.addEventListener('beforeunload', event => {

@@ -391,7 +391,7 @@ async function main() {
         assert.deepEqual(result.tasksBefore, [false, true]);
         assert.deepEqual(result.persistedChecks, [true, true]);
         assert.ok(result.absentBeforeExport);
-        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
+        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
         assert.deepEqual(result.visibleNavigation.map(item => item.text), result.navigation);
         assert.ok(result.visibleNavigation.every(item => item.visible), 'Navigation labels must be visible next to their icons');
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
@@ -439,7 +439,8 @@ async function main() {
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
-              if (test()) return;
+              const value = test();
+              if (value) return value;
               await new Promise(resolve => setTimeout(resolve, 25));
             }
             throw new Error('Timed out waiting for PDF export');
@@ -489,6 +490,7 @@ async function main() {
           { headline: 'Ablehnung', type: 'decision', details: '', tasks: [], vote: { result: 'unanimous_rejected', yes: null, no: null, abstain: null } },
           { headline: 'Keine Entscheidung', type: 'info', details: '', tasks: [], vote: { result: 'accepted', yes: 2, no: null, abstain: null } }
         );
+        fixture.meeting.points[1].details = 'Veranstaltungsplan besprechen';
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(fixture, null, 2) + '\n');
         const second = structuredClone(saved);
         second.meeting.id = randomUUID();
@@ -501,10 +503,16 @@ async function main() {
         const decisions = await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
-              if (test()) return;
+              const value = test();
+              if (value) return value;
               await new Promise(resolve => setTimeout(resolve, 25));
             }
             throw new Error('Timed out waiting for decisions');
+          };
+          const click = async selector => {
+            const element = await waitFor(() => !document.body.inert && document.querySelector(selector));
+            if (!element) throw new Error('Element not found: ' + selector);
+            element.click();
           };
           document.querySelector('[data-view="decisions"]').click();
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Entscheidungen');
@@ -539,9 +547,56 @@ async function main() {
           document.querySelector('[data-action="select-decision-meeting"]').click();
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Sitzung bearbeiten');
           const title = document.querySelector('[data-field="title"]').value;
+          await click('[data-view="tops"]');
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Alle TOPs');
+          const totalTopCount = document.querySelectorAll('[data-top-row]').length;
+          const topHeaders = [...document.querySelectorAll('.tops-table thead th')].map(header => header.textContent);
+          const initialTopRow = document.querySelector('[data-top-row]');
+          const initialTopTitle = initialTopRow.cells[0].textContent;
+          const initialTopDate = initialTopRow.cells[5].textContent;
+          const expectedMeetingDate = clubDates.formatDate('${saved.meeting.date}');
+          const setTopFilter = (name, value, eventName) => {
+            const filter = document.querySelector('[data-top-filter="' + name + '"]');
+            filter.value = value;
+            filter.dispatchEvent(new Event(eventName, { bubbles: true }));
+          };
+          const allTopDetails = [...document.querySelectorAll('[data-top-row]')].map(row => row.cells[2].textContent);
+          const typeBadge = document.querySelector('[data-top-row] .top-type');
+          const typeBadgeRadius = getComputedStyle(typeBadge).borderRadius;
+          const typeBadgeClass = [...typeBadge.classList].find(name => name.startsWith('top-type-'));
+          const detailsToggle = '[data-top-row] .top-details-toggle[data-id="${saved.meeting.id}"][data-index="1"]';
+          const detailsInitiallyHidden = !document.querySelector('.top-details-row');
+          await click(detailsToggle);
+          const expandedDetailsRow = document.querySelector('.top-details-row');
+          const detailsExpanded = expandedDetailsRow?.cells[0].colSpan === 7 &&
+            expandedDetailsRow.querySelector('.top-details-content')?.textContent.includes('Veranstaltungsplan besprechen') &&
+            document.querySelector(detailsToggle).getAttribute('aria-expanded') === 'true';
+          await click(detailsToggle);
+          const detailsCollapsed = !document.querySelector('.top-details-row');
+          setTopFilter('search', 'veranstaltungsplan', 'input');
+          const detailSearch = [...document.querySelectorAll('[data-top-row]')].map(row => row.cells[0].textContent);
+          if (!detailSearch.length) throw new Error('TOP details search failed: ' + JSON.stringify({ allTopDetails, search: document.querySelector('[data-top-filter="search"]').value }));
+          setTopFilter('search', '', 'input');
+          setTopFilter('type', 'decision', 'change');
+          const decisionTopCount = document.querySelectorAll('[data-top-row]').length;
+          setTopFilter('meeting', '${second.meeting.id}', 'change');
+          const filteredTopCount = document.querySelectorAll('[data-top-row]').length;
+          setTopFilter('type', '', 'change');
+          setTopFilter('meeting', '', 'change');
+          setTopFilter('type', 'discussion', 'change');
+          document.querySelector('[data-action="refresh-tops"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'TOPs neu geladen.');
+          const filterPreserved = document.querySelector('[data-top-filter="type"]').value === 'discussion' &&
+            document.querySelectorAll('[data-top-row]').length === 1;
+          await click('[data-action="clear-top-filters"]');
+          await waitFor(() => document.querySelectorAll('[data-top-row]').length === totalTopCount);
+          await click('[data-action="select-top-meeting"][data-id="${second.meeting.id}"]');
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Sitzung bearbeiten');
+          const openedTopMeeting = document.querySelector('[data-field="title"]').value;
           document.querySelector('[data-view="tasks"]').click();
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
-          return { rows, title, searches };
+          return { rows, title, searches, tops: { totalTopCount, topHeaders, initialTopTitle, initialTopDate, expectedMeetingDate, detailSearch, decisionTopCount, filteredTopCount, filterPreserved, openedTopMeeting,
+            typeBadge: typeBadge.textContent, typeBadgeClass, typeBadgeRadius, detailsInitiallyHidden, detailsExpanded, detailsCollapsed } };
         })()`);
         assert.equal(decisions.rows.length, 4);
         assert.deepEqual(decisions.rows.map(row => row.cells[0]), ['Budget', 'Alt <Beschluss>', 'Ablehnung', 'Weitere Entscheidung']);
@@ -562,6 +617,21 @@ async function main() {
         assert.match(decisions.searches.emptyMessage, /Keine Entscheidungen entsprechen der Suche/);
         assert.equal(decisions.searches.cleared.length, 4);
         assert.equal(decisions.title, saved.meeting.title);
+        assert.equal(decisions.tops.totalTopCount, 6);
+        assert.deepEqual(decisions.tops.topHeaders, ['TOP', 'Typ', 'Details', 'Verantwortlich', 'Sitzung', 'Datum', 'Aktion']);
+        assert.equal(decisions.tops.initialTopTitle, 'Budget');
+        assert.equal(decisions.tops.initialTopDate, decisions.tops.expectedMeetingDate);
+        assert.deepEqual(decisions.tops.detailSearch, ['Kommende Veranstaltung']);
+        assert.equal(decisions.tops.decisionTopCount, 4);
+        assert.equal(decisions.tops.filteredTopCount, 1);
+        assert.equal(decisions.tops.filterPreserved, true);
+        assert.equal(decisions.tops.openedTopMeeting, 'Weitere Sitzung');
+        assert.equal(decisions.tops.typeBadge, 'Entscheidung');
+        assert.equal(decisions.tops.typeBadgeClass, 'top-type-decision');
+        assert.equal(decisions.tops.typeBadgeRadius, '999px');
+        assert.equal(decisions.tops.detailsInitiallyHidden, true);
+        assert.equal(decisions.tops.detailsExpanded, true);
+        assert.equal(decisions.tops.detailsCollapsed, true);
         await fs.unlink(secondFile);
         const now = new Date();
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
