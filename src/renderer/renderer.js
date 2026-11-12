@@ -258,13 +258,57 @@ function topsView() {
     </div>`;
 }
 
+function statisticsView() {
+  const { open, completed, overdue, included, excluded, points } = clubTaskStatistics.summarize(state.meetings);
+  let chart = '<p>Für den Verlauf sind keine Aufgaben mit ausreichend gültigen Datumsangaben vorhanden.</p>';
+  if (points.length) {
+    const first = Date.parse(`${points[0].date}T00:00:00Z`);
+    const last = Date.parse(`${points.at(-1).date}T00:00:00Z`);
+    const max = Math.max(1, ...points.map(point => point.open));
+    const x = point => last === first ? 50 : 50 + (Date.parse(`${point.date}T00:00:00Z`) - first) / (last - first) * 700;
+    const y = point => 190 - point.open / max * 160;
+    const path = points.map((point, index) => {
+      const currentX = x(point).toFixed(2);
+      const currentY = y(point).toFixed(2);
+      return index ? `H ${currentX} V ${currentY}` : `M ${currentX} ${currentY}`;
+    }).join(' ');
+    chart = `<svg class="statistics-chart" viewBox="0 0 800 240" role="img" aria-labelledby="statistics-chart-title statistics-chart-desc">
+      <title id="statistics-chart-title">Geschätzter Verlauf offener Aufgaben</title>
+      <desc id="statistics-chart-desc">Die Linie zeigt den geschätzten Stand am Ende jedes Datums. Die Werte stehen auch in der Tabelle darunter.</desc>
+      <line class="statistics-axis" x1="50" y1="30" x2="50" y2="190"></line>
+      <line class="statistics-axis" x1="50" y1="190" x2="750" y2="190"></line>
+      <text x="40" y="35" text-anchor="end">${max}</text><text x="40" y="195" text-anchor="end">0</text>
+      <path class="statistics-line" d="${path}"></path>
+      ${points.map(point => `<circle class="statistics-point" cx="${x(point).toFixed(2)}" cy="${y(point).toFixed(2)}" r="4"><title>${escape(formatDate(point.date))}: ${point.open} offene Aufgaben</title></circle>`).join('')}
+      <text x="50" y="218" text-anchor="start">${escape(formatDate(points[0].date))}</text>
+      ${last === first ? '' : `<text x="750" y="218" text-anchor="end">${escape(formatDate(points.at(-1).date))}</text>`}
+    </svg>
+    <details class="statistics-data"><summary>Verlaufswerte als Tabelle anzeigen</summary>
+      <table><caption>Geschätzte offene Aufgaben am Tagesende</caption><thead><tr><th scope="col">Datum</th><th scope="col">Offene Aufgaben</th></tr></thead>
+      <tbody>${points.map(point => `<tr><td>${escape(formatDate(point.date))}</td><td>${point.open}</td></tr>`).join('')}</tbody></table>
+    </details>`;
+  }
+  return `<div class="topline"><div><h1>Statistiken</h1><p>Aufgaben aus gespeicherten Sitzungen.</p></div>${button('refresh-statistics', 'Statistiken neu laden')}</div>
+    <div class="statistics-summary">
+      <div class="card"><h2>Offen</h2><strong data-stat-open>${open}</strong></div>
+      <div class="card"><h2>Erledigt</h2><strong data-stat-completed>${completed}</strong></div>
+      <div class="card"><h2>Überfällig</h2><strong data-stat-overdue>${overdue}</strong></div>
+    </div>
+    <section class="card"><h2>Geschätzter Verlauf offener Aufgaben</h2>
+      <p>Das Sitzungsdatum dient als geschätztes Startdatum. Erledigungen werden am gespeicherten Erledigungsdatum berücksichtigt. Die Linie zeigt den Stand am Tagesende.</p>
+      <p>Der Verlauf umfasst ${included} Aufgaben; ausgeschlossen: ${excluded}. Ausgeschlossen werden Aufgaben mit fehlendem, ungültigem oder zukünftigem Sitzungsdatum sowie erledigte Aufgaben ohne gültiges Erledigungsdatum zwischen Sitzung und heute. Die aktuellen Zahlen oben enthalten alle Aufgaben.</p>
+      <p>Nachträglich hinzugefügte, gelöschte oder wieder geöffnete Aufgaben und geänderte Sitzungsdaten können den historischen Verlauf verfälschen; eine vollständige Historie wird nicht gespeichert.</p>
+      ${chart}
+    </section>`;
+}
+
 function renderNavigation() {
   document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
   document.querySelectorAll('[data-module-view]').forEach(element => {
     element.hidden = !state.modules[element.dataset.moduleView];
   });
   document.querySelector('[data-module-nav="meetings"]').hidden = !state.modules.meetings;
-  document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', ['tasks', 'decisions', 'tops'].includes(state.view));
+  document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view));
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
   document.querySelector('#meeting-subnav').hidden = !meetingNavExpanded;
@@ -321,12 +365,14 @@ function render() {
     content = decisionsView();
   } else if (state.view === 'tops') {
     content = topsView();
+  } else if (state.view === 'statistics') {
+    content = statisticsView();
   } else {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
-    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
+    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
   app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
     const index = Number(parent.dataset.markdownEditor);
     const point = state.meeting.points[index];
@@ -351,23 +397,23 @@ function render() {
 
 function scheduleTaskDateRefresh() {
   clearTimeout(taskDateRefresh);
-  if (state.view !== 'tasks' || !state.folder) return;
+  if (!['tasks', 'statistics'].includes(state.view) || !state.folder) return;
   displayedTaskDate = clubDates.localDate();
   const now = new Date();
   const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   taskDateRefresh = setTimeout(() => {
-    if (state.view === 'tasks' && state.folder) {
-      refreshTaskResults();
-      scheduleTaskDateRefresh();
+    if (['tasks', 'statistics'].includes(state.view) && state.folder) {
+      if (state.view === 'tasks') { refreshTaskResults(); scheduleTaskDateRefresh(); }
+      else render();
     }
   }, Math.max(1000, nextDay.getTime() - now.getTime() + 100));
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.view === 'tasks' && state.folder &&
+  if (document.visibilityState === 'visible' && ['tasks', 'statistics'].includes(state.view) && state.folder &&
       displayedTaskDate !== clubDates.localDate()) {
-    refreshTaskResults();
-    scheduleTaskDateRefresh();
+    if (state.view === 'tasks') { refreshTaskResults(); scheduleTaskDateRefresh(); }
+    else render();
   }
 });
 
@@ -401,7 +447,7 @@ function refreshTopResults() {
 
 async function changeView(view) {
   if (view === state.view) return;
-  const module = ['tasks', 'decisions', 'tops'].includes(view) ? 'meetings' : view;
+  const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(view) ? 'meetings' : view;
   if (view !== 'settings' && !state.modules[module]) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
@@ -490,6 +536,10 @@ async function run(action, target) {
     case 'refresh-tops':
       await refresh();
       setMessage('TOPs neu geladen.');
+      break;
+    case 'refresh-statistics':
+      await refresh();
+      setMessage('Statistiken neu geladen.');
       break;
     case 'toggle-top-details': {
       const key = `${target.dataset.id}:${target.dataset.index}`;

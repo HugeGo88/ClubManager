@@ -96,6 +96,11 @@ async function main() {
           await setModule('letters', false);
           if (!document.querySelector('[data-module-view="letters"]').hidden) throw new Error('Disabled module remains in sidebar');
           await setModule('letters', true);
+          await setModule('meetings', false);
+          if (!document.querySelector('[data-view="statistics"]').hidden ||
+              !document.querySelector('[data-module-nav="meetings"]').hidden) throw new Error('Disabled statistics navigation remains visible');
+          await setModule('meetings', true);
+          if (document.querySelector('[data-view="statistics"]').hidden) throw new Error('Enabled statistics navigation is hidden');
           if (JSON.stringify(await window.club.getModules()) !== JSON.stringify({ meetings: true, members: true, invoices: true, letters: true })) {
             throw new Error('Enabled modules were not persisted');
           }
@@ -146,6 +151,12 @@ async function main() {
           }
           await click('[data-view="meetings"]');
           await waitFor(() => document.querySelector('.list'));
+          await click('[data-view="statistics"]');
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Statistiken');
+          if (document.querySelector('[data-stat-open]').textContent !== '0' ||
+              !document.querySelector('main').textContent.includes('keine Aufgaben mit ausreichend gültigen Datumsangaben')) {
+            throw new Error('Empty statistics view is incorrect');
+          }
           await click('[data-view="decisions"]');
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Entscheidungen');
           if (!document.querySelector('main').textContent.includes('Keine Entscheidungen vorhanden.')) throw new Error('Empty decisions view missing');
@@ -404,7 +415,7 @@ async function main() {
         assert.deepEqual(result.tasksBefore, [false, true]);
         assert.deepEqual(result.persistedChecks, [true, true]);
         assert.ok(result.absentBeforeExport);
-        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
+        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
         assert.deepEqual(result.visibleNavigation.map(item => item.text), result.navigation);
         assert.ok(result.visibleNavigation.every(item => item.visible), 'Navigation labels must be visible next to their icons');
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
@@ -497,6 +508,47 @@ async function main() {
         })()`);
         assert.match(missingDateError, /gültiges Sitzungsdatum/);
         for (const file of earlierFiles) await fs.unlink(file);
+        const statsRecord = { version: 1, meeting: { id: randomUUID(), title: 'Statistiktest', date: '2000-01-01', attendance: [],
+          points: [{ headline: 'Statistik', type: 'discussion', details: '', tasks: [
+            { description: 'Offen', responsible: '', done: false, dueDate: '2000-01-02' },
+            { description: 'Erledigt', responsible: '', done: true, completedDate: '2000-01-03' },
+            { description: 'Alt', responsible: '', done: true }
+          ] }] } };
+        const statsFile = path.join(meetingsDir, `${statsRecord.meeting.id}.json`);
+        await fs.writeFile(statsFile, JSON.stringify(statsRecord));
+        const statistics = await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for statistics');
+          };
+          document.querySelector('[data-view="statistics"]').click();
+          await waitFor(() => document.querySelector('main h1')?.textContent === 'Statistiken');
+          const expected = clubTaskStatistics.summarize(await window.club.listMeetings());
+          const actual = {
+            open: Number(document.querySelector('[data-stat-open]').textContent),
+            completed: Number(document.querySelector('[data-stat-completed]').textContent),
+            overdue: Number(document.querySelector('[data-stat-overdue]').textContent),
+            points: [...document.querySelectorAll('.statistics-data tbody tr')].map(row => ({
+              date: row.cells[0].textContent, open: Number(row.cells[1].textContent)
+            })),
+            description: document.querySelector('main').textContent,
+            circles: document.querySelectorAll('.statistics-point').length
+          };
+          document.querySelector('[data-action="refresh-statistics"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Statistiken neu geladen.');
+          return { actual, expected, formatted: expected.points.map(point => ({ date: clubDates.formatDate(point.date), open: point.open })) };
+        })()`);
+        assert.equal(statistics.actual.open, statistics.expected.open);
+        assert.equal(statistics.actual.completed, statistics.expected.completed);
+        assert.equal(statistics.actual.overdue, statistics.expected.overdue);
+        assert.deepEqual(statistics.actual.points, statistics.formatted);
+        assert.equal(statistics.actual.circles, statistics.expected.points.length);
+        assert.match(statistics.actual.description, /ausgeschlossen: 1/);
+        await fs.unlink(statsFile);
         const fixture = structuredClone(saved);
         fixture.meeting.points.push(
           { headline: 'Alt <Beschluss>', type: 'decision', details: '', tasks: [] },

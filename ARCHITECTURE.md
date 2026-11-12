@@ -29,7 +29,7 @@ or separate service. Modularity and intentional data-sharing interfaces are
 future design goals, not existing guarantees.
 
 The sidebar has a collapsible Meetings group with **Offene Aufgaben**,
-**Entscheidungen** and **Alle TOPs**, plus Settings. Each module has a Settings
+**Entscheidungen**, **Alle TOPs** and **Statistiken**, plus Settings. Each module has a Settings
 tab and can be disabled; only Meetings is enabled by default. A disabled module
 and its navigation entries are hidden, and the renderer rejects navigation into
 it. The entire Meetings heading toggles its subnavigation and opens the meeting
@@ -147,6 +147,14 @@ separate operational steps.
   them, and marks a task complete via an immediate revision-checked save. A
   local completion date is set on completion and cleared when reopened;
   overdue display uses the local date and refreshes when the day changes.
+- Statistics shows current open, completed and overdue task counts across all
+  saved meetings, plus an estimated end-of-day open-task trend and a table of
+  its points. [src/shared/task-statistics.js](src/shared/task-statistics.js)
+  treats the meeting date as the task start and the stored completion date as
+  its end. Tasks with invalid, missing, future or inconsistent dates are
+  excluded from the trend and counted separately, not from current totals.
+  Task creation, deletion and reopening history is not recorded, so this is not
+  an exact historical burndown. Changing meetings can change past estimates.
 - Decisions aggregates decision TOPs from saved meetings and supports text
   search and opening the source meeting. All TOPs aggregates every saved TOP,
   searches title, details, person, type, meeting and date, and combines type and

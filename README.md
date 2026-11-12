@@ -110,7 +110,7 @@ meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
 used for PDF export, where task checkboxes are shown as non-editable. The Open
 Tasks view lists tasks from saved meetings. The sidebar shows names alongside
 the module icons. The whole **Sitzungen** row expands or collapses the
-**Offene Aufgaben**, **Entscheidungen** and **Alle TOPs** subviews and opens the
+**Offene Aufgaben**, **Entscheidungen**, **Alle TOPs** and **Statistiken** subviews and opens the
 meeting view when needed.
 **Entscheidungen** lists decision TOPs and their results from saved meetings,
 including those without a selected result. It can reload the list and open the
@@ -131,6 +131,12 @@ scroll the table horizontally to reach all columns.
 Completing a meeting task records the computer's local date; reopening it clears
 that date. Newly exported protocols display task checkboxes and, when known,
 their completion dates. Previously completed tasks have no inferred date.
+**Statistiken** shows current open, completed and overdue task totals and an
+estimated trend of open tasks over time. It assumes tasks start on the meeting
+date and uses recorded completion dates. Tasks with missing, future, invalid or
+inconsistent dates are excluded from the trend but included in current totals.
+Creation, deletion and reopening history is not stored, so historical values
+are estimates and may change when meeting data changes.
 
 The app warns if a meeting has changed on disk since it was opened. This is not
 a synchronization system or a substitute for backups; avoid editing the same

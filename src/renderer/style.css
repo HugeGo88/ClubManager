@@ -110,6 +110,19 @@ button:disabled { opacity: .45; cursor: default; }
 .decision-result { display: inline-block; border-radius: 999px; padding: 4px 10px; background: #fff0cf; color: #724316; }
 .decision-result[data-result="unanimous_accepted"] { background: #d9f3e3; color: #125c36; }
 .decision-result[data-result="unanimous_rejected"] { background: #fde1e1; color: #8d2028; }
+.statistics-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+.statistics-summary .card { margin: 0; }
+.statistics-summary h2 { margin: 0 0 8px; color: #667487; }
+.statistics-summary strong { font-size: 30px; }
+.statistics-chart { display: block; width: 100%; max-height: 360px; }
+.statistics-chart text { font-size: 12px; fill: #4a586b; }
+.statistics-axis { stroke: #8a98a9; stroke-width: 1; }
+.statistics-line { fill: none; stroke: #2867c7; stroke-width: 3; }
+.statistics-point { fill: #2867c7; }
+.statistics-data { margin-top: 16px; }
+.statistics-data summary { color: #2867c7; cursor: pointer; }
+.statistics-data table { margin-top: 12px; border-collapse: collapse; text-align: left; }
+.statistics-data th, .statistics-data td { padding: 6px 16px 6px 0; }
 .overdue { display: inline-block; color: #a32f26; font-size: 12px; font-weight: 700; }
 .sort-button { border: 0; background: none; color: inherit; font: inherit; font-weight: 600; padding: 0; }
 .sort-button:hover { color: #2867c7; }
