@@ -2,7 +2,8 @@
 
 An early Electron desktop app. The first version focuses on meetings; Members,
 Invoices, and Letters are placeholders. See [product ideas](PRODUCT_IDEAS.md)
-for the longer-term direction.
+for the longer-term direction and [architecture](ARCHITECTURE.md) for the
+current implementation and maintenance guidance.
 
 ## Screenshots
 
