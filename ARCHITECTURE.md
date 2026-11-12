@@ -156,7 +156,8 @@ separate operational steps.
   Task creation, deletion and reopening history is not recorded, so this is not
   an exact historical burndown. Changing meetings can change past estimates.
 - Decisions aggregates decision TOPs from saved meetings and supports text
-  search and opening the source meeting. All TOPs aggregates every saved TOP,
+  search, expanding TOP details across the table and opening the source meeting.
+  All TOPs aggregates every saved TOP,
   searches title, details, person, type, meeting and date, and combines type and
   meeting filters. Details expand across the table and the source meeting can
   be opened. These views do not depend on the presence of an exported PDF.

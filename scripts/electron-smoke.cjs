@@ -551,10 +551,11 @@ async function main() {
         await fs.unlink(statsFile);
         const fixture = structuredClone(saved);
         fixture.meeting.points.push(
-          { headline: 'Alt <Beschluss>', type: 'decision', details: '', tasks: [] },
+          { headline: 'Alt <Beschluss>', type: 'decision', details: 'Zweite Entscheidung', tasks: [] },
           { headline: 'Ablehnung', type: 'decision', details: '', tasks: [], vote: { result: 'unanimous_rejected', yes: null, no: null, abstain: null } },
           { headline: 'Keine Entscheidung', type: 'info', details: '', tasks: [], vote: { result: 'accepted', yes: 2, no: null, abstain: null } }
         );
+        fixture.meeting.points[0].details = 'Budget <img src=x> prüfen\nZweite Zeile';
         fixture.meeting.points[1].details = 'Veranstaltungsplan besprechen';
         await fs.writeFile(path.join(meetingsDir, jsonFile), JSON.stringify(fixture, null, 2) + '\n');
         const second = structuredClone(saved);
@@ -586,6 +587,27 @@ async function main() {
             color: getComputedStyle(row.querySelector('.decision-result')).backgroundColor
           }));
           if (document.querySelector('.decisions-table img')) throw new Error('Decision title was not escaped');
+          const firstDetails = '[data-action="toggle-decision-details"][data-id="${saved.meeting.id}"][data-index="0"]';
+          const secondDetails = '[data-action="toggle-decision-details"][data-id="${saved.meeting.id}"][data-index="2"]';
+          const emptyDetails = '[data-action="toggle-decision-details"][data-id="${second.meeting.id}"][data-index="0"]';
+          if (document.querySelector('.decisions-table .top-details-row')) throw new Error('Decision details must initially be collapsed');
+          await click(firstDetails);
+          const firstButton = document.querySelector(firstDetails);
+          const firstRow = firstButton.closest('tr').nextElementSibling;
+          if (firstButton.getAttribute('aria-expanded') !== 'true' || document.activeElement !== firstButton ||
+              firstRow?.cells[0].colSpan !== 6 || firstRow.querySelector('.top-details-content')?.id !== firstButton.getAttribute('aria-controls') ||
+              firstRow.querySelector('.top-details-content')?.textContent !== 'Budget <img src=x> prüfen\\nZweite Zeile' ||
+              firstRow.querySelector('img')) throw new Error('Decision details should expand safely across the table and retain focus');
+          await click(secondDetails);
+          if (document.querySelectorAll('.decisions-table .top-details-row').length !== 1 ||
+              document.querySelector(secondDetails).closest('tr').nextElementSibling.textContent !== 'Zweite Entscheidung' ||
+              document.querySelector(firstDetails).getAttribute('aria-expanded') !== 'false') throw new Error('Only the selected decision should be expanded');
+          await click(emptyDetails);
+          if (document.querySelector(emptyDetails).closest('tr').nextElementSibling.textContent !== 'Keine Details vorhanden.') {
+            throw new Error('Empty decision details must show a placeholder');
+          }
+          await click(emptyDetails);
+          if (document.querySelector('.decisions-table .top-details-row')) throw new Error('Decision details must collapse');
           const search = document.querySelector('[data-decision-search]');
           const filter = value => {
             search.focus();

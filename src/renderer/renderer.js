@@ -1,7 +1,7 @@
 const app = document.querySelector('#app');
 const state = { view: 'meetings', version: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
-const decisionView = { search: '' };
+const decisionView = { search: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
 let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
@@ -182,8 +182,7 @@ function tasksView() {
 
 function decisionResults() {
   const allDecisions = state.meetings.flatMap(({ meeting }) => meeting.points
-    .filter(point => point.type === 'decision')
-    .map(point => ({ meeting, point })));
+    .flatMap((point, pointIndex) => point.type === 'decision' ? [{ meeting, point, pointIndex }] : []));
   const search = decisionView.search.trim().toLocaleLowerCase('de');
   const decisions = allDecisions.filter(({ meeting, point }) =>
     [point.headline || 'TOP ohne Titel', clubDeutsch.voteDescription(point.vote),
@@ -193,14 +192,19 @@ function decisionResults() {
     ${allDecisions.length === 0 ? '<p>Keine Entscheidungen vorhanden.</p>' : decisions.length === 0 ? '<p>Keine Entscheidungen entsprechen der Suche.</p>' :
       `<div class="table-scroll" role="region" aria-label="Entscheidungstabelle, horizontal scrollbar" tabindex="0">
       <table class="tasks-table decisions-table"><caption class="sr-only">Entscheidungen aus Sitzungen</caption>
-      <thead><tr><th scope="col">TOP</th><th scope="col">Ergebnis</th><th scope="col">Sitzung</th><th scope="col">Sitzungsdatum</th><th scope="col">Aktion</th></tr></thead>
-      <tbody>${decisions.map(({ meeting, point }) => `<tr>
+      <thead><tr><th scope="col">TOP</th><th scope="col">Ergebnis</th><th scope="col">Sitzung</th><th scope="col">Sitzungsdatum</th><th scope="col">Details</th><th scope="col">Aktion</th></tr></thead>
+      <tbody>${decisions.map(({ meeting, point, pointIndex }) => {
+        const expanded = decisionView.expanded === `${meeting.id}:${pointIndex}`;
+        const detailsId = `decision-details-${meeting.id}-${pointIndex}`;
+        return `<tr data-decision-row>
         <td>${escape(point.headline || 'TOP ohne Titel')}</td>
         <td><span class="decision-result" data-result="${escape(point.vote?.result || '')}">${escape(clubDeutsch.voteDescription(point.vote))}</span></td>
         <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
         <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
+        <td><button class="top-details-toggle" data-action="toggle-decision-details" data-id="${escape(meeting.id)}" data-index="${pointIndex}" aria-controls="${escape(detailsId)}" aria-expanded="${expanded}">${expanded ? 'Details ausblenden' : 'Details anzeigen'}</button></td>
         <td><button class="action" data-action="select-decision-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
-      </tr>`).join('')}</tbody></table></div>`}`;
+      </tr>${expanded ? `<tr class="top-details-row"><td colspan="6"><div class="top-details-content" id="${escape(detailsId)}">${escape(point.details || 'Keine Details vorhanden.')}</div></td></tr>` : ''}`;
+      }).join('')}</tbody></table></div>`}`;
 }
 
 function decisionsView() {
@@ -533,6 +537,11 @@ async function run(action, target) {
       await refresh();
       setMessage('Entscheidungen neu geladen.');
       break;
+    case 'toggle-decision-details': {
+      const key = `${target.dataset.id}:${target.dataset.index}`;
+      decisionView.expanded = decisionView.expanded === key ? '' : key;
+      break;
+    }
     case 'refresh-tops':
       await refresh();
       setMessage('TOPs neu geladen.');
@@ -620,6 +629,10 @@ document.addEventListener('click', async event => {
   render();
   if (target.dataset.action === 'sort-tasks') {
     document.querySelector(`[data-action="sort-tasks"][data-sort="${target.dataset.sort}"]`)?.focus();
+  } else if (target.dataset.action === 'toggle-decision-details') {
+    document.querySelectorAll('[data-action="toggle-decision-details"]').forEach(button => {
+      if (button.dataset.id === target.dataset.id && button.dataset.index === target.dataset.index) button.focus();
+    });
   }
 });
 
