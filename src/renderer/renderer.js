@@ -1,10 +1,17 @@
 const app = document.querySelector('#app');
-const state = { view: 'meetings', version: null, folder: null, protocolCss: null, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '' };
 let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 let meetingNavExpanded = true;
+let settingsTab = 'general';
+const MODULES = [
+  ['meetings', 'Sitzungen', 'Besprechungen und Protokolle'],
+  ['members', 'Mitglieder', 'Mitgliederverwaltung und Geburtstage'],
+  ['invoices', 'Rechnungen', 'Rechnungen erstellen und verwalten'],
+  ['letters', 'Briefe', 'Serienbriefe und persönliche Briefe']
+];
 let markdownEditors = [];
 let taskDateRefresh;
 let displayedTaskDate;
@@ -205,12 +212,44 @@ function decisionsView() {
 
 function renderNavigation() {
   document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
+  document.querySelectorAll('[data-module-view]').forEach(element => {
+    element.hidden = !state.modules[element.dataset.moduleView];
+  });
+  document.querySelector('[data-module-nav="meetings"]').hidden = !state.modules.meetings;
   document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', state.view === 'tasks' || state.view === 'decisions');
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
   toggle.setAttribute('aria-label', `Sitzungsunterpunkte ${meetingNavExpanded ? 'einklappen' : 'ausklappen'}`);
   toggle.textContent = meetingNavExpanded ? '▾' : '▸';
   document.querySelector('#meeting-subnav').hidden = !meetingNavExpanded;
+}
+
+function settingsView() {
+  const selected = settingsTab === 'general' ? null : MODULES.find(([id]) => id === settingsTab);
+  const tabs = [['general', 'Allgemein'], ...MODULES.map(([id, name]) => [id, name])];
+  const moduleSettings = selected ? `<section class="card" role="tabpanel" aria-labelledby="settings-tab-${selected[0]}">
+      <h2>${selected[1]}</h2>
+      <p>${selected[2]}.</p>
+      <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''}> Modul aktivieren</label>
+      <p class="muted">${state.modules[selected[0]] ? 'Das Modul wird in der Seitenleiste angezeigt.' : 'Das Modul ist deaktiviert und wird aus der Seitenleiste ausgeblendet.'}</p>
+    </section>` : `<section role="tabpanel" aria-labelledby="settings-tab-general">
+      <div class="card"><h2>Datenordner</h2>
+        <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
+        <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
+        ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
+        <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
+      <div class="card"><h2>CSS für PDF-Protokolle</h2>
+        <p>Eine CSS-Datei ersetzt das Standardlayout beim nächsten PDF-Export.</p>
+        <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
+        <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
+        <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>
+      <div class="card"><h2>Über ClubManager</h2><p data-app-version>Version: ${escape(state.version ?? 'Nicht verfügbar')}</p></div>
+    </section>`;
+  return `<h1>Einstellungen</h1>
+    <div class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
+      ${tabs.map(([id, label]) => `<button type="button" class="settings-tab ${settingsTab === id ? 'selected' : ''}" id="settings-tab-${id}" role="tab" aria-selected="${settingsTab === id}" data-action="settings-tab" data-settings-tab="${id}">${label}</button>`).join('')}
+    </div>
+    ${moduleSettings}`;
 }
 
 function render() {
@@ -225,17 +264,7 @@ function render() {
   renderNavigation();
   let content = '';
   if (state.view === 'settings') {
-    content = `<h1>Einstellungen</h1><div class="card"><h2>Datenordner</h2>
-      <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
-      <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
-      ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
-      <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
-      <div class="card"><h2>CSS für PDF-Protokolle</h2>
-      <p>Eine CSS-Datei ersetzt das Standardlayout beim nächsten PDF-Export.</p>
-      <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
-      <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
-      <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>
-      <div class="card"><h2>Über ClubManager</h2><p data-app-version>Version: ${escape(state.version ?? 'Nicht verfügbar')}</p></div>`;
+    content = settingsView();
   } else if (!state.folder) {
     content = `<div class="empty"><h1>Willkommen bei ClubManager</h1><p>Wählen Sie zunächst in den Einstellungen einen Datenordner aus.</p>${button('open-settings', 'Einstellungen öffnen', 'primary')}</div>`;
   } else if (state.view === 'meetings') {
@@ -316,6 +345,11 @@ function refreshDecisionResults() {
 
 async function changeView(view) {
   if (view === state.view) return;
+  const module = view === 'tasks' || view === 'decisions' ? 'meetings' : view;
+  if (view !== 'settings' && !state.modules[module]) {
+    setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
+    return;
+  }
   if (!confirmDiscard()) return;
   state.meeting = null;
   state.revision = null;
@@ -332,6 +366,10 @@ async function run(action, target) {
   const i = Number(target.dataset.index);
   switch (action) {
     case 'open-settings': await changeView('settings'); break;
+    case 'settings-tab':
+      settingsTab = target.dataset.settingsTab;
+      setMessage('');
+      break;
     case 'choose-folder': {
       const selected = await window.club.chooseFolder();
       if (selected) {
@@ -475,6 +513,21 @@ document.addEventListener('keydown', event => {
 
 app.addEventListener('change', async event => {
   const target = event.target;
+  if (target.hasAttribute('data-module-toggle')) {
+    const module = target.dataset.moduleToggle;
+    const nextModules = { ...state.modules, [module]: target.checked };
+    document.body.inert = true;
+    try {
+      state.modules = await window.club.setModules(nextModules);
+      setMessage(`${MODULES.find(([id]) => id === module)[1]} ${target.checked ? 'aktiviert' : 'deaktiviert'}.`);
+    } catch (error) {
+      setMessage(error.message, true);
+    } finally {
+      document.body.inert = false;
+      render();
+    }
+    return;
+  }
   if (target.hasAttribute('data-include-earlier-tasks')) {
     includeEarlierTasks = target.checked;
     return;
@@ -583,6 +636,9 @@ window.club.onPrepareUpdate(async () => {
   try {
     state.folder = await window.club.getFolder();
     state.protocolCss = await window.club.getProtocolCss();
+    state.modules = await window.club.getModules();
+    app.dataset.modulesLoaded = 'true';
+    if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     await refresh();
   } catch (error) {
     setMessage(error.message, true);

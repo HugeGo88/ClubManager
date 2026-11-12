@@ -30,6 +30,9 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Use a left-side icon bar, similar to the Visual Studio Code activity bar, to
   switch between modules.
 - [x] Place Settings at the bottom of the icon bar.
+- [x] Provide a settings tab for each module and allow modules to be enabled or
+  disabled; only Meetings is enabled by default and disabled modules are hidden
+  from the sidebar.
 - [x] The interface and generated document labels are in German. New UI elements
   should also use German; shared terminology must stay consistent.
 - [x] Refer to meeting agenda items as TOPs (Tagesordnungspunkte).

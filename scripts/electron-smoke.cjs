@@ -50,6 +50,17 @@ async function main() {
     window.webContents.once('did-finish-load', async () => {
       try {
         await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for UI');
+          };
+          for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
           document.querySelector('[data-view="settings"]').click();
           for (let i = 0; i < 200; i++) {
             if (document.querySelector('[data-action="choose-protocol-css"]')) break;
@@ -59,6 +70,37 @@ async function main() {
           if (document.querySelector('[data-app-version]')?.textContent !== 'Version: ${app.getVersion()}') {
             throw new Error('Settings must display the running app version without a data folder');
           }
+          const tabNames = [...document.querySelectorAll('[data-settings-tab]')].map(tab => tab.textContent);
+          if (tabNames.join('|') !== 'Allgemein|Sitzungen|Mitglieder|Rechnungen|Briefe') throw new Error('Every module must have a settings tab');
+          const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
+          for (const [module, enabled] of Object.entries(defaultModules)) {
+            if (document.querySelector('[data-settings-tab="' + module + '"]') === null) throw new Error('Missing module settings tab: ' + module);
+            const nav = document.querySelector('[data-module-nav="' + module + '"]') ||
+              document.querySelector('[data-module-view="' + module + '"]');
+            if (nav.hidden === enabled) throw new Error('Unexpected default sidebar visibility for ' + module);
+          }
+          const setModule = async (module, enabled) => {
+            await waitFor(() => !document.body.inert);
+            document.querySelector('[data-settings-tab="' + module + '"]').click();
+            await waitFor(() => document.querySelector('[data-module-toggle="' + module + '"]'));
+            const toggle = document.querySelector('[data-module-toggle="' + module + '"]');
+            toggle.checked = enabled;
+            toggle.dispatchEvent(new Event('change', { bubbles: true }));
+            await waitFor(() => !document.body.inert && (
+              (document.querySelector('[data-module-nav="' + module + '"]') ||
+                document.querySelector('[data-module-view="' + module + '"]')).hidden === !enabled));
+          };
+          await setModule('members', true);
+          await setModule('invoices', true);
+          await setModule('letters', true);
+          await setModule('letters', false);
+          if (!document.querySelector('[data-module-view="letters"]').hidden) throw new Error('Disabled module remains in sidebar');
+          await setModule('letters', true);
+          if (JSON.stringify(await window.club.getModules()) !== JSON.stringify({ meetings: true, members: true, invoices: true, letters: true })) {
+            throw new Error('Enabled modules were not persisted');
+          }
+          document.querySelector('[data-settings-tab="general"]').click();
+          await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
           document.querySelector('[data-action="choose-protocol-css"]').click();
           for (let i = 0; i < 200; i++) {
             if (document.querySelector('[data-action="reset-protocol-css"]')) return;
@@ -67,7 +109,9 @@ async function main() {
           throw new Error('CSS selection timed out');
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
-        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: null, protocolCss: cssFile });
+        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
+          folder: null, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }
+        });
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
           const button = document.querySelector('[data-action="choose-protocol-css"]');
@@ -375,7 +419,9 @@ async function main() {
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)']);
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
-        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: cssFile });
+        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
+          folder: data, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }
+        });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const earlierFiles = [];
         let undatedId;
@@ -735,7 +781,9 @@ async function main() {
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
-        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), { folder: data, protocolCss: null });
+        assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
+          folder: data, protocolCss: null, modules: { meetings: true, members: true, invoices: true, letters: true }
+        });
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
         }

@@ -5,6 +5,7 @@ button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 .activity { width: 190px; height: 100vh; overflow-y: auto; background: #202b3b; color: #b7c3d3; display: flex; align-items: center; flex-direction: column; flex-shrink: 0; }
 .activity nav { width: 100%; }
+.activity [hidden] { display: none; }
 .brand { color: white; font-size: 19px; font-weight: 800; padding: 18px 0 24px; }
 .activity button { display: flex; align-items: center; width: 100%; min-height: 52px; padding: 0 10px; text-align: left; border: 0; border-left: 3px solid transparent; background: none; color: inherit; font-size: 14px; }
 .activity .nav-icon { flex: 0 0 30px; text-align: center; font-size: 24px; }
@@ -21,6 +22,12 @@ button { cursor: pointer; }
 .activity .meeting-subnav .nav-icon { font-size: 19px; }
 .activity .meeting-nav-heading [data-view="meetings"].parent-active { color: white; }
 .activity .settings-nav { margin-top: auto; margin-bottom: 12px; }
+.settings-tabs { display: flex; gap: 6px; margin: 20px 0; overflow-x: auto; border-bottom: 1px solid #d5dbe2; }
+.settings-tab { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; padding: 11px 16px; background: transparent; color: #536176; }
+.settings-tab:hover, .settings-tab.selected { color: #215fb8; }
+.settings-tab.selected { border-bottom-color: #2867c7; font-weight: 700; }
+.settings-tab:focus-visible { outline: 2px solid #2867c7; outline-offset: -2px; }
+.module-toggle { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 main { flex: 1; min-width: 0; }
 .layout { display: flex; height: 100vh; }
 .list { width: 270px; flex-shrink: 0; background: white; border-right: 1px solid #e1e6ed; padding: 24px 16px; overflow: auto; }

@@ -11,6 +11,7 @@ let mainWindow;
 let folder;
 let configuredFolder = null;
 let protocolCss = null;
+let enabledModules = { ...settings.DEFAULT_MODULES };
 let writeQueue = Promise.resolve();
 let downloadedUpdate = false;
 
@@ -29,6 +30,7 @@ async function loadFolder() {
   const config = await settings.loadSettings(settingsFile());
   configuredFolder = config.folder;
   protocolCss = config.protocolCss;
+  enabledModules = config.modules;
   if (!config.folder) return;
   // Do not recreate a missing location automatically, e.g. an unmounted drive.
   let info;
@@ -48,7 +50,7 @@ function settingsFile() {
 }
 
 async function saveSettings(nextFolder, nextProtocolCss) {
-  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss });
+  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, modules: enabledModules });
 }
 
 async function readProtocolCss(file) {
@@ -69,6 +71,13 @@ function registerHandlers() {
     require('electron-updater').autoUpdater.quitAndInstall(false, true);
   });
   ipcMain.handle('folder:get', () => folder || null);
+  ipcMain.handle('modules:get', () => ({ ...enabledModules }));
+  ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
+    const nextModules = settings.validateModules(modules);
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, modules: nextModules });
+    enabledModules = nextModules;
+    return { ...enabledModules };
+  }));
   ipcMain.handle('protocol-css:get', () => protocolCss);
   ipcMain.handle('protocol-css:choose', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
