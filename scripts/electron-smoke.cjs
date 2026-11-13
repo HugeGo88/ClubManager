@@ -77,7 +77,8 @@ async function main() {
           throw new Error('Version history must be accessible without a data folder');
         })()`);
         const originalVersion = app.getVersion();
-        app.setVersion('0.1.3');
+        const [major, minor, patch] = originalVersion.split('.').map(Number);
+        app.setVersion(`${major}.${minor}.${patch + 1}`);
         const updatedReload = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
         await updatedReload;

@@ -1,13 +1,19 @@
 [
   {
+    "version": "0.1.3",
+    "changes": [
+      "Versionsverlauf mit automatischer Anzeige nach einem Versionswechsel hinzugefügt.",
+      "Entscheidungen können nach Abstimmungsergebnis gefiltert werden, auch zusammengefasst nach angenommenen oder abgelehnten Ergebnissen."
+    ]
+  },
+  {
     "version": "0.1.2",
     "changes": [
       "Statistiken mit geschätztem Verlauf offener Aufgaben hinzugefügt.",
       "Übersicht aller TOPs mit Suche und Filtern hinzugefügt.",
       "Details zu Entscheidungen und TOPs können in den Übersichten aufgeklappt werden.",
       "Sitzungsnavigation mit aufklappbarer Zeile und Pfeil verbessert.",
-      "Module können in den Einstellungen aktiviert oder deaktiviert werden.",
-      "Versionsverlauf mit automatischer Anzeige nach einem Versionswechsel hinzugefügt."
+      "Module können in den Einstellungen aktiviert oder deaktiviert werden."
     ]
   },
   {
