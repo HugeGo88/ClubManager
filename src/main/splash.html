@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+  <title>ClubManager</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body {
+      display: grid;
+      place-items: center;
+      background: #f5f7fa;
+      color: #242d3b;
+      font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-app-region: drag;
+    }
+    main { display: grid; justify-items: center; gap: 18px; }
+    .brand {
+      display: grid;
+      width: 54px;
+      height: 54px;
+      place-items: center;
+      border-radius: 14px;
+      background: #202b3b;
+      color: white;
+      font-size: 28px;
+      font-weight: 800;
+    }
+    .name { font-size: 20px; font-weight: 650; }
+    .status { display: flex; align-items: center; gap: 9px; color: #667487; }
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #cbd4df;
+      border-top-color: #2867c7;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand" aria-hidden="true">C</div>
+    <div class="name">ClubManager</div>
+    <div class="status" role="status"><span class="spinner" aria-hidden="true"></span>Wird gestartet …</div>
+  </main>
+</body>
+</html>

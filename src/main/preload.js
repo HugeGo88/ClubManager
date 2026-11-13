@@ -19,6 +19,7 @@ async function invoke(channel, ...args) {
 
 contextBridge.exposeInMainWorld('club', {
   awaitStartup: () => invoke('app:startup'),
+  startupComplete: () => ipcRenderer.send('app:startup-complete'),
   getVersion: () => invoke('app:version'),
   getChangelog: () => invoke('changelog:get'),
   shouldShowChangelog: () => invoke('changelog:should-show'),

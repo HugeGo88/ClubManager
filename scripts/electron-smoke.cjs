@@ -50,6 +50,11 @@ async function main() {
   app.once('browser-window-created', (event, window) => {
     window.webContents.once('did-finish-load', async () => {
       try {
+        assert.equal(window.isVisible(), false, 'The app window stays hidden until its first render is ready');
+        const splash = BrowserWindow.getAllWindows().find(candidate => candidate !== window && candidate.isVisible());
+        assert.ok(splash, 'The splash screen remains visible while the app initializes');
+        assert.match(await splash.webContents.executeJavaScript('document.body.textContent'), /ClubManager[\s\S]*Wird gestartet/,
+          'The splash screen identifies the app and indicates that it is starting');
         await window.webContents.executeJavaScript(`(async () => {
           for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
             await new Promise(resolve => setTimeout(resolve, 25));
@@ -61,6 +66,11 @@ async function main() {
                 content: document.querySelector('main').textContent, expectedVersion: '${app.getVersion()}' }));
           }
         })()`);
+        for (let attempt = 0; attempt < 100 && !window.isVisible(); attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.equal(window.isVisible(), true, 'The app window appears after the first render');
+        assert.equal(splash.isDestroyed(), true, 'The splash screen closes after the app window appears');
         const reloadFinished = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
         await reloadFinished;

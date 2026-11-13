@@ -839,4 +839,5 @@ window.club.onPrepareUpdate(async () => {
     }
   }
   app.dataset.modulesLoaded = 'true';
+  window.club.startupComplete();
 })();

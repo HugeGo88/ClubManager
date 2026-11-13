@@ -8,12 +8,15 @@ const { isDate } = require('../shared/dates');
 const { startUpdates } = require('./updates');
 
 let mainWindow;
+let splashWindow;
 let folder;
 let configuredFolder = null;
 let protocolCss = null;
 let enabledModules = { ...settings.DEFAULT_MODULES };
 let lastSeenVersion = null;
 let settingsLoaded = false;
+let startupError;
+let startupComplete = false;
 let startupReady = Promise.resolve();
 let writeQueue = Promise.resolve();
 let downloadedUpdate = false;
@@ -68,6 +71,27 @@ async function readProtocolCss(file) {
 
 function registerHandlers() {
   ipcMain.handle('app:startup', () => startupReady);
+  ipcMain.on('app:startup-complete', event => {
+    if (event.sender !== mainWindow?.webContents) return;
+    if (!startupComplete) {
+      startupComplete = true;
+      if (!mainWindow.isDestroyed()) mainWindow.show();
+      if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
+      if (app.isPackaged) {
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.on('update-downloaded', () => { downloadedUpdate = true; });
+        startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow });
+      }
+      if (startupError) {
+        void dialog.showMessageBox(mainWindow, {
+          type: 'error',
+          message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden',
+          detail: startupError,
+          buttons: ['OK']
+        }).catch(error => console.error('Fehlerdialog konnte nicht angezeigt werden:', error));
+      }
+    } else if (!mainWindow.isDestroyed()) mainWindow.show();
+  });
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('changelog:get', async () => {
     const entries = JSON.parse(await fs.readFile(path.join(__dirname, '../shared/changelog.json'), 'utf8'));
@@ -204,24 +228,24 @@ app.whenReady().then(async () => {
     { label: 'Fenster', submenu: [{ role: 'minimize', label: 'Minimieren' }, { role: 'close', label: 'Schließen' }] }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
-  let startupError;
   registerHandlers();
   startupReady = loadFolder().catch(error => { startupError = error.message; });
   mainWindow = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 850, minHeight: 600,
+    width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  splashWindow = new BrowserWindow({
+    width: 420, height: 240, frame: false, resizable: false, minimizable: false,
+    maximizable: false, fullscreenable: false, show: false, backgroundColor: '#f5f7fa',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  await splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.show();
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  app.on('activate', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
-  await startupReady;
-  if (app.isPackaged) {
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.on('update-downloaded', () => { downloadedUpdate = true; });
-    startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow });
-  }
-  if (startupError && !mainWindow.isDestroyed()) {
-    await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden', detail: startupError, buttons: ['OK'] });
-  }
+  app.on('activate', () => {
+    if (startupComplete && mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+    else if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
+  });
 });
 
 app.on('window-all-closed', () => app.quit());
