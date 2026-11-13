@@ -33,6 +33,19 @@ test('creates module folders and saves and reloads a meeting', async t => {
   assert.deepEqual((await storage.listMeetings(folder))[0].meeting, data);
 });
 
+test('loads meetings across read batches and sorts them by date', async t => {
+  const folder = await fixture(t);
+  const records = [];
+  for (let day = 1; day <= 17; day++) {
+    const data = meeting();
+    data.date = `2026-11-${String(day).padStart(2, '0')}`;
+    const revision = await storage.saveMeeting(folder, data, null);
+    records.push({ meeting: data, revision });
+  }
+  const loaded = await storage.listMeetings(folder);
+  assert.deepEqual(loaded, [...records].reverse());
+});
+
 test('does not overwrite a meeting changed or removed on disk', async t => {
   const folder = await fixture(t);
   const data = meeting();

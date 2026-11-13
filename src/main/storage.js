@@ -7,9 +7,7 @@ const MODULES = ['meetings', 'invoices', 'members', 'letters'];
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function initializeFolder(folder) {
-  for (const name of MODULES) {
-    await fs.mkdir(path.join(folder, name), { recursive: true });
-  }
+  await Promise.all(MODULES.map(name => fs.mkdir(path.join(folder, name), { recursive: true })));
 }
 
 function meetingPath(folder, id) {
@@ -89,24 +87,26 @@ function validateMeeting(meeting) {
 }
 
 async function listMeetings(folder) {
-  const entries = await fs.readdir(path.join(folder, 'meetings'), { withFileTypes: true });
+  const entries = (await fs.readdir(path.join(folder, 'meetings'), { withFileTypes: true }))
+    .filter(entry => entry.isFile() && entry.name.endsWith('.json'));
   const meetings = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
-    const id = entry.name.slice(0, -5);
-    const file = meetingPath(folder, id);
-    const content = await fs.readFile(file, 'utf8');
-    let record;
-    try {
-      record = JSON.parse(content);
-    } catch {
-      throw new Error(`${entry.name} konnte nicht gelesen werden: ungültiges JSON.`);
-    }
-    if (record.version !== 1 || record.meeting?.id !== id) {
-      throw new Error(`${entry.name} konnte nicht gelesen werden: nicht unterstützter oder ungültiger Datensatz.`);
-    }
-    validateMeeting(record.meeting);
-    meetings.push({ meeting: record.meeting, revision: revision(content) });
+  for (let index = 0; index < entries.length; index += 8) {
+    const batch = await Promise.all(entries.slice(index, index + 8).map(async entry => {
+      const id = entry.name.slice(0, -5);
+      const content = await fs.readFile(meetingPath(folder, id), 'utf8');
+      let record;
+      try {
+        record = JSON.parse(content);
+      } catch {
+        throw new Error(`${entry.name} konnte nicht gelesen werden: ungültiges JSON.`);
+      }
+      if (record.version !== 1 || record.meeting?.id !== id) {
+        throw new Error(`${entry.name} konnte nicht gelesen werden: nicht unterstützter oder ungültiger Datensatz.`);
+      }
+      validateMeeting(record.meeting);
+      return { meeting: record.meeting, revision: revision(content) };
+    }));
+    meetings.push(...batch);
   }
   return meetings.sort((a, b) => b.meeting.date.localeCompare(a.meeting.date));
 }

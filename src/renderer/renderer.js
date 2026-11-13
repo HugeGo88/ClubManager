@@ -1,4 +1,5 @@
 const app = document.querySelector('#app');
+document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '', result: '', expanded: '' };
@@ -350,6 +351,7 @@ function settingsView() {
 }
 
 function render() {
+  document.querySelector('.activity').inert = false;
   const previousContent = app.querySelector('.content');
   const tableScroll = app.querySelector('.table-scroll')?.scrollLeft ?? 0;
   const preserveScroll = previousContent?.dataset.viewContext === state.view &&
@@ -787,29 +789,45 @@ window.club.onPrepareUpdate(async () => {
 });
 
 (async () => {
+  const startup = window.club.awaitStartup();
+  const [version, changelog] = await Promise.all([
+    window.club.getVersion().catch(error => {
+      setMessage(`Die App-Version konnte nicht geladen werden: ${error.message}`, true);
+      return null;
+    }),
+    window.club.getChangelog().catch(error => {
+      setMessage(`Der Versionsverlauf konnte nicht geladen werden: ${error.message}`, true);
+      return null;
+    })
+  ]);
+  await startup;
+  const changelogVisibility = window.club.shouldShowChangelog().then(
+    shouldShow => ({ shouldShow }),
+    error => ({ error })
+  );
+  state.version = version;
+  state.changelog = changelog;
   try {
-    state.version = await window.club.getVersion();
-  } catch (error) {
-    setMessage(`Die App-Version konnte nicht geladen werden: ${error.message}`, true);
-  }
-  try {
-    state.folder = await window.club.getFolder();
-    state.protocolCss = await window.club.getProtocolCss();
-    state.modules = await window.club.getModules();
+    const [folder, protocolCss, modules] = await Promise.all([
+      window.club.getFolder(),
+      window.club.getProtocolCss(),
+      window.club.getModules()
+    ]);
+    state.folder = folder;
+    state.protocolCss = protocolCss;
+    state.modules = modules;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
-    await refresh();
+    state.meetings = state.folder ? await window.club.listMeetings() : [];
   } catch (error) {
     setMessage(error.message, true);
   }
   let markSeen = false;
-  try {
-    state.changelog = await window.club.getChangelog();
-    if (await window.club.shouldShowChangelog()) {
-      state.view = 'changelog';
-      markSeen = true;
-    }
-  } catch (error) {
-    setMessage(`Der Versionsverlauf konnte nicht geladen werden: ${error.message}`, true);
+  const changelogResult = await changelogVisibility;
+  if (changelogResult.error) {
+    setMessage(`Der Versionsverlauf konnte nicht geladen werden: ${changelogResult.error.message}`, true);
+  } else if (changelogResult.shouldShow) {
+    state.view = 'changelog';
+    markSeen = true;
   }
   render();
   if (markSeen) {

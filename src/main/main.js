@@ -14,6 +14,7 @@ let protocolCss = null;
 let enabledModules = { ...settings.DEFAULT_MODULES };
 let lastSeenVersion = null;
 let settingsLoaded = false;
+let startupReady = Promise.resolve();
 let writeQueue = Promise.resolve();
 let downloadedUpdate = false;
 
@@ -66,6 +67,7 @@ async function readProtocolCss(file) {
 }
 
 function registerHandlers() {
+  ipcMain.handle('app:startup', () => startupReady);
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('changelog:get', async () => {
     const entries = JSON.parse(await fs.readFile(path.join(__dirname, '../shared/changelog.json'), 'utf8'));
@@ -203,24 +205,23 @@ app.whenReady().then(async () => {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   let startupError;
-  try {
-    await loadFolder();
-  } catch (error) {
-    startupError = error.message;
-  }
   registerHandlers();
+  startupReady = loadFolder().catch(error => { startupError = error.message; });
   mainWindow = new BrowserWindow({
     width: 1280, height: 800, minWidth: 850, minHeight: 600,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  if (startupError) await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden', detail: startupError, buttons: ['OK'] });
+  app.on('activate', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
+  await startupReady;
   if (app.isPackaged) {
     const { autoUpdater } = require('electron-updater');
     autoUpdater.on('update-downloaded', () => { downloadedUpdate = true; });
     startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow });
   }
-  app.on('activate', () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); });
+  if (startupError && !mainWindow.isDestroyed()) {
+    await dialog.showMessageBox(mainWindow, { type: 'error', message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden', detail: startupError, buttons: ['OK'] });
+  }
 });
 
 app.on('window-all-closed', () => app.quit());

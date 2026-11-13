@@ -53,7 +53,11 @@ settings.json in userData    user-selected data folder
 - [src/main/main.js](src/main/main.js) manages the Electron lifecycle, window,
   dialogs and IPC handlers. The application window uses context isolation and
   sandboxing with Node integration disabled. The main process validates and
-  performs privileged operations on behalf of the renderer.
+  performs privileged operations on behalf of the renderer. The window opens
+  while saved settings and the selected data folder load; a startup IPC
+  handshake keeps settings access behind that initialization. The renderer
+  shows a loading status until startup completes, then loads independent
+  settings and release-note requests in parallel.
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.
   IPC covers application version, folder selection, module settings, PDF CSS,
@@ -87,8 +91,9 @@ settings.json in userData    user-selected data folder
   `meetings/<UUID>.json` as `{ "version": 1, "meeting": { ... } }` and its last
   exported PDF in `meetings/protocols/<UUID>.pdf`. The meeting ID must match the
   filename. Unsupported file versions, invalid records and corrupt JSON are
-  reported rather than silently skipped; there is no version migration for
-  unsupported meeting formats.
+  reported rather than silently skipped; startup reads meeting records in
+  batches of at most eight files to reduce serial I/O without unbounded
+  concurrency. There is no version migration for unsupported meeting formats.
 - Meeting data contains a title, optional date, attendance entries and ordered
   TOPs. A TOP has a headline, `discussion`/`decision`/`info` type, Markdown
   details, optional responsible person and tasks. Tasks include description,
