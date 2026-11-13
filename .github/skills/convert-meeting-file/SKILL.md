@@ -72,12 +72,19 @@ Preserve the source's ordering, names, details, decisions, responsible people,
 task status, dates, and vote counts. Put TOP notes in `details`, using Markdown
 only where it faithfully represents the source. Never invent outcomes, vote
 counts, names, dates, or completed work. Do not equate missing information with
-negative information. In particular, if a person's attendance status, a task's
-completion status, a TOP's type, or a date is ambiguous, ask the user before
-choosing a value that asserts a fact. Use empty strings or omit optional fields
-for genuinely unknown information when the schema permits it. Clarify ambiguous
-dates rather than guessing their locale or year. Note any information that
-cannot be represented without losing meaning.
+negative information. Apply these defaults unless the user specifies otherwise:
+
+- Create identifiable tasks with no recorded completion status as open
+  (`done: false`); keep explicitly completed tasks completed. Report that
+  unknown statuses were assumed open, rather than claiming the source said so.
+- For TOPs marked only as tasks or with no type indicated, use `discussion`.
+  Respect explicit source types, such as a decision or information.
+
+If a person's attendance status or a date is ambiguous, or the source conflicts
+with itself, ask the user rather than guessing. Use empty strings or omit
+optional fields for genuinely unknown information when the schema permits it.
+Clarify ambiguous dates rather than guessing their locale or year. Note any
+information that cannot be represented without losing meaning.
 
 ## 3. Create and validate
 
