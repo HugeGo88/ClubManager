@@ -1,5 +1,5 @@
 const app = document.querySelector('#app');
-const state = { view: 'meetings', version: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -359,6 +359,9 @@ function render() {
   let content = '';
   if (state.view === 'settings') {
     content = settingsView();
+  } else if (state.view === 'changelog') {
+    content = `<h1>Versionsverlauf</h1><p>Änderungen in ClubManager.</p>${state.changelog === null ? '<p>Der Versionsverlauf konnte nicht geladen werden.</p>' : state.changelog.length === 0 ? '<p>Keine Versionseinträge vorhanden.</p>' : state.changelog.map(entry =>
+      `<section class="card"><h2>Version ${escape(entry.version)}</h2><ul>${entry.changes.map(change => `<li>${escape(change)}</li>`).join('')}</ul></section>`).join('')}`;
   } else if (!state.folder) {
     content = `<div class="empty"><h1>Willkommen bei ClubManager</h1><p>Wählen Sie zunächst in den Einstellungen einen Datenordner aus.</p>${button('open-settings', 'Einstellungen öffnen', 'primary')}</div>`;
   } else if (state.view === 'meetings') {
@@ -452,7 +455,7 @@ function refreshTopResults() {
 async function changeView(view) {
   if (view === state.view) return;
   const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(view) ? 'meetings' : view;
-  if (view !== 'settings' && !state.modules[module]) {
+  if (view !== 'settings' && view !== 'changelog' && !state.modules[module]) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
   }
@@ -464,7 +467,7 @@ async function changeView(view) {
   state.dirty = false;
   state.view = view;
   setMessage('');
-  await refresh();
+  if (view !== 'changelog') await refresh();
 }
 
 async function run(action, target) {
@@ -785,11 +788,29 @@ window.club.onPrepareUpdate(async () => {
     state.folder = await window.club.getFolder();
     state.protocolCss = await window.club.getProtocolCss();
     state.modules = await window.club.getModules();
-    app.dataset.modulesLoaded = 'true';
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     await refresh();
   } catch (error) {
     setMessage(error.message, true);
   }
+  let markSeen = false;
+  try {
+    state.changelog = await window.club.getChangelog();
+    if (await window.club.shouldShowChangelog()) {
+      state.view = 'changelog';
+      markSeen = true;
+    }
+  } catch (error) {
+    setMessage(`Der Versionsverlauf konnte nicht geladen werden: ${error.message}`, true);
+  }
   render();
+  if (markSeen) {
+    try {
+      await window.club.markChangelogSeen();
+    } catch (error) {
+      setMessage(`Die angezeigte Version konnte nicht gespeichert werden: ${error.message}`, true);
+      render();
+    }
+  }
+  app.dataset.modulesLoaded = 'true';
 })();

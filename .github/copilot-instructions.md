@@ -7,3 +7,5 @@
   of `ARCHITECTURE.md` in the same change.
 - Keep current implementation separate from proposed features, and keep
   [PRODUCT_IDEAS.md](../PRODUCT_IDEAS.md) aligned when product functionality changes.
+- Add user-facing German release notes to [changelog.json](../src/shared/changelog.json)
+  for each new app version.

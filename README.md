@@ -52,6 +52,13 @@ Settings has a tab for each module, where it can be enabled or disabled.
 Only Meetings is enabled by default; disabled modules disappear from the sidebar.
 The **Allgemein** settings tab shows the running app version in its
 **Über ClubManager** section.
+
+**Versionsverlauf**, directly above Settings, displays the bundled release
+notes. It opens automatically the first time a version is launched, including
+fresh installations and installations upgrading from before version tracking.
+The notes are maintained in [`src/shared/changelog.json`](src/shared/changelog.json);
+add an entry for each release.
+
 Selecting another folder opens that folder's data; it does not migrate it.
 In **Einstellungen**, optionally select a CSS file for PDF protocols. It
 replaces the default stylesheet, is stored as a path in the app settings, and

@@ -20,7 +20,8 @@ button { cursor: pointer; }
 .activity .meeting-subnav button { min-height: 42px; border-left-width: 2px; }
 .activity .meeting-subnav .nav-icon { font-size: 19px; }
 .activity .meeting-nav-heading.parent-active { color: white; }
-.activity .settings-nav { margin-top: auto; margin-bottom: 12px; }
+.activity .changelog-nav { margin-top: auto; }
+.activity .settings-nav { margin-bottom: 12px; }
 .settings-tabs { display: flex; gap: 6px; margin: 20px 0; overflow-x: auto; border-bottom: 1px solid #d5dbe2; }
 .settings-tab { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; padding: 11px 16px; background: transparent; color: #536176; }
 .settings-tab:hover, .settings-tab.selected { color: #215fb8; }

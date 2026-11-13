@@ -19,6 +19,9 @@ async function invoke(channel, ...args) {
 
 contextBridge.exposeInMainWorld('club', {
   getVersion: () => invoke('app:version'),
+  getChangelog: () => invoke('changelog:get'),
+  shouldShowChangelog: () => invoke('changelog:should-show'),
+  markChangelogSeen: () => invoke('changelog:mark-seen'),
   getFolder: () => invoke('folder:get'),
   getModules: () => invoke('modules:get'),
   setModules: modules => invoke('modules:set', modules),

@@ -1,0 +1,20 @@
+[
+  {
+    "version": "0.1.2",
+    "changes": [
+      "Statistiken mit geschätztem Verlauf offener Aufgaben hinzugefügt.",
+      "Übersicht aller TOPs mit Suche und Filtern hinzugefügt.",
+      "Details zu Entscheidungen und TOPs können in den Übersichten aufgeklappt werden.",
+      "Sitzungsnavigation mit aufklappbarer Zeile und Pfeil verbessert.",
+      "Module können in den Einstellungen aktiviert oder deaktiviert werden.",
+      "Versionsverlauf mit automatischer Anzeige nach einem Versionswechsel hinzugefügt."
+    ]
+  },
+  {
+    "version": "0.1.1",
+    "changes": [
+      "Automatische Updates und Anzeige der App-Version in den Einstellungen hinzugefügt.",
+      "Entscheidungen, Aufgaben und PDF-Protokolle wurden erweitert."
+    ]
+  }
+]

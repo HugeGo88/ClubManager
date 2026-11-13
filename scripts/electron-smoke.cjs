@@ -7,6 +7,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
 async function main() {
+  app.setVersion(require('../package.json').version);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-electron-test-'));
   process.on('exit', () => fsSync.rmSync(root, { recursive: true, force: true }));
   const data = path.join(root, 'data');
@@ -49,6 +50,47 @@ async function main() {
   app.once('browser-window-created', (event, window) => {
     window.webContents.once('did-finish-load', async () => {
       try {
+        await window.webContents.executeJavaScript(`(async () => {
+          for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (document.querySelector('main h1')?.textContent !== 'Versionsverlauf' ||
+              !document.querySelector('main').textContent.includes('Version ${app.getVersion()}')) {
+            throw new Error('First launch must show the current version history: ' +
+              JSON.stringify({ heading: document.querySelector('main h1')?.textContent,
+                content: document.querySelector('main').textContent, expectedVersion: '${app.getVersion()}' }));
+          }
+        })()`);
+        const reloadFinished = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+        window.webContents.reload();
+        await reloadFinished;
+        await window.webContents.executeJavaScript(`(async () => {
+          for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') throw new Error('Same version must not reopen history');
+          document.querySelector('[data-view="changelog"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Version history must be accessible without a data folder');
+        })()`);
+        const originalVersion = app.getVersion();
+        app.setVersion('0.1.3');
+        const updatedReload = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+        window.webContents.reload();
+        await updatedReload;
+        await window.webContents.executeJavaScript(`(async () => {
+          for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (document.querySelector('main h1')?.textContent !== 'Versionsverlauf') throw new Error('A changed version must reopen history');
+        })()`);
+        app.setVersion(originalVersion);
+        const restoredReload = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+        window.webContents.reload();
+        await restoredReload;
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
@@ -115,7 +157,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: null, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }
+          folder: null, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
         });
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
@@ -415,7 +457,7 @@ async function main() {
         assert.deepEqual(result.tasksBefore, [false, true]);
         assert.deepEqual(result.persistedChecks, [true, true]);
         assert.ok(result.absentBeforeExport);
-        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Briefe', 'Einstellungen']);
+        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Briefe', 'Versionsverlauf', 'Einstellungen']);
         assert.deepEqual(result.visibleNavigation.map(item => item.text), result.navigation);
         assert.ok(result.visibleNavigation.every(item => item.visible), 'Navigation labels must be visible next to their icons');
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
@@ -444,9 +486,26 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }
+          folder: data, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
+        const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
+        await fs.writeFile(corruptMeeting, '{');
+        try {
+          await window.webContents.executeJavaScript(`(async () => {
+            document.querySelector('[data-view="changelog"]').click();
+            for (let i = 0; i < 200; i++) {
+              if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') {
+                if (document.querySelector('.notice.error')) throw new Error('History must not load meeting data');
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('History must open even if meeting data is invalid');
+          })()`);
+        } finally {
+          await fs.unlink(corruptMeeting);
+        }
         const earlierFiles = [];
         let undatedId;
         for (const [date, description] of [['2000-01-01', 'Alte offene Aufgabe'], [saved.meeting.date, 'Gleicher Tag'], ['9999-12-31', 'Zukünftige Aufgabe'], ['', 'Ohne Datum']]) {
@@ -939,7 +998,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: null, modules: { meetings: true, members: true, invoices: true, letters: true }
+          folder: data, protocolCss: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
         });
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());

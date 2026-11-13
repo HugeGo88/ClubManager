@@ -19,7 +19,7 @@ async function loadSettings(file) {
     content = await fs.readFile(file, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return { folder: null, protocolCss: null, modules: { ...DEFAULT_MODULES } };
+    return { folder: null, protocolCss: null, modules: { ...DEFAULT_MODULES }, lastSeenVersion: null };
   }
   let config;
   try {
@@ -37,13 +37,19 @@ async function loadSettings(file) {
     }
   }
   const modules = config.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(config.modules);
-  return { folder: config.folder ?? null, protocolCss: config.protocolCss ?? null, modules };
+  if (config.lastSeenVersion != null && (typeof config.lastSeenVersion !== 'string' || !config.lastSeenVersion.trim())) {
+    throw new Error('Die gespeicherte App-Version ist ungültig.');
+  }
+  return { folder: config.folder ?? null, protocolCss: config.protocolCss ?? null, modules, lastSeenVersion: config.lastSeenVersion ?? null };
 }
 
 async function saveSettings(file, settings) {
   const modules = settings.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(settings.modules);
+  if (settings.lastSeenVersion != null && (typeof settings.lastSeenVersion !== 'string' || !settings.lastSeenVersion.trim())) {
+    throw new Error('Die gespeicherte App-Version ist ungültig.');
+  }
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await atomicWrite(file, JSON.stringify({ folder: settings.folder ?? null, protocolCss: settings.protocolCss ?? null, modules }, null, 2) + '\n');
+  await atomicWrite(file, JSON.stringify({ folder: settings.folder ?? null, protocolCss: settings.protocolCss ?? null, modules, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
 }
 
 module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules };

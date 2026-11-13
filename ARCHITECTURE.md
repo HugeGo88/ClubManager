@@ -34,7 +34,9 @@ tab and can be disabled; only Meetings is enabled by default. A disabled module
 and its navigation entries are hidden, and the renderer rejects navigation into
 it. The entire Meetings heading toggles its subnavigation and opens the meeting
 view when necessary; toggling while already editing a meeting preserves unsaved
-edits. Settings remains available even if all modules are disabled.
+edits. Settings and Versionsverlauf remain available even if all modules are disabled.
+The version history opens on first launch of each version, including fresh
+installs and legacy settings without a version marker.
 
 ## Processes and data flow
 
@@ -68,9 +70,15 @@ settings.json in userData    user-selected data folder
 ## Settings and persistence
 
 - Electron's `userData/settings.json`, outside the club data folder, stores the
-  chosen folder, optional PDF CSS path and four Boolean module settings.
+  chosen folder, optional PDF CSS path, four Boolean module settings and the
+  last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Existing settings without module selections use the Meetings-only defaults.
+- [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
+  of release notes displayed by the renderer through restricted IPC. Add a
+  version entry for each release. The main process serializes marking the
+  current version as seen only after the history is rendered; a failure is
+  reported and will be retried on the next launch.
 - Choosing a data folder creates `meetings/`, `members/`, `invoices/` and
   `letters/` under it. Changing folders opens the new location without moving
   existing data. An unavailable saved folder is reported; it is not silently

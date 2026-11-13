@@ -12,6 +12,8 @@ let folder;
 let configuredFolder = null;
 let protocolCss = null;
 let enabledModules = { ...settings.DEFAULT_MODULES };
+let lastSeenVersion = null;
+let settingsLoaded = false;
 let writeQueue = Promise.resolve();
 let downloadedUpdate = false;
 
@@ -31,6 +33,8 @@ async function loadFolder() {
   configuredFolder = config.folder;
   protocolCss = config.protocolCss;
   enabledModules = config.modules;
+  lastSeenVersion = config.lastSeenVersion;
+  settingsLoaded = true;
   if (!config.folder) return;
   // Do not recreate a missing location automatically, e.g. an unmounted drive.
   let info;
@@ -50,7 +54,7 @@ function settingsFile() {
 }
 
 async function saveSettings(nextFolder, nextProtocolCss) {
-  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, modules: enabledModules });
+  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, modules: enabledModules, lastSeenVersion });
 }
 
 async function readProtocolCss(file) {
@@ -63,6 +67,24 @@ async function readProtocolCss(file) {
 
 function registerHandlers() {
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('changelog:get', async () => {
+    const entries = JSON.parse(await fs.readFile(path.join(__dirname, '../shared/changelog.json'), 'utf8'));
+    if (!Array.isArray(entries) || !entries.every(entry => entry && typeof entry.version === 'string' &&
+        Array.isArray(entry.changes) && entry.changes.every(change => typeof change === 'string'))) {
+      throw new Error('Der Versionsverlauf ist ungültig.');
+    }
+    return entries;
+  });
+  ipcMain.handle('changelog:should-show', () => {
+    if (!settingsLoaded) throw new Error('Der Versionsverlauf konnte nicht mit den gespeicherten Einstellungen abgeglichen werden.');
+    return lastSeenVersion !== app.getVersion();
+  });
+  ipcMain.handle('changelog:mark-seen', () => serializeWrite(async () => {
+    if (!settingsLoaded) throw new Error('Die angezeigte Version konnte nicht gespeichert werden.');
+    const version = app.getVersion();
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, modules: enabledModules, lastSeenVersion: version });
+    lastSeenVersion = version;
+  }));
   ipcMain.handle('update:install', event => {
     if (event.sender !== mainWindow?.webContents || !downloadedUpdate) {
       throw new Error('Es liegt kein heruntergeladenes Update zur Installation bereit.');
@@ -74,7 +96,7 @@ function registerHandlers() {
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
     const nextModules = settings.validateModules(modules);
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, modules: nextModules });
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, modules: nextModules, lastSeenVersion });
     enabledModules = nextModules;
     return { ...enabledModules };
   }));

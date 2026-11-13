@@ -12,15 +12,15 @@ test('loads legacy settings and persists PDF CSS independently of the data folde
   const folder = path.join(root, 'data');
   const protocolCss = path.join(root, 'protocol.css');
   const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, modules: defaultModules });
+  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, modules: defaultModules, lastSeenVersion: null });
   await fs.writeFile(file, JSON.stringify({ folder }));
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, modules: defaultModules });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, modules: defaultModules, lastSeenVersion: null });
   await saveSettings(file, { folder: null, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, modules: defaultModules });
+  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, modules: defaultModules, lastSeenVersion: null });
   await saveSettings(file, { folder, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss, modules: defaultModules });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss, modules: defaultModules, lastSeenVersion: null });
   await saveSettings(file, { folder, protocolCss: null });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, modules: defaultModules });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, modules: defaultModules, lastSeenVersion: null });
 });
 
 test('loads, validates and persists module enablement', async t => {
@@ -33,6 +33,17 @@ test('loads, validates and persists module enablement', async t => {
   await assert.rejects(saveSettings(file, { modules: { ...modules, meetings: 'yes' } }), /Modul-Einstellungen/);
   await fs.writeFile(file, JSON.stringify({ modules: { ...modules, unknown: true } }));
   await assert.rejects(loadSettings(file), /Modul-Einstellungen/);
+});
+
+test('persists and validates the last seen version', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'settings.json');
+  await saveSettings(file, { lastSeenVersion: '0.1.2' });
+  assert.equal((await loadSettings(file)).lastSeenVersion, '0.1.2');
+  await assert.rejects(saveSettings(file, { lastSeenVersion: '' }), /App-Version/);
+  await fs.writeFile(file, JSON.stringify({ lastSeenVersion: 12 }));
+  await assert.rejects(loadSettings(file), /App-Version/);
 });
 
 test('rejects invalid saved settings', async t => {
