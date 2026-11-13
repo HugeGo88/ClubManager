@@ -685,11 +685,29 @@ async function main() {
             emptyMessage: document.querySelector('#decision-results').textContent,
             cleared: filter('')
           };
+          const resultFilter = document.querySelector('[data-decision-result]');
+          const filterResult = value => {
+            resultFilter.value = value;
+            resultFilter.dispatchEvent(new Event('change', { bubbles: true }));
+            return [...document.querySelectorAll('[data-decision-row]')].map(row => row.cells[0].textContent);
+          };
+          if ([...resultFilter.options].map(option => option.value).join('|') !==
+              '|none|all_accepted|all_rejected|unanimous_accepted|unanimous_rejected|accepted|rejected') throw new Error('Missing outcome filter options');
+          if (filterResult('none').join('|') !== 'Alt <Beschluss>') throw new Error('Missing outcome filter must include legacy decisions');
+          if (filterResult('unanimous_rejected').join('|') !== 'Ablehnung') throw new Error('Unanimous rejection filter failed');
+          if (filterResult('accepted').length !== 2) throw new Error('Acceptance filter must include both decisions with and without vote counts');
+          if (filterResult('rejected').length !== 0 || !document.querySelector('#decision-results').textContent.includes('Keine Entscheidungen entsprechen den Filtern.')) {
+            throw new Error('Empty outcome filter must be reported');
+          }
+          if (filterResult('unanimous_accepted').length !== 0) throw new Error('Unanimous acceptance filter failed');
+          filterResult('accepted');
           filter('budget');
+          if (document.querySelectorAll('[data-decision-row]').length !== 1) throw new Error('Search and outcome filters must combine');
           document.querySelector('[data-action="refresh-decisions"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent === 'Entscheidungen neu geladen.');
           if (document.querySelector('[data-decision-search]').value !== 'budget' ||
-              document.querySelectorAll('.decisions-table tbody tr').length !== 1) throw new Error('Reload must preserve the search');
+              document.querySelector('[data-decision-result]').value !== 'accepted' ||
+              document.querySelectorAll('.decisions-table tbody tr').length !== 1) throw new Error('Reload must preserve both filters');
           document.querySelector('[data-action="select-decision-meeting"]').click();
           await waitFor(() => document.querySelector('main h1')?.textContent === 'Sitzung bearbeiten');
           const title = document.querySelector('[data-field="title"]').value;
@@ -778,6 +796,60 @@ async function main() {
         assert.equal(decisions.tops.detailsInitiallyHidden, true);
         assert.equal(decisions.tops.detailsExpanded, true);
         assert.equal(decisions.tops.detailsCollapsed, true);
+        const grouped = structuredClone(second);
+        grouped.meeting.id = randomUUID();
+        grouped.meeting.title = 'Gruppierte Ergebnisse';
+        grouped.meeting.points = [
+          ['Einstimmig Ja', 'unanimous_accepted'],
+          ['Mehrheitlich Ja', 'accepted'],
+          ['Einstimmig Nein', 'unanimous_rejected'],
+          ['Mehrheitlich Nein', 'rejected']
+        ].map(([headline, result]) => ({ headline, type: 'decision', details: '', tasks: [],
+          vote: { result, yes: null, no: null, abstain: null } }));
+        const groupedFile = path.join(meetingsDir, `${grouped.meeting.id}.json`);
+        await fs.writeFile(groupedFile, JSON.stringify(grouped, null, 2) + '\n');
+        try {
+          await window.webContents.executeJavaScript(`(async () => {
+            const waitFor = async test => {
+              for (let i = 0; i < 200; i++) {
+                if (test()) return;
+                await new Promise(resolve => setTimeout(resolve, 25));
+              }
+              throw new Error('Timed out waiting for grouped decision filters');
+            };
+            document.querySelector('[data-view="decisions"]').click();
+            await waitFor(() => document.querySelector('[data-decision-result]'));
+            const search = document.querySelector('[data-decision-search]');
+            const result = document.querySelector('[data-decision-result]');
+            const names = () => [...document.querySelectorAll('[data-decision-row]')].map(row => row.cells[0].textContent);
+            search.value = 'Gruppierte Ergebnisse';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            for (const [value, expected] of [
+              ['all_accepted', ['Einstimmig Ja', 'Mehrheitlich Ja']],
+              ['all_rejected', ['Einstimmig Nein', 'Mehrheitlich Nein']],
+              ['unanimous_accepted', ['Einstimmig Ja']],
+              ['accepted', ['Mehrheitlich Ja']],
+              ['unanimous_rejected', ['Einstimmig Nein']],
+              ['rejected', ['Mehrheitlich Nein']]
+            ]) {
+              result.value = value;
+              result.dispatchEvent(new Event('change', { bubbles: true }));
+              if (JSON.stringify(names()) !== JSON.stringify(expected)) throw new Error('Incorrect filter results for ' + value);
+            }
+            result.value = 'all_accepted';
+            result.dispatchEvent(new Event('change', { bubbles: true }));
+            document.querySelector('[data-action="refresh-decisions"]').click();
+            await waitFor(() => !document.body.inert && document.querySelector('.notice')?.textContent === 'Entscheidungen neu geladen.');
+            if (document.querySelector('[data-decision-result]').value !== 'all_accepted' ||
+                JSON.stringify(names()) !== JSON.stringify(['Einstimmig Ja', 'Mehrheitlich Ja'])) {
+              throw new Error('Grouped filter must survive reload');
+            }
+            document.querySelector('[data-view="tasks"]').click();
+            await waitFor(() => document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
+          })()`);
+        } finally {
+          await fs.unlink(groupedFile);
+        }
         await fs.unlink(secondFile);
         const now = new Date();
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');

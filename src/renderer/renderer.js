@@ -1,7 +1,7 @@
 const app = document.querySelector('#app');
 const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
-const decisionView = { search: '', expanded: '' };
+const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
 let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
@@ -184,12 +184,14 @@ function decisionResults() {
   const allDecisions = state.meetings.flatMap(({ meeting }) => meeting.points
     .flatMap((point, pointIndex) => point.type === 'decision' ? [{ meeting, point, pointIndex }] : []));
   const search = decisionView.search.trim().toLocaleLowerCase('de');
+  const groupedResults = { all_accepted: ['accepted', 'unanimous_accepted'], all_rejected: ['rejected', 'unanimous_rejected'] };
   const decisions = allDecisions.filter(({ meeting, point }) =>
     [point.headline || 'TOP ohne Titel', clubDeutsch.voteDescription(point.vote),
       meeting.title || 'Sitzung ohne Titel', meeting.date || 'Kein Datum', formatDate(meeting.date)]
-      .join(' ').toLocaleLowerCase('de').includes(search));
+      .join(' ').toLocaleLowerCase('de').includes(search) &&
+    (!decisionView.result || (groupedResults[decisionView.result] || [decisionView.result]).includes(point.vote?.result || 'none')));
   return `<p class="task-count" role="status">${decisions.length} von ${allDecisions.length} Entscheidungen</p>
-    ${allDecisions.length === 0 ? '<p>Keine Entscheidungen vorhanden.</p>' : decisions.length === 0 ? '<p>Keine Entscheidungen entsprechen der Suche.</p>' :
+    ${allDecisions.length === 0 ? '<p>Keine Entscheidungen vorhanden.</p>' : decisions.length === 0 ? `<p>Keine Entscheidungen entsprechen ${decisionView.result ? 'den Filtern' : 'der Suche'}.</p>` :
       `<div class="table-scroll" role="region" aria-label="Entscheidungstabelle, horizontal scrollbar" tabindex="0">
       <table class="tasks-table decisions-table"><caption class="sr-only">Entscheidungen aus Sitzungen</caption>
       <thead><tr><th scope="col">TOP</th><th scope="col">Ergebnis</th><th scope="col">Sitzung</th><th scope="col">Sitzungsdatum</th><th scope="col">Details</th><th scope="col">Aktion</th></tr></thead>
@@ -210,7 +212,8 @@ function decisionResults() {
 function decisionsView() {
   return `<div class="topline"><div><h1>Entscheidungen</h1><p>Entscheidungen aus gespeicherten Sitzungen.</p></div>${button('refresh-decisions', 'Entscheidungen neu laden')}</div>
     <div class="card">
-      <div class="task-filters"><label>Entscheidungen suchen<input type="search" data-decision-search value="${escape(decisionView.search)}" placeholder="TOP, Ergebnis, Sitzung oder Datum"></label></div>
+      <div class="task-filters"><label>Entscheidungen suchen<input type="search" data-decision-search value="${escape(decisionView.search)}" placeholder="TOP, Ergebnis, Sitzung oder Datum"></label>
+        <label>Ergebnis filtern<select data-decision-result>${options([['', 'Alle Ergebnisse'], ['none', 'Kein Ergebnis ausgewählt'], ['all_accepted', 'Angenommen (alle)'], ['all_rejected', 'Abgelehnt (alle)'], ...Object.entries(clubDeutsch.voteResult)], decisionView.result)}</select></label></div>
       <div id="decision-results">${decisionResults()}</div>
     </div>`;
 }
@@ -756,6 +759,11 @@ app.addEventListener('input', event => {
 
 app.addEventListener('change', event => {
   const target = event.target;
+  if (target.hasAttribute('data-decision-result')) {
+    decisionView.result = target.value;
+    refreshDecisionResults();
+    return;
+  }
   if (target.dataset.topFilter !== 'type' && target.dataset.topFilter !== 'meeting') return;
   topView[target.dataset.topFilter] = target.value;
   refreshTopResults();

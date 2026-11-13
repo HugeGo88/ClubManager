@@ -122,7 +122,9 @@ meeting view when needed.
 **Entscheidungen** lists decision TOPs and their results from saved meetings,
 including those without a selected result. It can reload the list and open the
 source meeting. The search filters TOP titles, results, meeting titles and
-dates as you type. Vote counts are shown when recorded. **Details anzeigen**
+dates as you type; an outcome dropdown can filter individual outcomes, all
+accepted or rejected decisions, and decisions without an outcome. Vote counts
+are shown when recorded. **Details anzeigen**
 expands the decision TOP's details across the table.
 After export, **Gespeichertes PDF öffnen** opens the last exported protocol in
 the system's default PDF viewer. It does not include subsequent meeting changes
