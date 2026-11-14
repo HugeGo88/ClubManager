@@ -197,14 +197,19 @@ Linux packaging are deferred.
 
 ## GitHub releases and updates
 
-The **Build and publish release** workflow is started manually from the
-repository's **Actions** tab. It builds a macOS Apple Silicon DMG and ZIP and
-a Windows x64 NSIS installer, then publishes them together as a GitHub Release.
-Both builds and their update metadata must succeed before the release is
-published. The workflow uses the commit and `package.json` version of the
-selected branch; use a new stable version such as `0.2.0` and update
-`package-lock.json` (for example with `npm version 0.2.0 --no-git-tag-version`)
-before starting it. It creates tag `v<version>` and refuses to reuse an
+The **Build and publish release** workflow runs automatically when a push to
+`main` changes the version in `package.json`. Changes to other package fields
+do not trigger a release. The workflow can also be started manually from the
+repository's **Actions** tab using the selected branch and commit.
+
+Before either kind of release, the workflow requires a stable version, matching
+versions in `package-lock.json`, and a nonempty entry for that version in
+`src/shared/changelog.json`. Update the lockfile with, for example,
+`npm version 0.1.4 --no-git-tag-version`, and add German release notes before
+pushing or starting the workflow. The workflow builds a macOS Apple Silicon DMG
+and ZIP and a Windows x64 NSIS installer, then publishes them together as a
+GitHub Release. Both builds and their update metadata must succeed before the
+release is published. It creates tag `v<version>` and refuses to reuse an
 existing tag. A failed publishing step can leave a draft release or tag that
 must be inspected and resolved before retrying.
 

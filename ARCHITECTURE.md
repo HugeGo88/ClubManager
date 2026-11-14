@@ -130,8 +130,10 @@ PDF also contains the title and date, page header/footer and page numbers.
 ## Distribution and updates
 
 [package.json](package.json) defines the Electron entry point, dependencies,
-build scripts and electron-builder targets. The manually dispatched
-[release workflow](.github/workflows/release.yml) builds macOS ARM64 DMG/ZIP
+build scripts and electron-builder targets. The
+[release workflow](.github/workflows/release.yml) runs manually or when a push
+to `main` changes the package version. It checks matching lockfile versions and
+a nonempty changelog entry before building macOS ARM64 DMG/ZIP
 on macOS and a Windows x64 NSIS installer on Windows, then publishes a GitHub
 Release and update metadata after successful builds. Release versioning,
 signing/notarization secrets and operational steps are documented in the
@@ -197,7 +199,7 @@ separate operational steps.
 | [src/shared/](src/shared/) | Shared labels, dates and default document CSS |
 | [test/](test/) | Node tests for dates, settings, storage, protocols and updates |
 | [scripts/electron-smoke.cjs](scripts/electron-smoke.cjs) | Graphical end-to-end Electron smoke test |
-| [.github/workflows/release.yml](.github/workflows/release.yml) | Manually triggered build and release |
+| [.github/workflows/release.yml](.github/workflows/release.yml) | Version-triggered or manually dispatched build and release |
 | [.vscode/](.vscode/) | Electron main-process launch and debug tasks |
 | [docs/screenshots/](docs/screenshots/) | README screenshots using fictional data |
 

@@ -2,6 +2,11 @@ name: Build and publish release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
 
 permissions:
   contents: read
@@ -11,7 +16,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+      - name: Check version and release notes
+        id: check
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ]; then
+            if [[ ! "$BEFORE" =~ ^[0-9a-f]{40}$ || "$BEFORE" =~ ^0+$ ]]; then
+              echo "::error::Cannot compare the version: the previous push commit is unavailable."
+              exit 1
+            fi
+            if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              git fetch origin "$BEFORE"
+            fi
+            git show "$BEFORE:package.json" > "$RUNNER_TEMP/previous-package.json"
+            node scripts/prepare-release.cjs push "$RUNNER_TEMP/previous-package.json"
+          else
+            node scripts/prepare-release.cjs workflow_dispatch
+          fi
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
     strategy:
       fail-fast: false
       matrix:
