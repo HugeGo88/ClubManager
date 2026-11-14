@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
-const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -17,6 +17,7 @@ const MODULES = [
 let markdownEditors = [];
 let taskDateRefresh;
 let displayedTaskDate;
+let previewResize = null;
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -38,6 +39,12 @@ function notice() {
 function setMessage(message, error = false) {
   state.message = message;
   state.error = error;
+}
+
+function closeProtocolPreview() {
+  if (state.protocolPreviewUrl) URL.revokeObjectURL(state.protocolPreviewUrl);
+  state.protocolPreviewUrl = null;
+  state.previewOpen = false;
 }
 
 function meetingList() {
@@ -383,8 +390,20 @@ function render() {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
+  const showPreview = state.view === 'meetings' && state.folder && state.meeting &&
+    state.hasProtocol && state.previewOpen && state.protocolPreviewUrl;
+  const showPreviewToggle = state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol;
   app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
-    <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div></div>`;
+    <div class="meeting-stage ${showPreview ? 'preview-open' : ''}" ${showPreview ? `style="--preview-width: ${state.previewWidth}px"` : ''}>
+      ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="toggle-preview" aria-label="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" title="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" aria-pressed="${state.previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
+      <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div>
+      ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="PDF-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
+        <aside class="preview-pane" aria-label="PDF-Vorschau">
+          <div class="preview-header"><h2>PDF-Vorschau</h2><button class="action" data-action="close-preview" aria-label="PDF-Vorschau schließen">Schließen</button></div>
+          <iframe title="Gespeichertes Sitzungsprotokoll" src="${escape(state.protocolPreviewUrl)}"></iframe>
+        </aside>` : ''}
+    </div></div>`;
+  if (showPreview) resizeProtocolPreview(state.previewWidth);
   app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
     const index = Number(parent.dataset.markdownEditor);
     const point = state.meeting.points[index];
@@ -465,6 +484,7 @@ async function changeView(view) {
     return;
   }
   if (!confirmDiscard()) return;
+  closeProtocolPreview();
   state.meeting = null;
   state.revision = null;
   state.hasProtocol = false;
@@ -487,6 +507,7 @@ async function run(action, target) {
     case 'choose-folder': {
       const selected = await window.club.chooseFolder();
       if (selected) {
+        closeProtocolPreview();
         state.folder = selected;
         state.meeting = null;
         state.revision = null;
@@ -512,6 +533,7 @@ async function run(action, target) {
       break;
     case 'new':
       if (!confirmDiscard()) return;
+      closeProtocolPreview();
       state.meeting = blankMeeting();
       state.revision = null;
       state.hasProtocol = false;
@@ -524,6 +546,7 @@ async function run(action, target) {
     case 'select-decision-meeting':
     case 'select-top-meeting': {
       if (!confirmDiscard()) return;
+      closeProtocolPreview();
       await refresh();
       const selected = state.meetings.find(item => item.meeting.id === target.dataset.id);
       if (!selected) throw new Error('Die Sitzung ist auf dem Datenträger nicht mehr vorhanden.');
@@ -595,6 +618,18 @@ async function run(action, target) {
     case 'open-protocol':
       await window.club.openProtocol(meeting.id);
       break;
+    case 'toggle-preview':
+      if (state.previewOpen) {
+        closeProtocolPreview();
+      } else {
+        const pdf = await window.club.previewProtocol(meeting.id);
+        state.protocolPreviewUrl = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+        state.previewOpen = true;
+      }
+      break;
+    case 'close-preview':
+      closeProtocolPreview();
+      break;
     case 'add-person': meeting.attendance.push({ name: '', status: 'attending' }); state.dirty = true; break;
     case 'remove-person': meeting.attendance.splice(i, 1); state.dirty = true; break;
     case 'add-point': meeting.points.push({ headline: '', type: 'discussion', details: '', tasks: [] }); state.dirty = true; break;
@@ -642,6 +677,52 @@ document.addEventListener('click', async event => {
       if (button.dataset.id === target.dataset.id && button.dataset.index === target.dataset.index) button.focus();
     });
   }
+});
+
+function resizeProtocolPreview(width) {
+  const stage = app.querySelector('.meeting-stage');
+  const splitter = app.querySelector('[data-preview-splitter]');
+  if (!stage || !splitter) return;
+  const maxWidth = Math.max(180, stage.clientWidth - 208);
+  state.previewWidth = Math.min(maxWidth, Math.max(180, width));
+  stage.style.setProperty('--preview-width', `${state.previewWidth}px`);
+  splitter.setAttribute('aria-valuemax', String(maxWidth));
+  splitter.setAttribute('aria-valuenow', String(state.previewWidth));
+}
+
+app.addEventListener('pointerdown', event => {
+  const splitter = event.target.closest('[data-preview-splitter]');
+  if (!splitter || event.button !== 0) return;
+  previewResize = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: state.previewWidth
+  };
+  splitter.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+
+app.addEventListener('pointermove', event => {
+  if (!previewResize || event.pointerId !== previewResize.pointerId) return;
+  resizeProtocolPreview(previewResize.startWidth + previewResize.startX - event.clientX);
+});
+
+function stopPreviewResize(event) {
+  if (previewResize?.pointerId === event.pointerId) previewResize = null;
+}
+
+app.addEventListener('pointerup', stopPreviewResize);
+app.addEventListener('pointercancel', stopPreviewResize);
+app.addEventListener('keydown', event => {
+  if (!event.target.matches('[data-preview-splitter]')) return;
+  const stage = app.querySelector('.meeting-stage');
+  const maxWidth = Math.max(180, (stage?.clientWidth || 388) - 208);
+  if (event.key === 'ArrowLeft') resizeProtocolPreview(state.previewWidth + 16);
+  else if (event.key === 'ArrowRight') resizeProtocolPreview(state.previewWidth - 16);
+  else if (event.key === 'Home') resizeProtocolPreview(180);
+  else if (event.key === 'End') resizeProtocolPreview(maxWidth);
+  else return;
+  event.preventDefault();
 });
 
 document.addEventListener('keydown', event => {

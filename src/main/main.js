@@ -171,6 +171,13 @@ function registerHandlers() {
   ipcMain.handle('meetings:save', (event, meeting, revision) =>
     serializeWrite(() => storage.saveMeeting(requireFolder(), meeting, revision)));
   ipcMain.handle('meetings:has-protocol', (event, id) => storage.hasProtocol(requireFolder(), id));
+  ipcMain.handle('meetings:preview-protocol', async (event, id) => {
+    const currentFolder = requireFolder();
+    if (!await storage.hasProtocol(currentFolder, id)) {
+      throw new Error('Das Protokoll-PDF wurde nicht gefunden. Exportieren Sie es erneut.');
+    }
+    return fs.readFile(storage.protocolPath(currentFolder, id));
+  });
   ipcMain.handle('meetings:open-protocol', async (event, id) => {
     const currentFolder = requireFolder();
     if (!await storage.hasProtocol(currentFolder, id)) {

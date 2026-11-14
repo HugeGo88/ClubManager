@@ -37,5 +37,6 @@ contextBridge.exposeInMainWorld('club', {
   onPrepareUpdate: callback => ipcRenderer.on('update:prepare-install', () => callback()),
   installUpdate: () => invoke('update:install'),
   hasProtocol: id => invoke('meetings:has-protocol', id),
+  previewProtocol: id => invoke('meetings:preview-protocol', id),
   openProtocol: id => invoke('meetings:open-protocol', id)
 });

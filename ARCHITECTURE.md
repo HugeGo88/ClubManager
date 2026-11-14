@@ -62,7 +62,8 @@ settings.json in userData    user-selected data folder
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.
   IPC covers application version, folder selection, module settings, PDF CSS,
-  meeting list/save/export, opening exported PDFs and update installation.
+  meeting list/save/export, opening exported PDFs, reading an existing meeting
+  PDF for its resizable in-app preview and update installation.
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Main-process write operations are serialized. User-visible errors are

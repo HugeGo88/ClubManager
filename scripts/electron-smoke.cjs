@@ -427,6 +427,33 @@ async function main() {
             return text?.includes('PDF gespeichert') && text;
           });
           await waitFor(() => document.querySelector('[data-action="open-protocol"]'));
+          const previewButton = document.querySelector('[data-action="toggle-preview"]');
+          if (!previewButton?.querySelector('svg') || previewButton.getAttribute('aria-label') !== 'PDF-Vorschau öffnen') {
+            throw new Error('PDF preview control should be a compact, accessible icon button');
+          }
+          const buttonRect = previewButton.getBoundingClientRect();
+          const stageRect = document.querySelector('.meeting-stage').getBoundingClientRect();
+          if (Math.abs(buttonRect.right - stageRect.right) > 16 || Math.abs(buttonRect.top - stageRect.top) > 16 ||
+              previewButton.closest('.meeting-actions')) {
+            throw new Error('PDF preview icon must sit in the meeting view’s upper-right corner, outside the action row');
+          }
+          await click('[data-action="toggle-preview"]');
+          await waitFor(() => document.querySelector('.preview-pane iframe'));
+          if (document.querySelector('[data-action="toggle-preview"]').getAttribute('aria-pressed') !== 'true') {
+            throw new Error('PDF preview icon button should expose its open state');
+          }
+          const splitter = document.querySelector('[data-preview-splitter]');
+          if (!splitter || !document.querySelector('.preview-pane iframe').src.startsWith('blob:')) {
+            throw new Error('Saved meeting PDF preview did not open');
+          }
+          const previewWidth = Number(splitter.getAttribute('aria-valuenow'));
+          splitter.focus();
+          splitter.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+          if (Number(splitter.getAttribute('aria-valuenow')) <= previewWidth) {
+            throw new Error('PDF preview splitter did not resize with the keyboard');
+          }
+          await click('[data-action="close-preview"]');
+          if (document.querySelector('.preview-pane')) throw new Error('PDF preview did not close');
           const afterExportContent = document.querySelector('.content');
           afterExportContent.scrollTop = afterExportContent.scrollHeight;
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
