@@ -696,6 +696,7 @@ document.addEventListener('click', async event => {
     target.disabled = true;
     try {
       state.sidebarCollapsed = await window.club.setSidebarCollapsed(!state.sidebarCollapsed);
+      document.querySelector('.activity').classList.add('sidebar-transition');
       renderNavigation();
       if (state.previewOpen) resizeProtocolPreview(state.previewWidth);
     } catch (error) {
@@ -731,6 +732,12 @@ document.addEventListener('click', async event => {
       if (button.dataset.id === target.dataset.id && button.dataset.index === target.dataset.index &&
           button.dataset.taskIndex === target.dataset.taskIndex) button.focus();
     });
+  }
+});
+
+document.querySelector('.activity').addEventListener('transitionend', event => {
+  if (event.target === event.currentTarget && event.propertyName === 'width' && state.previewOpen) {
+    resizeProtocolPreview(state.previewWidth);
   }
 });
 

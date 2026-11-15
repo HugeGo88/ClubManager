@@ -143,7 +143,8 @@ meeting tasks shown in **Offene Aufgaben**. The original Markdown is saved and
 used for PDF export, where task checkboxes are shown as non-editable. The Open
 Tasks view lists tasks from saved meetings. The sidebar shows names alongside
 the module icons. Click **C** at the top to hide or show the names and make
-more room; the choice is remembered across restarts. The whole **Sitzungen** row expands or collapses the
+more room; the choice is remembered across restarts. The transition respects the
+system's reduced-motion preference. The whole **Sitzungen** row expands or collapses the
 **Offene Aufgaben**, **Entscheidungen**, **Alle TOPs** and **Statistiken** subviews and opens the
 meeting view when needed. In the compact sidebar, hover an icon to see its
 name; module colors group related entries. The Material Icons font is bundled

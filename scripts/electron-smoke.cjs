@@ -98,8 +98,11 @@ async function main() {
           button.focus();
           button.click();
           for (let i = 0; i < 200 && button.getAttribute('aria-pressed') !== 'true'; i++) await new Promise(resolve => setTimeout(resolve, 25));
+          const animations = sidebar.getAnimations().filter(animation => animation.transitionProperty === 'width');
+          if (!matchMedia('(prefers-reduced-motion: reduce)').matches && !animations.length) throw new Error('Sidebar width should animate');
+          await Promise.all(animations.map(animation => animation.finished));
           if (sidebar.getBoundingClientRect().width !== 58 ||
-              getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).display !== 'none' ||
+              getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).visibility !== 'hidden' ||
               getComputedStyle(document.querySelector('[data-view="tasks"] .nav-icon')).display === 'none' ||
               document.activeElement !== button) throw new Error('Collapsed sidebar must show icons, hide labels, and retain focus');
           for (const nav of document.querySelectorAll('.activity [data-view]')) {
@@ -124,8 +127,9 @@ async function main() {
           if (sidebarToggle.getAttribute('aria-pressed') !== 'true' || document.querySelector('.activity').getBoundingClientRect().width !== 58) throw new Error('Sidebar preference must survive reload');
           sidebarToggle.click();
           for (let i = 0; i < 200 && sidebarToggle.getAttribute('aria-pressed') !== 'false'; i++) await new Promise(resolve => setTimeout(resolve, 25));
+          await Promise.all(document.querySelector('.activity').getAnimations().filter(animation => animation.transitionProperty === 'width').map(animation => animation.finished));
           if (sidebarToggle.getAttribute('aria-pressed') !== 'false' || document.querySelector('.activity').getBoundingClientRect().width !== 190 ||
-              getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).display === 'none') throw new Error('Sidebar must expand again');
+              getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).visibility !== 'visible') throw new Error('Sidebar must expand again');
           if ([...document.querySelectorAll('.activity [data-view]')].some(nav => nav.hasAttribute('title'))) throw new Error('Expanded sidebar must not show redundant tooltips');
           if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') throw new Error('Same version must not reopen history');
           document.querySelector('[data-view="changelog"]').click();
@@ -135,6 +139,28 @@ async function main() {
           }
           throw new Error('Version history must be accessible without a data folder');
         })()`);
+        window.webContents.debugger.attach('1.3');
+        try {
+          await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+            features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+          });
+          await window.webContents.executeJavaScript(`(async () => {
+            const sidebar = document.querySelector('.activity');
+            const button = document.querySelector('[data-action="toggle-sidebar"]');
+            if (!matchMedia('(prefers-reduced-motion: reduce)').matches) throw new Error('Reduced motion emulation failed');
+            for (const [collapsed, width] of [[true, 58], [false, 190]]) {
+              button.click();
+              for (let i = 0; i < 200 && button.getAttribute('aria-pressed') !== String(collapsed); i++) {
+                await new Promise(resolve => setTimeout(resolve, 25));
+              }
+              if (button.getAttribute('aria-pressed') !== String(collapsed) || sidebar.getBoundingClientRect().width !== width ||
+                  sidebar.getAnimations().some(animation => animation.transitionProperty === 'width')) throw new Error('Reduced motion must disable sidebar animation');
+            }
+          })()`);
+        } finally {
+          await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
+          window.webContents.debugger.detach();
+        }
         const originalVersion = app.getVersion();
         const [major, minor, patch] = originalVersion.split('.').map(Number);
         app.setVersion(`${major}.${minor}.${patch + 1}`);

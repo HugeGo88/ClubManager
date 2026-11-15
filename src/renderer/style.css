@@ -3,13 +3,13 @@
 body { margin: 0; display: flex; min-height: 100vh; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
-.activity { width: 190px; height: 100vh; overflow-y: auto; background: #202b3b; color: #b7c3d3; display: flex; align-items: center; flex-direction: column; flex-shrink: 0; }
+.activity { width: 190px; height: 100vh; overflow-x: hidden; overflow-y: auto; background: #202b3b; color: #b7c3d3; display: flex; align-items: center; flex-direction: column; flex-shrink: 0; }
+.activity.sidebar-transition { transition: width 180ms ease; }
 .activity nav { width: 100%; }
 .activity [hidden] { display: none; }
 .activity button { display: flex; align-items: center; width: 100%; min-height: 52px; padding: 0 10px; text-align: left; border: 0; border-left: 3px solid transparent; background: none; color: inherit; font-size: 14px; }
 .activity .brand { justify-content: center; min-height: 66px; padding: 0 10px; color: white; font-size: 19px; font-weight: 800; }
 .activity.collapsed { width: 58px; }
-.activity.collapsed .nav-label, .activity.collapsed .nav-chevron { display: none; }
 .activity.collapsed .meeting-subnav { padding-left: 0; }
 .activity.collapsed button:not(.brand) { justify-content: center; }
 .activity .nav-icon { flex: 0 0 30px; text-align: center; font-size: 24px; }
@@ -18,11 +18,17 @@ button { cursor: pointer; }
 .activity [data-module-view="invoices"] { --module-color: #f0c484; }
 .activity [data-module-view="letters"] { --module-color: #d7b4ee; }
 .activity [data-module-view] .nav-icon { color: var(--module-color); }
-.activity .nav-label { margin-left: 8px; }
+.activity .nav-label { min-width: 0; max-width: 150px; margin-left: 8px; overflow: hidden; white-space: nowrap; opacity: 1; }
+.activity.collapsed .nav-label { max-width: 0; margin-left: 0; opacity: 0; visibility: hidden; }
+.activity.sidebar-transition .nav-label { transition: max-width 180ms ease, margin-left 180ms ease, opacity 120ms ease, visibility 0s linear 180ms; }
+.activity.sidebar-transition:not(.collapsed) .nav-label { transition: max-width 180ms ease, margin-left 180ms ease, opacity 180ms ease, visibility 0s; }
 .activity button:hover, .activity button.active { color: white; background: #303e51; }
 .activity button.active { border-left-color: var(--module-color, #79b4ff); }
 .activity button:focus-visible { outline: 2px solid #79b4ff; outline-offset: -2px; }
 .activity .nav-chevron { width: 16px; height: 16px; margin-left: auto; flex: 0 0 16px; }
+.activity.collapsed .nav-chevron { width: 0; flex-basis: 0; opacity: 0; visibility: hidden; }
+.activity.sidebar-transition .nav-chevron { transition: width 180ms ease, flex-basis 180ms ease, opacity 120ms ease, visibility 0s linear 180ms; }
+.activity.sidebar-transition:not(.collapsed) .nav-chevron { transition: width 180ms ease, flex-basis 180ms ease, opacity 180ms ease, visibility 0s; }
 .activity .meeting-nav-heading[aria-expanded="false"] .nav-chevron { transform: rotate(-90deg); }
 .activity .meeting-subnav { padding-left: 16px; }
 .activity .meeting-subnav[hidden] { display: none; }
@@ -31,6 +37,9 @@ button { cursor: pointer; }
 .activity .meeting-nav-heading.parent-active { color: white; }
 .activity .changelog-nav { margin-top: auto; }
 .activity .settings-nav { margin-bottom: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .activity.sidebar-transition, .activity.sidebar-transition .nav-label, .activity.sidebar-transition .nav-chevron { transition: none; }
+}
 .settings-tabs { display: flex; gap: 6px; margin: 20px 0; overflow-x: auto; border-bottom: 1px solid #d5dbe2; }
 .settings-tab { flex: 0 0 auto; border: 0; border-bottom: 3px solid transparent; padding: 11px 16px; background: transparent; color: #536176; }
 .settings-tab:hover, .settings-tab.selected { color: #215fb8; }
