@@ -9,5 +9,7 @@
   [PRODUCT_IDEAS.md](../PRODUCT_IDEAS.md) aligned when product functionality changes.
 - Add user-facing German release notes to [changelog.json](../src/shared/changelog.json)
   for each new app version.
+- Structure new changelog entries into sections by module, with a General
+  section for changes that do not belong to a specific module.
 - When asked to increase the app version, increment the patch (third) version
   number and check that the release notes are up to date.
