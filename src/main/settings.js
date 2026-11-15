@@ -13,13 +13,18 @@ function validateModules(modules) {
   return { ...modules };
 }
 
+function validateSidebarCollapsed(value) {
+  if (typeof value !== 'boolean') throw new Error('Die Einstellung für die Seitenleiste ist ungültig.');
+  return value;
+}
+
 async function loadSettings(file) {
   let content;
   try {
     content = await fs.readFile(file, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return { folder: null, protocolCss: null, meetingTemplate: null, modules: { ...DEFAULT_MODULES }, lastSeenVersion: null };
+    return { folder: null, protocolCss: null, meetingTemplate: null, modules: { ...DEFAULT_MODULES }, sidebarCollapsed: false, lastSeenVersion: null };
   }
   let config;
   try {
@@ -37,14 +42,16 @@ async function loadSettings(file) {
     }
   }
   const modules = config.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(config.modules);
+  const sidebarCollapsed = config.sidebarCollapsed === undefined ? false : validateSidebarCollapsed(config.sidebarCollapsed);
   if (config.lastSeenVersion != null && (typeof config.lastSeenVersion !== 'string' || !config.lastSeenVersion.trim())) {
     throw new Error('Die gespeicherte App-Version ist ungültig.');
   }
-  return { folder: config.folder ?? null, protocolCss: config.protocolCss ?? null, meetingTemplate: config.meetingTemplate ?? null, modules, lastSeenVersion: config.lastSeenVersion ?? null };
+  return { folder: config.folder ?? null, protocolCss: config.protocolCss ?? null, meetingTemplate: config.meetingTemplate ?? null, modules, sidebarCollapsed, lastSeenVersion: config.lastSeenVersion ?? null };
 }
 
 async function saveSettings(file, settings) {
   const modules = settings.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(settings.modules);
+  const sidebarCollapsed = settings.sidebarCollapsed === undefined ? false : validateSidebarCollapsed(settings.sidebarCollapsed);
   if (settings.meetingTemplate != null && (typeof settings.meetingTemplate !== 'string' || !path.isAbsolute(settings.meetingTemplate))) {
     throw new Error('Der gespeicherte Pfad für HTML-Vorlage ist ungültig.');
   }
@@ -52,7 +59,7 @@ async function saveSettings(file, settings) {
     throw new Error('Die gespeicherte App-Version ist ungültig.');
   }
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await atomicWrite(file, JSON.stringify({ folder: settings.folder ?? null, protocolCss: settings.protocolCss ?? null, meetingTemplate: settings.meetingTemplate ?? null, modules, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
+  await atomicWrite(file, JSON.stringify({ folder: settings.folder ?? null, protocolCss: settings.protocolCss ?? null, meetingTemplate: settings.meetingTemplate ?? null, modules, sidebarCollapsed, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
 }
 
-module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules };
+module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules, validateSidebarCollapsed };

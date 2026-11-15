@@ -14,6 +14,7 @@ let configuredFolder = null;
 let protocolCss = null;
 let meetingTemplate = null;
 let enabledModules = { ...settings.DEFAULT_MODULES };
+let sidebarCollapsed = false;
 let lastSeenVersion = null;
 let settingsLoaded = false;
 let startupError;
@@ -39,6 +40,7 @@ async function loadFolder() {
   protocolCss = config.protocolCss;
   meetingTemplate = config.meetingTemplate;
   enabledModules = config.modules;
+  sidebarCollapsed = config.sidebarCollapsed;
   lastSeenVersion = config.lastSeenVersion;
   settingsLoaded = true;
   if (!config.folder) return;
@@ -60,7 +62,7 @@ function settingsFile() {
 }
 
 async function saveSettings(nextFolder, nextProtocolCss) {
-  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, meetingTemplate, modules: enabledModules, lastSeenVersion });
+  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, meetingTemplate, modules: enabledModules, sidebarCollapsed, lastSeenVersion });
 }
 
 async function readProtocolCss(file) {
@@ -121,7 +123,7 @@ function registerHandlers() {
   ipcMain.handle('changelog:mark-seen', () => serializeWrite(async () => {
     if (!settingsLoaded) throw new Error('Die angezeigte Version konnte nicht gespeichert werden.');
     const version = app.getVersion();
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: enabledModules, lastSeenVersion: version });
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: enabledModules, sidebarCollapsed, lastSeenVersion: version });
     lastSeenVersion = version;
   }));
   ipcMain.handle('update:install', event => {
@@ -135,9 +137,20 @@ function registerHandlers() {
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
     const nextModules = settings.validateModules(modules);
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: nextModules, lastSeenVersion });
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: nextModules, sidebarCollapsed, lastSeenVersion });
     enabledModules = nextModules;
     return { ...enabledModules };
+  }));
+  ipcMain.handle('sidebar:get', () => {
+    if (!settingsLoaded) throw new Error('Die Seitenleisten-Einstellung konnte nicht geladen werden.');
+    return sidebarCollapsed;
+  });
+  ipcMain.handle('sidebar:set', (event, value) => serializeWrite(async () => {
+    if (!settingsLoaded) throw new Error('Die Seitenleisten-Einstellung konnte nicht gespeichert werden.');
+    const next = settings.validateSidebarCollapsed(value);
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: enabledModules, sidebarCollapsed: next, lastSeenVersion });
+    sidebarCollapsed = next;
+    return sidebarCollapsed;
   }));
   ipcMain.handle('protocol-css:get', () => protocolCss);
   ipcMain.handle('protocol-css:choose', async () => {
@@ -178,13 +191,13 @@ function registerHandlers() {
         throw new Error('Wählen Sie eine gültige HTML-Datei aus.');
       }
       await readMeetingTemplate(selected);
-      await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: selected, modules: enabledModules, lastSeenVersion });
+      await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: selected, modules: enabledModules, sidebarCollapsed, lastSeenVersion });
       meetingTemplate = selected;
       return selected;
     });
   });
   ipcMain.handle('meeting-template:reset', () => serializeWrite(async () => {
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: null, modules: enabledModules, lastSeenVersion });
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: null, modules: enabledModules, sidebarCollapsed, lastSeenVersion });
     meetingTemplate = null;
   }));
   ipcMain.handle('folder:choose', async () => {

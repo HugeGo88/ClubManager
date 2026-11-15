@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
-const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -323,7 +323,15 @@ function statisticsView() {
 }
 
 function renderNavigation() {
-  document.querySelectorAll('[data-view]').forEach(element => element.classList.toggle('active', element.dataset.view === state.view));
+  document.querySelector('.activity').classList.toggle('collapsed', state.sidebarCollapsed);
+  const sidebarToggle = document.querySelector('[data-action="toggle-sidebar"]');
+  sidebarToggle.setAttribute('aria-pressed', String(state.sidebarCollapsed));
+  sidebarToggle.title = state.sidebarCollapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen';
+  document.querySelectorAll('[data-view]').forEach(element => {
+    element.classList.toggle('active', element.dataset.view === state.view);
+    if (state.sidebarCollapsed) element.title = element.getAttribute('aria-label');
+    else element.removeAttribute('title');
+  });
   document.querySelectorAll('[data-module-view]').forEach(element => {
     element.hidden = !state.modules[element.dataset.moduleView];
   });
@@ -683,6 +691,22 @@ async function run(action, target) {
 document.addEventListener('click', async event => {
   const target = event.target.closest('button');
   if (!target || target.disabled) return;
+  if (target.dataset.action === 'toggle-sidebar') {
+    const hadFocus = document.activeElement === target;
+    target.disabled = true;
+    try {
+      state.sidebarCollapsed = await window.club.setSidebarCollapsed(!state.sidebarCollapsed);
+      renderNavigation();
+      if (state.previewOpen) resizeProtocolPreview(state.previewWidth);
+    } catch (error) {
+      setMessage(`Die Seitenleiste konnte nicht gespeichert werden: ${error.message}`, true);
+      render();
+    } finally {
+      target.disabled = false;
+      if (hadFocus && document.activeElement === document.body) target.focus();
+    }
+    return;
+  }
   if (target.dataset.action === 'toggle-meeting-nav' && state.view === 'meetings') {
     meetingNavExpanded = !meetingNavExpanded;
     renderNavigation();
@@ -921,16 +945,18 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, protocolCss, meetingTemplate, modules] = await Promise.all([
+    const [folder, protocolCss, meetingTemplate, modules, sidebarCollapsed] = await Promise.all([
       window.club.getFolder(),
       window.club.getProtocolCss(),
       window.club.getMeetingTemplate(),
-      window.club.getModules()
+      window.club.getModules(),
+      window.club.getSidebarCollapsed()
     ]);
     state.folder = folder;
     state.protocolCss = protocolCss;
     state.meetingTemplate = meetingTemplate;
     state.modules = modules;
+    state.sidebarCollapsed = sidebarCollapsed;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     state.meetings = state.folder ? await window.club.listMeetings() : [];
   } catch (error) {

@@ -28,6 +28,9 @@ module, but there is currently no cross-module data-sharing API, plugin system
 or separate service. Modularity and intentional data-sharing interfaces are
 future design goals, not existing guarantees.
 
+The sidebar's C button toggles an icon-only layout with native title tooltips;
+the setting is persisted. Related module icons share a color. Sidebar Material
+Icons are provided by a locally packaged font, with no network request.
 The sidebar has a collapsible Meetings group with **Offene Aufgaben**,
 **Entscheidungen**, **Alle TOPs** and **Statistiken**, plus Settings. Each module has a Settings
 tab and can be disabled; only Meetings is enabled by default. A disabled module
@@ -76,7 +79,7 @@ settings.json in userData    user-selected data folder
 ## Settings and persistence
 
 - Electron's `userData/settings.json`, outside the club data folder, stores the
-  chosen folder, optional shared PDF CSS and meeting HTML template paths, four Boolean module settings and the
+  chosen folder, optional shared PDF CSS and meeting HTML template paths, four Boolean module settings, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Existing settings without module selections use the Meetings-only defaults.

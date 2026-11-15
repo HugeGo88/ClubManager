@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('club', {
   getFolder: () => invoke('folder:get'),
   getModules: () => invoke('modules:get'),
   setModules: modules => invoke('modules:set', modules),
+  getSidebarCollapsed: () => invoke('sidebar:get'),
+  setSidebarCollapsed: collapsed => invoke('sidebar:set', collapsed),
   chooseFolder: () => invoke('folder:choose'),
   getProtocolCss: () => invoke('protocol-css:get'),
   chooseProtocolCss: () => invoke('protocol-css:choose'),

@@ -76,6 +76,43 @@ async function main() {
         }
         assert.equal(window.isVisible(), true, 'The app window appears after the first render');
         assert.equal(splash.isDestroyed(), true, 'The splash screen closes after the app window appears');
+        await window.webContents.executeJavaScript(`(async () => {
+          const button = document.querySelector('[data-action="toggle-sidebar"]');
+          const sidebar = document.querySelector('.activity');
+          if (button.getAttribute('aria-pressed') !== 'false' || sidebar.getBoundingClientRect().width !== 190) throw new Error('Sidebar must default to expanded');
+          const font = await document.fonts.load('24px "Material Icons"');
+          if (!font.length || !document.fonts.check('24px "Material Icons"')) throw new Error('Local Material Icons font did not load');
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          context.font = '24px "Material Icons"';
+          for (const nav of document.querySelectorAll('.activity [data-view]')) {
+            const icon = nav.querySelector('.nav-icon');
+            if (!icon.classList.contains('material-icons') || context.measureText(icon.textContent).width > 30 ||
+                nav.hasAttribute('title')) throw new Error('Missing Material icon or unexpected expanded tooltip for ' + nav.dataset.view);
+          }
+          const iconColor = view => getComputedStyle(document.querySelector('[data-view="' + view + '"] .nav-icon')).color;
+          if (new Set(['meetings', 'members', 'invoices', 'letters'].map(iconColor)).size !== 4 ||
+              !['tasks', 'decisions', 'tops', 'statistics'].every(view => iconColor(view) === iconColor('meetings'))) {
+            throw new Error('Module colors must distinguish groups and match their submodules');
+          }
+          button.focus();
+          button.click();
+          for (let i = 0; i < 200 && button.getAttribute('aria-pressed') !== 'true'; i++) await new Promise(resolve => setTimeout(resolve, 25));
+          if (sidebar.getBoundingClientRect().width !== 58 ||
+              getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).display !== 'none' ||
+              getComputedStyle(document.querySelector('[data-view="tasks"] .nav-icon')).display === 'none' ||
+              document.activeElement !== button) throw new Error('Collapsed sidebar must show icons, hide labels, and retain focus');
+          for (const nav of document.querySelectorAll('.activity [data-view]')) {
+            if (nav.title !== nav.getAttribute('aria-label')) throw new Error('Missing collapsed tooltip for ' + nav.dataset.view);
+          }
+          document.querySelector('[data-view="tasks"]').click();
+          for (let i = 0; i < 200 && !document.querySelector('[data-view="tasks"]').classList.contains('active'); i++) await new Promise(resolve => setTimeout(resolve, 25));
+          if (!document.querySelector('[data-view="tasks"]').classList.contains('active')) throw new Error('Collapsed navigation must remain usable');
+        })()`);
+        const sidebarSettingsFile = path.join(app.getPath('userData'), 'settings.json');
+        assert.equal(JSON.parse(await fs.readFile(sidebarSettingsFile, 'utf8')).sidebarCollapsed, true);
+        await window.webContents.executeJavaScript(`window.club.setModules({ meetings: true, members: false, invoices: false, letters: false })`);
+        assert.equal(JSON.parse(await fs.readFile(sidebarSettingsFile, 'utf8')).sidebarCollapsed, true);
         const reloadFinished = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
         await reloadFinished;
@@ -83,6 +120,13 @@ async function main() {
           for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
             await new Promise(resolve => setTimeout(resolve, 25));
           }
+          const sidebarToggle = document.querySelector('[data-action="toggle-sidebar"]');
+          if (sidebarToggle.getAttribute('aria-pressed') !== 'true' || document.querySelector('.activity').getBoundingClientRect().width !== 58) throw new Error('Sidebar preference must survive reload');
+          sidebarToggle.click();
+          for (let i = 0; i < 200 && sidebarToggle.getAttribute('aria-pressed') !== 'false'; i++) await new Promise(resolve => setTimeout(resolve, 25));
+          if (sidebarToggle.getAttribute('aria-pressed') !== 'false' || document.querySelector('.activity').getBoundingClientRect().width !== 190 ||
+              getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).display === 'none') throw new Error('Sidebar must expand again');
+          if ([...document.querySelectorAll('.activity [data-view]')].some(nav => nav.hasAttribute('title'))) throw new Error('Expanded sidebar must not show redundant tooltips');
           if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') throw new Error('Same version must not reopen history');
           document.querySelector('[data-view="changelog"]').click();
           for (let i = 0; i < 200; i++) {
@@ -173,7 +217,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: null, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
+          folder: null, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
@@ -245,6 +289,13 @@ async function main() {
           };
           setInput('[data-field="title"]', 'Beispiel: Vorstandssitzung');
           const dirtyEditor = document.querySelector('[data-markdown-editor="0"] .cm-editor');
+          const sidebarToggle = document.querySelector('[data-action="toggle-sidebar"]');
+          sidebarToggle.click();
+          await waitFor(() => sidebarToggle.getAttribute('aria-pressed') === 'true');
+          if (document.querySelector('[data-markdown-editor="0"] .cm-editor') !== dirtyEditor ||
+              document.querySelector('[data-field="title"]').value !== 'Beispiel: Vorstandssitzung') throw new Error('Sidebar toggle must preserve unsaved editor state');
+          sidebarToggle.click();
+          await waitFor(() => sidebarToggle.getAttribute('aria-pressed') === 'false');
           const meetingToggle = document.querySelector('[data-action="toggle-meeting-nav"]');
           const assertExpanded = expanded => {
             if (meetingToggle.getAttribute('aria-expanded') !== String(expanded) ||
@@ -529,7 +580,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
+          folder: data, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1183,7 +1234,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
+          folder: data, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {

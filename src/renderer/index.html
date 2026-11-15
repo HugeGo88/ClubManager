@@ -5,27 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'nonce-clubmanager-editor'; script-src 'self'; img-src 'self' data:; frame-src blob:; object-src 'none'; base-uri 'none'">
   <title>ClubManager</title>
+  <link rel="stylesheet" href="../../node_modules/@material-design-icons/font/filled.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <aside class="activity" aria-label="Module">
-    <div class="brand" title="ClubManager">C</div>
+    <button class="brand" type="button" data-action="toggle-sidebar" aria-label="Seitenleiste einklappen" aria-pressed="false" title="Seitenleiste einklappen">C</button>
     <nav id="navigation">
       <div class="meeting-nav" data-module-nav="meetings">
-        <button class="meeting-nav-heading" data-view="meetings" data-module-view="meetings" data-action="toggle-meeting-nav" title="Sitzungen" aria-label="Sitzungen" aria-expanded="true" aria-controls="meeting-subnav"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Sitzungen</span><svg class="nav-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <button class="meeting-nav-heading" data-view="meetings" data-module-view="meetings" data-action="toggle-meeting-nav" title="Sitzungen" aria-label="Sitzungen" aria-expanded="true" aria-controls="meeting-subnav"><span class="nav-icon material-icons" aria-hidden="true">event_note</span><span class="nav-label">Sitzungen</span><svg class="nav-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
         <div id="meeting-subnav" class="meeting-subnav">
-          <button data-view="tasks" data-module-view="meetings" title="Offene Aufgaben" aria-label="Offene Aufgaben"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Offene Aufgaben</span></button>
-          <button data-view="decisions" data-module-view="meetings" title="Entscheidungen" aria-label="Entscheidungen"><span class="nav-icon" aria-hidden="true">◆</span><span class="nav-label">Entscheidungen</span></button>
-          <button data-view="tops" data-module-view="meetings" title="Alle TOPs" aria-label="Alle TOPs"><span class="nav-icon" aria-hidden="true">☷</span><span class="nav-label">Alle TOPs</span></button>
-          <button data-view="statistics" data-module-view="meetings" title="Statistiken" aria-label="Statistiken"><span class="nav-icon" aria-hidden="true">▥</span><span class="nav-label">Statistiken</span></button>
+          <button data-view="tasks" data-module-view="meetings" title="Offene Aufgaben" aria-label="Offene Aufgaben"><span class="nav-icon material-icons" aria-hidden="true">task_alt</span><span class="nav-label">Offene Aufgaben</span></button>
+          <button data-view="decisions" data-module-view="meetings" title="Entscheidungen" aria-label="Entscheidungen"><span class="nav-icon material-icons" aria-hidden="true">how_to_vote</span><span class="nav-label">Entscheidungen</span></button>
+          <button data-view="tops" data-module-view="meetings" title="Alle TOPs" aria-label="Alle TOPs"><span class="nav-icon material-icons" aria-hidden="true">format_list_bulleted</span><span class="nav-label">Alle TOPs</span></button>
+          <button data-view="statistics" data-module-view="meetings" title="Statistiken" aria-label="Statistiken"><span class="nav-icon material-icons" aria-hidden="true">bar_chart</span><span class="nav-label">Statistiken</span></button>
         </div>
       </div>
-      <button data-view="members" data-module-view="members" title="Mitglieder" aria-label="Mitglieder"><span class="nav-icon" aria-hidden="true">♙</span><span class="nav-label">Mitglieder</span></button>
-      <button data-view="invoices" data-module-view="invoices" title="Rechnungen" aria-label="Rechnungen"><span class="nav-icon" aria-hidden="true">▧</span><span class="nav-label">Rechnungen</span></button>
-      <button data-view="letters" data-module-view="letters" title="Briefe" aria-label="Briefe"><span class="nav-icon" aria-hidden="true">✉</span><span class="nav-label">Briefe</span></button>
+      <button data-view="members" data-module-view="members" title="Mitglieder" aria-label="Mitglieder"><span class="nav-icon material-icons" aria-hidden="true">groups</span><span class="nav-label">Mitglieder</span></button>
+      <button data-view="invoices" data-module-view="invoices" title="Rechnungen" aria-label="Rechnungen"><span class="nav-icon material-icons" aria-hidden="true">receipt_long</span><span class="nav-label">Rechnungen</span></button>
+      <button data-view="letters" data-module-view="letters" title="Briefe" aria-label="Briefe"><span class="nav-icon material-icons" aria-hidden="true">mail</span><span class="nav-label">Briefe</span></button>
     </nav>
-    <button class="changelog-nav" data-view="changelog" title="Versionsverlauf" aria-label="Versionsverlauf"><span class="nav-icon" aria-hidden="true">◷</span><span class="nav-label">Versionsverlauf</span></button>
-    <button class="settings-nav" data-view="settings" title="Einstellungen" aria-label="Einstellungen"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Einstellungen</span></button>
+    <button class="changelog-nav" data-view="changelog" title="Versionsverlauf" aria-label="Versionsverlauf"><span class="nav-icon material-icons" aria-hidden="true">history</span><span class="nav-label">Versionsverlauf</span></button>
+    <button class="settings-nav" data-view="settings" title="Einstellungen" aria-label="Einstellungen"><span class="nav-icon material-icons" aria-hidden="true">settings</span><span class="nav-label">Einstellungen</span></button>
   </aside>
   <main id="app"><div class="startup-loading" role="status">ClubManager wird gestartet …</div></main>
   <script src="../shared/de.js"></script>

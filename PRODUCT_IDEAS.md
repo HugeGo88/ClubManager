@@ -28,7 +28,7 @@ items are still open, partially implemented, or ongoing design goals.
 ## UI
 
 - [x] Use a left-side icon bar, similar to the Visual Studio Code activity bar, to
-  switch between modules.
+  switch between modules, with a persistent toggle for showing or hiding labels.
 - [x] Place Settings at the bottom of the icon bar.
 - [x] Provide a settings tab for each module and allow modules to be enabled or
   disabled; only Meetings is enabled by default and disabled modules are hidden
