@@ -1,0 +1,9 @@
+body { margin: 0; color: #24292f; font: 11pt/1.5 sans-serif; overflow-wrap: anywhere; }
+.letter-address { min-height: 35mm; white-space: normal; }
+.letter-date { text-align: right; }
+.letter h1 { font-size: 18pt; margin: 1.5em 0 1em; break-after: avoid; }
+.letter-content { overflow-wrap: anywhere; }
+.letter-signatures { display: flex; flex-wrap: wrap; gap: 12mm; margin-top: 12mm; }
+.letter-signature { margin: 0; break-inside: avoid; }
+.letter-signature img { display: block; max-width: 55mm; max-height: 25mm; object-fit: contain; object-position: left bottom; }
+.letter-signature figcaption { margin-top: 2mm; }

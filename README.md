@@ -1,7 +1,7 @@
 # ClubManager
 
-An early Electron desktop app. The first version focuses on meetings; Members,
-Invoices, and Letters are placeholders. See [product ideas](PRODUCT_IDEAS.md)
+An early Electron desktop app with meetings and individual letters. Members and
+Invoices are placeholders. See [product ideas](PRODUCT_IDEAS.md)
 for the longer-term direction and [architecture](ARCHITECTURE.md) for the
 current implementation and maintenance guidance.
 
@@ -61,9 +61,9 @@ add an entry for each release.
 
 Selecting another folder opens that folder's data; it does not migrate it.
 In **Einstellungen → Allgemein**, optionally select a shared CSS file for PDF
-documents. Meetings is currently the only module that exports PDFs; the shared
-setting is intended for future modules as they add PDF export. It replaces the
-default stylesheet, is stored as a path in the app settings, and
+documents. Meetings and Letters use the shared setting; it is intended for
+other modules as they add PDF export. It replaces the module's default
+stylesheet, is stored as a path in the app settings, and
 is reread for each export. Use **Standardlayout verwenden** to reset it.
 If the selected file is missing or unreadable, export reports an error instead
 of falling back silently. Use self-contained CSS; external resources are
@@ -91,6 +91,31 @@ images may be embedded. The template is checked when selected and reread and
 checked for every export. Missing or invalid templates cause an error rather
 than silently falling back. Reset the template in the meeting settings to use
 the default again.
+
+### Letters
+
+Enable **Briefe** in **Einstellungen → Briefe**. Create and save individual
+letters in the selected data folder; open saved letters from the list. The
+editor supports Markdown and an optional manually entered, multiline address.
+Select any configured signatures with the checkboxes, save, then export to PDF.
+The saved PDF can be opened from the letter editor and is a snapshot of the
+last export. Letter records are stored in `letters/<id>.json` and PDFs in
+`letters/pdf/<id>.pdf`; conflicting external edits are reported.
+
+Add signature image files in the Letters settings. PNG, JPEG, SVG, WebP and GIF
+are supported, up to 10 MB per image. The original files are linked, not copied,
+and must remain accessible at export; removing an entry or moving a file
+requires updating affected letters. The image's filename is its displayed name.
+SVGs are rendered as images with external resources blocked.
+
+An optional letter HTML body template can be selected in the same settings;
+otherwise a built-in template is used. See the [example](docs/letter-template-example.html).
+Templates use the same sanitization rules as meeting templates. Placeholders
+are `{{title}}`, `{{date}}`, `{{address}}`, `{{content}}`, and `{{signatures}}`.
+The last three insert generated HTML; address and signatures are empty when
+not selected. Include all needed placeholders: omitted fields do not appear in
+the PDF. Templates and linked signature images are reread on export.
+Member-based recipients and mail merge are not implemented yet.
 
 The default PDF heading combines the meeting title and date. PDF protocols repeat the
 meeting title in the page header and the meeting date

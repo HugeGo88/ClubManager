@@ -126,4 +126,4 @@ function protocolHtml(meeting, css, earlierMeetings = [], template = null) {
     <body>${body}</body></html>`;
 }
 
-module.exports = { protocolHtml, validateProtocolTemplate };
+module.exports = { protocolHtml, validateProtocolTemplate, escapeHtml, markdown, renderTemplate };

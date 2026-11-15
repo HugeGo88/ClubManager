@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { loadSettings, saveSettings } = require('../src/main/settings');
 
 test('loads legacy settings and persists PDF CSS independently of the data folder', async t => {
@@ -12,15 +13,15 @@ test('loads legacy settings and persists PDF CSS independently of the data folde
   const folder = path.join(root, 'data');
   const protocolCss = path.join(root, 'protocol.css');
   const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, meetingTemplate: null, modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await fs.writeFile(file, JSON.stringify({ folder }));
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { folder: null, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, meetingTemplate: null, modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { folder, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss, meetingTemplate: null, modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { folder, protocolCss: null });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
 });
 
 test('persists and validates the sidebar preference', async t => {
@@ -50,6 +51,21 @@ test('persists and validates the meeting template path independently of shared C
   await assert.rejects(saveSettings(file, { meetingTemplate: 'relative.html' }), /HTML-Vorlage/);
   await fs.writeFile(file, JSON.stringify({ meetingTemplate: 'relative.html' }));
   await assert.rejects(loadSettings(file), /HTML-Vorlage/);
+});
+
+test('persists letter templates and linked signatures', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'settings.json');
+  const letterTemplate = path.join(root, 'letter.html');
+  const signatures = [{ id: randomUUID(), name: 'Alex', path: path.join(root, 'alex.svg') }];
+  await saveSettings(file, { letterTemplate, signatures });
+  assert.equal((await loadSettings(file)).letterTemplate, letterTemplate);
+  assert.deepEqual((await loadSettings(file)).signatures, signatures);
+  await assert.rejects(saveSettings(file, { signatures: [{ ...signatures[0], path: 'relative.svg' }] }), /Unterschriften/);
+  await assert.rejects(saveSettings(file, { signatures: [signatures[0], signatures[0]] }), /Unterschriften/);
+  await fs.writeFile(file, JSON.stringify({ letterTemplate: 'relative.html' }));
+  await assert.rejects(loadSettings(file), /Briefvorlage/);
 });
 
 test('loads, validates and persists module enablement', async t => {

@@ -21,8 +21,8 @@ every tool or contributor.
 ## Product and module boundaries
 
 ClubManager is a local Electron desktop application with German user-facing
-text. Meetings is the only implemented business module. Members, Invoices and
-Letters currently have sidebar entries, settings toggles and placeholder views,
+text. Meetings and single-recipient Letters are implemented. Members and Invoices
+currently have sidebar entries, settings toggles and placeholder views,
 not independent business implementations. Separate data folders exist for each
 module, but there is currently no cross-module data-sharing API, plugin system
 or separate service. Modularity and intentional data-sharing interfaces are
@@ -79,7 +79,8 @@ settings.json in userData    user-selected data folder
 ## Settings and persistence
 
 - Electron's `userData/settings.json`, outside the club data folder, stores the
-  chosen folder, optional shared PDF CSS and meeting HTML template paths, four Boolean module settings, sidebar width preference and the
+  chosen folder, optional shared PDF CSS and meeting/letter HTML template paths,
+  linked signature metadata, four Boolean module settings, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Existing settings without module selections use the Meetings-only defaults.
@@ -106,6 +107,12 @@ settings.json in userData    user-selected data folder
   TOPs may contain an outcome and optional vote counts. The editor disallows
   adding new tasks to a decision but preserves legacy decision tasks.
   Storage validation is the source of truth for accepted fields and dates.
+- [src/main/letters.js](src/main/letters.js) stores individual letters as
+  versioned `letters/<UUID>.json` files and their PDFs in `letters/pdf/`.
+  Letters have optional manually entered addresses and signature IDs.
+  Settings contain linked image paths, not copies; missing images or removed
+  signature entries cause an export error. SVG and raster images are decoded
+  in an isolated window and rasterized before embedding.
 - Writes use a temporary file followed by rename. SHA-256 revisions detect
   changes on disk before saves and exports; the caller must reload after a
   conflict rather than overwrite external edits. This is not a synchronization
@@ -121,7 +128,7 @@ and uses `printToPDF`; the result replaces the meeting's previous export.
 Document CSP blocks external resources. The default stylesheet is
 [src/shared/document.css](src/shared/document.css); a user-selected CSS file
 replaces it and is reread on each export. The CSS setting is shared for future
-PDF-exporting modules; meetings is currently the only module with PDF export.
+PDF-exporting modules; Meetings and Letters both use it.
 The optional meeting-specific HTML body template places escaped title/date and
 generated attendance, TOP and open-task sections using documented placeholders;
 template HTML is sanitized and validated both on selection and export. Without
@@ -168,6 +175,10 @@ separate operational steps.
 - The meeting editor works on a clone of the selected saved record, tracks a
   revision and dirty flag, and requires a save before exporting. A generated PDF
   is a snapshot, not automatically updated when the meeting changes.
+- The letter editor similarly tracks unsaved changes and revisions, uses the
+  shared Markdown editor, and exports saved content with optional address and
+  selected linked signatures. Letter templates use sanitized body fragments
+  with documented placeholders; the shared PDF CSS overrides the default.
 - Open Tasks aggregates unfinished tasks from saved meetings, filters and sorts
   them, expands each task's corresponding TOP details across the table, and
   marks a task complete via an immediate revision-checked save. A

@@ -13,14 +13,23 @@ async function main() {
   const data = path.join(root, 'data');
   const cssFile = path.join(root, 'custom.css');
   const templateFile = path.join(root, 'meeting.html');
+  const letterTemplateFile = path.join(root, 'letter.html');
+  const signaturePng = path.join(root, 'signature.png');
+  const signatureSvg = path.join(root, 'signature.svg');
+  let selectedSignature = signaturePng;
   await fs.writeFile(cssFile, 'body { color: rgb(12, 34, 56); }');
   await fs.writeFile(templateFile, '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
+  await fs.writeFile(letterTemplateFile, '<main class="letter"><h1>Briefvorlage {{title}}</h1>{{date}}{{address}}{{content}}{{signatures}}</main>');
+  await fs.writeFile(signaturePng, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
+  await fs.writeFile(signatureSvg, '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><path d="M1 15 Q20 0 39 15" fill="none" stroke="black"/></svg>');
   await fs.mkdir(data);
   app.setPath('userData', path.join(root, 'settings'));
   await fs.mkdir(app.getPath('userData'));
   let cancelCssDialog = false;
   dialog.showOpenDialog = async (window, options) => options.properties.includes('openFile')
-    ? (options.filters?.[0]?.extensions.includes('html') ? { canceled: false, filePaths: [templateFile] }
+    ? (options.title === 'Unterschrift auswählen' ? { canceled: false, filePaths: [selectedSignature] }
+      : options.title === 'HTML-Vorlage für Briefe auswählen' ? { canceled: false, filePaths: [letterTemplateFile] }
+      : options.filters?.[0]?.extensions.includes('html') ? { canceled: false, filePaths: [templateFile] }
       : cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
     : { canceled: false, filePaths: [data] };
   const pdfColors = [];
@@ -28,11 +37,13 @@ async function main() {
   const pdfVoteResults = [];
   const pdfOpenTasks = [];
   const pdfTitles = [];
+  const pdfDocuments = [];
   app.on('browser-window-created', (event, window) => {
     if (window.isVisible()) return;
     const printToPDF = window.webContents.printToPDF.bind(window.webContents);
     window.webContents.printToPDF = async options => {
       pdfTitles.push(await window.webContents.executeJavaScript('document.querySelector("main h1")?.textContent'));
+      pdfDocuments.push(await window.webContents.executeJavaScript('document.body.innerHTML'));
       pdfColors.push(await window.webContents.executeJavaScript('getComputedStyle(document.body).color'));
       pdfPointHeadings.push(await window.webContents.executeJavaScript(
         `Array.from(document.querySelectorAll('.point-heading h3'), element => element.textContent)`));
@@ -243,7 +254,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: null, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          folder: null, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
@@ -606,7 +617,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          folder: data, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1260,7 +1271,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          folder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
@@ -1442,6 +1453,142 @@ async function main() {
         } finally {
           layoutWindow.destroy();
         }
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              if (document.querySelector('.notice.error')) throw new Error(document.querySelector('.notice.error').textContent);
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Letter settings timed out');
+          };
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => document.querySelector('[data-settings-tab="letters"]'));
+          document.querySelector('[data-settings-tab="letters"]').click();
+          await waitFor(() => document.querySelector('[data-action="choose-signature"]'));
+          document.querySelector('[data-action="choose-signature"]').click();
+          await waitFor(() => document.querySelectorAll('[data-action="remove-signature"]').length === 1);
+        })()`);
+        selectedSignature = signatureSvg;
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              if (test()) return;
+              if (document.querySelector('.notice.error')) throw new Error(document.querySelector('.notice.error').textContent);
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Letter setup timed out');
+          };
+          document.querySelector('[data-action="choose-signature"]').click();
+          await waitFor(() => document.querySelectorAll('[data-action="remove-signature"]').length === 2);
+          document.querySelector('[data-action="choose-letter-template"]').click();
+          await waitFor(() => document.querySelector('[data-action="reset-letter-template"]'));
+          document.querySelector('[data-view="letters"]').click();
+          await waitFor(() => document.querySelector('[data-action="new-letter"]'));
+          document.querySelector('[data-action="new-letter"]').click();
+          await waitFor(() => document.querySelector('[data-letter-field="title"]'));
+          const title = document.querySelector('[data-letter-field="title"]');
+          title.value = 'Testbrief';
+          title.dispatchEvent(new Event('input', { bubbles: true }));
+          const editor = document.querySelector('[data-letter-editor] .cm-content');
+          editor.focus();
+          document.execCommand('insertText', false, '**Briefinhalt**');
+          await waitFor(() => editor.textContent.includes('Briefinhalt'));
+          document.querySelector('[data-action="save-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Brief gespeichert.');
+          document.querySelector('[data-action="export-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+        })()`);
+        assert.match(pdfDocuments.at(-1), /Briefvorlage Testbrief/);
+        assert.match(pdfDocuments.at(-1), /<strong>Briefinhalt<\/strong>/);
+        assert.doesNotMatch(pdfDocuments.at(-1), /class="letter-address"|class="letter-signature"/);
+        const reloadLetters = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+        window.webContents.reload();
+        await reloadLetters;
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              if (test()) return;
+              if (document.querySelector('.notice.error')) throw new Error(document.querySelector('.notice.error').textContent);
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Letter reload timed out');
+          };
+          await waitFor(() => document.querySelector('#app')?.dataset.modulesLoaded === 'true');
+          document.querySelector('[data-view="letters"]').click();
+          await waitFor(() => document.querySelector('[data-action="select-letter"]'));
+          document.querySelector('[data-action="select-letter"]').click();
+          await waitFor(() => document.querySelector('[data-letter-field="title"]')?.value === 'Testbrief');
+          const addressToggle = document.querySelector('[data-letter-field="includeAddress"]');
+          addressToggle.click();
+          const address = document.querySelector('[data-letter-field="address"]');
+          if (address.closest('label').hidden) throw new Error('Address field did not open');
+          address.value = 'Alex Beispiel\\nHauptstraße 1';
+          address.dispatchEvent(new Event('input', { bubbles: true }));
+          for (const checkbox of document.querySelectorAll('[data-letter-signature]')) checkbox.click();
+          if (document.querySelectorAll('[data-letter-signature]:checked').length !== 2) throw new Error('Multiple signatures not selected');
+          document.querySelector('[data-action="save-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Brief gespeichert.');
+          document.querySelector('[data-action="export-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+        })()`);
+        assert.match(pdfDocuments.at(-1), /Alex Beispiel<br>Hauptstraße 1/);
+        assert.equal((pdfDocuments.at(-1).match(/class="letter-signature"/g) || []).length, 2);
+        const letterFiles = (await fs.readdir(path.join(data, 'letters'))).filter(name => name.endsWith('.json'));
+        assert.equal(letterFiles.length, 1);
+        const savedLetter = JSON.parse(await fs.readFile(path.join(data, 'letters', letterFiles[0]), 'utf8')).letter;
+        assert.equal(savedLetter.signatures.length, 2);
+        assert.equal((await fs.readFile(path.join(data, 'letters', 'pdf', `${savedLetter.id}.pdf`))).subarray(0, 5).toString(), '%PDF-');
+        await fs.unlink(signatureSvg);
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="export-letter"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('.notice.error')?.textContent.includes('Unterschrift')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Missing signature error not shown');
+        })()`);
+        openError = '';
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              if (test()) return;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Letter reset and shared CSS timed out');
+          };
+          const signatures = [...document.querySelectorAll('[data-letter-signature]')];
+          signatures[1].click();
+          document.querySelector('[data-action="save-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Brief gespeichert.');
+          document.querySelector('[data-action="open-letter-pdf"]').click();
+          await waitFor(() => !document.body.inert);
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => document.querySelector('[data-settings-tab="letters"]'));
+          document.querySelector('[data-settings-tab="letters"]').click();
+          await waitFor(() => document.querySelector('[data-action="reset-letter-template"]'));
+          document.querySelector('[data-action="reset-letter-template"]').click();
+          await waitFor(() => document.querySelector('[data-letter-template]')?.textContent.includes('Standardvorlage'));
+          document.querySelector('[data-settings-tab="general"]').click();
+          await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
+          document.querySelector('[data-action="choose-protocol-css"]').click();
+          await waitFor(() => document.querySelector('[data-action="reset-protocol-css"]'));
+          document.querySelector('[data-view="letters"]').click();
+          await waitFor(() => document.querySelector('[data-action="select-letter"]'));
+          document.querySelector('[data-action="select-letter"]').click();
+          await waitFor(() => document.querySelector('[data-action="export-letter"]'));
+          document.querySelector('[data-action="export-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+        })()`);
+        assert.match(openedPaths.at(-1), new RegExp(`${savedLetter.id}\\.pdf$`));
+        assert.match(pdfDocuments.at(-1), /<h1>Testbrief<\/h1>/);
+        assert.match(pdfDocuments.at(-1), /Alex Beispiel/);
+        assert.equal((pdfDocuments.at(-1).match(/class="letter-signature"/g) || []).length, 1);
+        assert.equal(pdfColors.at(-1), 'rgb(10, 20, 30)');
+        const finalSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
+        assert.equal(finalSettings.letterTemplate, null);
+        assert.equal(finalSettings.signatures.length, 2);
         console.log('Electron smoke test passed: task table filtering, sorting, completion, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();

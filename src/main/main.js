@@ -6,6 +6,8 @@ const settings = require('./settings');
 const { protocolHtml, validateProtocolTemplate } = require('./protocol');
 const { isDate } = require('../shared/dates');
 const { startUpdates } = require('./updates');
+const letters = require('./letters');
+const { randomUUID } = require('node:crypto');
 
 let mainWindow;
 let splashWindow;
@@ -13,6 +15,8 @@ let folder;
 let configuredFolder = null;
 let protocolCss = null;
 let meetingTemplate = null;
+let letterTemplate = null;
+let signatures = [];
 let enabledModules = { ...settings.DEFAULT_MODULES };
 let sidebarCollapsed = false;
 let lastSeenVersion = null;
@@ -39,6 +43,8 @@ async function loadFolder() {
   configuredFolder = config.folder;
   protocolCss = config.protocolCss;
   meetingTemplate = config.meetingTemplate;
+  letterTemplate = config.letterTemplate;
+  signatures = config.signatures;
   enabledModules = config.modules;
   sidebarCollapsed = config.sidebarCollapsed;
   lastSeenVersion = config.lastSeenVersion;
@@ -62,14 +68,18 @@ function settingsFile() {
 }
 
 async function saveSettings(nextFolder, nextProtocolCss) {
-  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, meetingTemplate, modules: enabledModules, sidebarCollapsed, lastSeenVersion });
+  await persistSettings({ folder: nextFolder || null, protocolCss: nextProtocolCss });
+}
+
+async function persistSettings(overrides = {}) {
+  await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, letterTemplate, signatures, modules: enabledModules, sidebarCollapsed, lastSeenVersion, ...overrides });
 }
 
 async function readProtocolCss(file) {
   try {
     return await fs.readFile(file, 'utf8');
   } catch (error) {
-    throw new Error(`Die CSS-Datei für PDF-Protokolle konnte nicht gelesen werden: ${error.message}`);
+    throw new Error(`Die CSS-Datei für PDF-Dokumente konnte nicht gelesen werden: ${error.message}`);
   }
 }
 
@@ -82,6 +92,46 @@ async function readMeetingTemplate(file) {
   }
   validateProtocolTemplate(template);
   return template;
+}
+
+async function readLetterTemplate(file) {
+  let template;
+  try { template = await fs.readFile(file, 'utf8'); }
+  catch (error) { throw new Error(`Die Briefvorlage konnte nicht gelesen werden: ${error.message}`); }
+  letters.validateLetterTemplate(template);
+  return template;
+}
+
+async function readSignature(signature) {
+  const types = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.gif': 'image/gif' };
+  const type = types[path.extname(signature.path).toLowerCase()];
+  if (!type) throw new Error(`Nicht unterstütztes Bildformat für Unterschrift "${signature.name}".`);
+  let bytes;
+  try {
+    const info = await fs.stat(signature.path);
+    if (!info.isFile() || !info.size || info.size > 10 * 1024 * 1024) throw new Error('Die Datei ist leer, keine reguläre Datei oder größer als 10 MB.');
+    bytes = await fs.readFile(signature.path);
+  }
+  catch (error) { throw new Error(`Unterschrift "${signature.name}" konnte nicht gelesen werden: ${error.message}`); }
+  if (!bytes.length || bytes.length > 10 * 1024 * 1024) throw new Error(`Unterschrift "${signature.name}" ist leer oder größer als 10 MB.`);
+  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
+  try {
+    const url = `data:${type};base64,${bytes.toString('base64')}`;
+    await window.loadURL('data:text/html,<meta http-equiv="Content-Security-Policy" content="default-src %27none%27; img-src data:">');
+    const data = await window.webContents.executeJavaScript(`(async () => {
+      const image = new Image();
+      image.src = ${JSON.stringify(url)};
+      await image.decode();
+      if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 16000000) throw new Error('Ungültige Bildgröße');
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      return canvas.toDataURL('image/png');
+    })()`);
+    return { name: signature.name, data };
+  } catch (error) {
+    throw new Error(`Unterschrift "${signature.name}" ist kein lesbares Bild: ${error.message}`);
+  } finally { window.destroy(); }
 }
 
 function registerHandlers() {
@@ -123,7 +173,7 @@ function registerHandlers() {
   ipcMain.handle('changelog:mark-seen', () => serializeWrite(async () => {
     if (!settingsLoaded) throw new Error('Die angezeigte Version konnte nicht gespeichert werden.');
     const version = app.getVersion();
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: enabledModules, sidebarCollapsed, lastSeenVersion: version });
+    await persistSettings({ lastSeenVersion: version });
     lastSeenVersion = version;
   }));
   ipcMain.handle('update:install', event => {
@@ -137,7 +187,7 @@ function registerHandlers() {
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
     const nextModules = settings.validateModules(modules);
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: nextModules, sidebarCollapsed, lastSeenVersion });
+    await persistSettings({ modules: nextModules });
     enabledModules = nextModules;
     return { ...enabledModules };
   }));
@@ -148,7 +198,7 @@ function registerHandlers() {
   ipcMain.handle('sidebar:set', (event, value) => serializeWrite(async () => {
     if (!settingsLoaded) throw new Error('Die Seitenleisten-Einstellung konnte nicht gespeichert werden.');
     const next = settings.validateSidebarCollapsed(value);
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: enabledModules, sidebarCollapsed: next, lastSeenVersion });
+    await persistSettings({ sidebarCollapsed: next });
     sidebarCollapsed = next;
     return sidebarCollapsed;
   }));
@@ -191,14 +241,52 @@ function registerHandlers() {
         throw new Error('Wählen Sie eine gültige HTML-Datei aus.');
       }
       await readMeetingTemplate(selected);
-      await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: selected, modules: enabledModules, sidebarCollapsed, lastSeenVersion });
+      await persistSettings({ meetingTemplate: selected });
       meetingTemplate = selected;
       return selected;
     });
   });
   ipcMain.handle('meeting-template:reset', () => serializeWrite(async () => {
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: null, modules: enabledModules, sidebarCollapsed, lastSeenVersion });
+    await persistSettings({ meetingTemplate: null });
     meetingTemplate = null;
+  }));
+  ipcMain.handle('letter-settings:get', () => ({ template: letterTemplate, signatures: signatures.map(item => ({ ...item })) }));
+  ipcMain.handle('letter-template:choose', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'HTML-Vorlage für Briefe auswählen', properties: ['openFile'], filters: [{ name: 'HTML-Dateien', extensions: ['html', 'htm'] }] });
+    if (result.canceled) return null;
+    return serializeWrite(async () => {
+      const file = result.filePaths[0];
+      if (typeof file !== 'string' || !path.isAbsolute(file) || !['.html', '.htm'].includes(path.extname(file).toLowerCase())) throw new Error('Wählen Sie eine gültige HTML-Datei aus.');
+      await readLetterTemplate(file);
+      await persistSettings({ letterTemplate: file });
+      letterTemplate = file;
+      return file;
+    });
+  });
+  ipcMain.handle('letter-template:reset', () => serializeWrite(async () => {
+    await persistSettings({ letterTemplate: null });
+    letterTemplate = null;
+  }));
+  ipcMain.handle('signatures:choose', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'Unterschrift auswählen', properties: ['openFile'], filters: [{ name: 'Bilddateien', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'] }] });
+    if (result.canceled) return null;
+    return serializeWrite(async () => {
+      const file = result.filePaths[0];
+      if (typeof file !== 'string' || !path.isAbsolute(file)) throw new Error('Wählen Sie eine gültige Bilddatei aus.');
+      const signature = { id: randomUUID(), name: path.basename(file, path.extname(file)), path: file };
+      await readSignature(signature);
+      const next = [...signatures, signature];
+      await persistSettings({ signatures: next });
+      signatures = next;
+      return signature;
+    });
+  });
+  ipcMain.handle('signatures:remove', (event, id) => serializeWrite(async () => {
+    if (!signatures.some(item => item.id === id)) throw new Error('Die Unterschrift wurde nicht gefunden.');
+    const next = signatures.filter(item => item.id !== id);
+    await persistSettings({ signatures: next });
+    signatures = next;
+    return signatures;
   }));
   ipcMain.handle('folder:choose', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -218,6 +306,38 @@ function registerHandlers() {
     });
   });
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));
+  ipcMain.handle('letters:list', () => letters.listLetters(requireFolder()));
+  ipcMain.handle('letters:save', (event, letter, revision) => serializeWrite(() => letters.saveLetter(requireFolder(), letter, revision)));
+  ipcMain.handle('letters:has-pdf', (event, id) => letters.hasPdf(requireFolder(), id));
+  ipcMain.handle('letters:open-pdf', async (event, id) => {
+    const currentFolder = requireFolder();
+    if (!await letters.hasPdf(currentFolder, id)) throw new Error('Das Brief-PDF wurde nicht gefunden. Exportieren Sie es erneut.');
+    const error = await shell.openPath(letters.pdfPath(currentFolder, id));
+    if (error) throw new Error(`Das Brief-PDF konnte nicht geöffnet werden: ${error}`);
+  });
+  ipcMain.handle('letters:export', (event, letter, revision) => serializeWrite(async () => {
+    const currentFolder = requireFolder();
+    letters.validateLetter(letter);
+    const current = (await letters.listLetters(currentFolder)).find(item => item.letter.id === letter.id);
+    if (!current || current.revision !== revision) throw new Error('Der gespeicherte Brief wurde geändert. Laden Sie ihn vor dem Export erneut.');
+    const images = [];
+    for (const id of current.letter.signatures) {
+      const signature = signatures.find(item => item.id === id);
+      if (!signature) throw new Error('Eine ausgewählte Unterschrift ist nicht mehr in den Einstellungen vorhanden.');
+      images.push(await readSignature(signature));
+    }
+    const css = await readProtocolCss(protocolCss || path.join(__dirname, '../shared/letter.css'));
+    const template = letterTemplate ? await readLetterTemplate(letterTemplate) : null;
+    const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
+    try {
+      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(letters.letterHtml(current.letter, css, images, template))}`);
+      const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+      const file = letters.pdfPath(currentFolder, current.letter.id);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await storage.atomicWrite(file, pdf);
+      return file;
+    } finally { pdfWindow.destroy(); }
+  }));
   ipcMain.handle('meetings:save', (event, meeting, revision) =>
     serializeWrite(() => storage.saveMeeting(requireFolder(), meeting, revision)));
   ipcMain.handle('meetings:has-protocol', (event, id) => storage.hasProtocol(requireFolder(), id));

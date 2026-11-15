@@ -1,6 +1,7 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
+const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -26,6 +27,34 @@ const button = (action, text, extra = '') => `<button class="action ${extra}" da
 
 function blankMeeting() {
   return { id: crypto.randomUUID(), title: '', date: '', attendance: [], points: [] };
+}
+
+function blankLetter() {
+  return { id: crypto.randomUUID(), title: '', date: clubDates.localDate(), includeAddress: false, address: '', content: '', signatures: [] };
+}
+
+function letterList() {
+  return `<aside class="list"><h2>Briefe</h2>${button('new-letter', '+ Neuer Brief', 'primary')}
+    ${letterState.letters.length ? letterState.letters.map(({ letter }) =>
+      `<button class="list-item ${letterState.letter?.id === letter.id ? 'selected' : ''}" data-action="select-letter" data-id="${escape(letter.id)}"><strong>${escape(letter.title || 'Brief ohne Titel')}</strong><small>${escape(letter.date ? formatDate(letter.date) : 'Kein Datum')}</small></button>`).join('') : '<p>Noch keine Briefe gespeichert.</p>'}</aside>`;
+}
+
+function letterEditor(letter) {
+  const missing = letter.signatures.filter(id => !letterState.signatures.some(item => item.id === id));
+  return `<div class="topline letter-toolbar"><div><h1>Brief bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
+    <div class="row letter-actions">${letterState.hasPdf ? button('open-letter-pdf', 'Gespeichertes PDF öffnen') : ''}${button('export-letter', 'PDF exportieren')}${button('save-letter', 'Brief speichern', 'primary')}</div></div>
+    ${letterState.hasPdf ? '<p class="muted">Das gespeicherte PDF zeigt den Stand des letzten Exports.</p>' : ''}
+    <div class="card"><div class="fields">
+      <label>Titel / Betreff<input data-letter-field="title" value="${escape(letter.title)}"></label>
+      <label>Datum<input type="date" data-letter-field="date" value="${escape(letter.date)}"></label>
+    </div>
+    <label class="checkbox"><input type="checkbox" data-letter-field="includeAddress" ${letter.includeAddress ? 'checked' : ''}> Adressfeld einfügen</label>
+    <label data-letter-address ${letter.includeAddress ? '' : 'hidden'}>Adresse<textarea data-letter-field="address" rows="4">${escape(letter.address)}</textarea></label>
+    <div class="markdown-field"><span class="markdown-label">Briefinhalt <span class="muted">(Markdown mit Live-Vorschau)</span></span><div data-letter-editor></div></div>
+    <h2>Unterschriften</h2>
+    ${letterState.signatures.length ? letterState.signatures.map(signature => `<label class="checkbox"><input type="checkbox" data-letter-signature="${escape(signature.id)}" ${letter.signatures.includes(signature.id) ? 'checked' : ''}> ${escape(signature.name)}</label>`).join('') : '<p>Keine Unterschriften in den Einstellungen hinzugefügt.</p>'}
+    ${missing.map(id => `<label class="checkbox"><input type="checkbox" data-letter-signature="${escape(id)}" checked> Nicht mehr vorhandene Unterschrift entfernen</label>`).join('')}
+    </div>`;
 }
 
 function confirmDiscard() {
@@ -356,6 +385,13 @@ function settingsView() {
         <p class="path" data-meeting-template>${escape(state.meetingTemplate || 'Standardvorlage wird verwendet')}</p>
         <div class="row">${button('choose-meeting-template', state.meetingTemplate ? 'HTML-Vorlage ändern' : 'HTML-Vorlage auswählen')}${state.meetingTemplate ? button('reset-meeting-template', 'Standardvorlage verwenden') : ''}</div>
         <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>` : ''}
+      ${selected[0] === 'letters' ? `<h2>HTML-Vorlage für Briefe</h2>
+        <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{address}}</code>, <code>{{content}}</code>, <code>{{signatures}}</code>.</p>
+        <p class="path" data-letter-template>${escape(letterState.template || 'Standardvorlage wird verwendet')}</p>
+        <div class="row">${button('choose-letter-template', 'HTML-Vorlage auswählen')}${letterState.template ? button('reset-letter-template', 'Standardvorlage verwenden') : ''}</div>
+        <h2>Unterschriften</h2><p>Die Originaldateien bleiben an ihrem Speicherort und werden beim Export gelesen.</p>
+        ${letterState.signatures.map(item => `<div class="row"><span>${escape(item.name)} — <span class="path">${escape(item.path)}</span></span><button class="action" data-action="remove-signature" data-id="${escape(item.id)}" aria-label="Unterschrift ${escape(item.name)} entfernen">Entfernen</button></div>`).join('')}
+        ${button('choose-signature', 'Unterschrift hinzufügen')}` : ''}
     </section>` : `<section role="tabpanel" aria-labelledby="settings-tab-general">
       <div class="card"><h2>Datenordner</h2>
         <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
@@ -363,7 +399,7 @@ function settingsView() {
         ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
         <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
       <div class="card"><h2>Gemeinsame CSS-Datei für PDF-Dokumente</h2>
-        <p>Diese CSS-Datei ist für PDF-Dokumente aller Module vorgesehen und ersetzt das Standardlayout beim PDF-Export. Derzeit unterstützt das Sitzungsmodul den Export.</p>
+        <p>Diese CSS-Datei gilt für PDF-Dokumente aller Module und ersetzt das Standardlayout beim PDF-Export.</p>
         <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
         <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
         <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>
@@ -405,6 +441,8 @@ function render() {
     content = topsView();
   } else if (state.view === 'statistics') {
     content = statisticsView();
+  } else if (state.view === 'letters') {
+    content = letterState.letter ? letterEditor(letterState.letter) : '<div class="empty"><h1>Briefe</h1><p>Erstellen Sie einen Brief oder wählen Sie einen aus der Liste aus.</p></div>';
   } else {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
@@ -412,7 +450,7 @@ function render() {
   const showPreview = state.view === 'meetings' && state.folder && state.meeting &&
     state.hasProtocol && state.previewOpen && state.protocolPreviewUrl;
   const showPreviewToggle = state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol;
-  app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : ''}
+  app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : state.view === 'letters' && state.folder ? letterList() : ''}
     <div class="meeting-stage ${showPreview ? 'preview-open' : ''}" ${showPreview ? `style="--preview-width: ${state.previewWidth}px"` : ''}>
       ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="toggle-preview" aria-label="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" title="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" aria-pressed="${state.previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
       <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div>
@@ -433,6 +471,15 @@ function render() {
       if (status) status.textContent = 'Ungespeicherte Änderungen';
     }, `Details für TOP ${index + 1}`));
   });
+  const letterEditorElement = app.querySelector('[data-letter-editor]');
+  if (letterEditorElement) {
+    const letter = letterState.letter;
+    markdownEditors.push(window.createMarkdownEditor(letterEditorElement, letter.content, value => {
+      letter.content = value;
+      state.dirty = true;
+      document.querySelector('.status').textContent = 'Ungespeicherte Änderungen';
+    }, 'Briefinhalt'));
+  }
   if (previousContent) {
     const newContent = app.querySelector('.content');
     newContent.scrollTop = scrollTop;
@@ -469,6 +516,7 @@ document.addEventListener('visibilitychange', () => {
 
 async function refresh() {
   state.meetings = state.folder ? await window.club.listMeetings() : [];
+  letterState.letters = state.folder && state.view === 'letters' ? await window.club.listLetters() : [];
   taskView.expanded = '';
 }
 
@@ -506,6 +554,9 @@ async function changeView(view) {
   if (!confirmDiscard()) return;
   closeProtocolPreview();
   state.meeting = null;
+  letterState.letter = null;
+  letterState.revision = null;
+  letterState.hasPdf = false;
   state.revision = null;
   state.hasProtocol = false;
   includeEarlierTasks = false;
@@ -530,6 +581,9 @@ async function run(action, target) {
         closeProtocolPreview();
         state.folder = selected;
         state.meeting = null;
+        letterState.letter = null;
+        letterState.revision = null;
+        letterState.hasPdf = false;
         state.revision = null;
         state.hasProtocol = false;
         state.dirty = false;
@@ -563,6 +617,62 @@ async function run(action, target) {
       await window.club.resetMeetingTemplate();
       state.meetingTemplate = null;
       setMessage('Die Standardvorlage für Sitzungsprotokolle wird verwendet.');
+      break;
+    case 'choose-letter-template': {
+      const selected = await window.club.chooseLetterTemplate();
+      if (selected) { letterState.template = selected; setMessage('Briefvorlage ausgewählt.'); }
+      break;
+    }
+    case 'reset-letter-template':
+      await window.club.resetLetterTemplate();
+      letterState.template = null;
+      setMessage('Die Standardvorlage für Briefe wird verwendet.');
+      break;
+    case 'choose-signature': {
+      const selected = await window.club.chooseSignature();
+      if (selected) { letterState.signatures.push(selected); setMessage('Unterschrift hinzugefügt.'); }
+      break;
+    }
+    case 'remove-signature':
+      if (window.confirm('Diese Unterschrift aus den Einstellungen entfernen? Bestehende Briefe müssen vor dem Export angepasst werden.')) {
+        letterState.signatures = await window.club.removeSignature(target.dataset.id);
+        setMessage('Unterschrift entfernt.');
+      }
+      break;
+    case 'new-letter':
+      if (!confirmDiscard()) return;
+      letterState.letter = blankLetter();
+      letterState.revision = null;
+      letterState.hasPdf = false;
+      state.dirty = true;
+      setMessage('');
+      break;
+    case 'select-letter': {
+      if (!confirmDiscard()) return;
+      await refresh();
+      const selected = letterState.letters.find(item => item.letter.id === target.dataset.id);
+      if (!selected) throw new Error('Der Brief ist auf dem Datenträger nicht mehr vorhanden.');
+      letterState.letter = structuredClone(selected.letter);
+      letterState.revision = selected.revision;
+      letterState.hasPdf = await window.club.hasLetterPdf(selected.letter.id);
+      state.dirty = false;
+      setMessage('');
+      break;
+    }
+    case 'save-letter':
+      if (!letterState.letter.title.trim()) throw new Error('Geben Sie vor dem Speichern einen Titel für den Brief ein.');
+      letterState.revision = await window.club.saveLetter(letterState.letter, letterState.revision);
+      state.dirty = false;
+      await refresh();
+      setMessage('Brief gespeichert.');
+      break;
+    case 'export-letter':
+      if (state.dirty || !letterState.revision) throw new Error('Speichern Sie den Brief, bevor Sie das PDF exportieren.');
+      setMessage(`PDF gespeichert unter: ${await window.club.exportLetter(letterState.letter, letterState.revision)}`);
+      letterState.hasPdf = true;
+      break;
+    case 'open-letter-pdf':
+      await window.club.openLetterPdf(letterState.letter.id);
       break;
     case 'new':
       if (!confirmDiscard()) return;
@@ -790,11 +900,11 @@ app.addEventListener('keydown', event => {
 document.addEventListener('keydown', event => {
   if (event.key.toLowerCase() !== 's' || !(event.ctrlKey || event.metaKey) ||
       event.altKey || event.shiftKey || event.isComposing) return;
-  if (state.view !== 'meetings' || !state.meeting) return;
+  if (!((state.view === 'meetings' && state.meeting) || (state.view === 'letters' && letterState.letter))) return;
   event.preventDefault();
   event.stopPropagation();
   if (!event.repeat && !document.body.inert) {
-    document.querySelector('[data-action="save"]')?.click();
+    document.querySelector(state.view === 'letters' ? '[data-action="save-letter"]' : '[data-action="save"]')?.click();
   }
 }, true);
 
@@ -843,6 +953,18 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (letterState.letter && (target.dataset.letterField || target.dataset.letterSignature)) {
+    if (target.dataset.letterSignature) {
+      const id = target.dataset.letterSignature;
+      letterState.letter.signatures = target.checked ? [...letterState.letter.signatures, id] : letterState.letter.signatures.filter(value => value !== id);
+    } else {
+      letterState.letter[target.dataset.letterField] = target.type === 'checkbox' ? target.checked : target.value;
+      if (target.dataset.letterField === 'includeAddress') document.querySelector('[data-letter-address]').hidden = !target.checked;
+    }
+    state.dirty = true;
+    document.querySelector('.status').textContent = 'Ungespeicherte Änderungen';
+    return;
+  }
   if (target.dataset.topFilter === 'search') {
     topView.search = target.value;
     refreshTopResults();
@@ -952,20 +1074,24 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, protocolCss, meetingTemplate, modules, sidebarCollapsed] = await Promise.all([
+    const [folder, protocolCss, meetingTemplate, modules, sidebarCollapsed, letterSettings] = await Promise.all([
       window.club.getFolder(),
       window.club.getProtocolCss(),
       window.club.getMeetingTemplate(),
       window.club.getModules(),
-      window.club.getSidebarCollapsed()
+      window.club.getSidebarCollapsed(),
+      window.club.getLetterSettings()
     ]);
     state.folder = folder;
     state.protocolCss = protocolCss;
     state.meetingTemplate = meetingTemplate;
     state.modules = modules;
     state.sidebarCollapsed = sidebarCollapsed;
+    letterState.template = letterSettings.template;
+    letterState.signatures = letterSettings.signatures;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     state.meetings = state.folder ? await window.club.listMeetings() : [];
+    letterState.letters = state.folder && state.view === 'letters' ? await window.club.listLetters() : [];
   } catch (error) {
     setMessage(error.message, true);
   }

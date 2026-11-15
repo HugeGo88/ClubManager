@@ -110,7 +110,8 @@ items are still open, partially implemented, or ongoing design goals.
 ### Letters
 
 - [ ] Provide a module for writing series letters to members.
-- [ ] Write letters in a Markdown editor and process the Markdown into HTML.
+- [x] Save individual letters, write them in a Markdown editor, and export PDFs
+  with an optional address, custom template and linked signatures.
 - [ ] Allow members to be filtered when selecting recipients for a series letter.
 - [ ] Prepare for writing a letter to a single person as well.
 - [ ] Use the same HTML and CSS approach as the invoice module for letter layout
