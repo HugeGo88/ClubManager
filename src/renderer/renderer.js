@@ -4,7 +4,7 @@ const state = { view: 'meetings', version: null, changelog: null, folder: null, 
 const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
 const listSearch = { meetings: '', letters: '' };
 let manual = null;
-const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '' };
+const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '', showCompleted: false };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
 let includeEarlierTasks = false;
@@ -185,7 +185,7 @@ function meetingEditor(meeting) {
 
 function taskResults() {
   const allTasks = state.meetings.flatMap(({ meeting }) => meeting.points.flatMap((point, pointIndex) =>
-    point.tasks.flatMap((task, taskIndex) => task.done ? [] : [{ meeting, point, task, pointIndex, taskIndex }])));
+    point.tasks.flatMap((task, taskIndex) => task.done && !taskView.showCompleted ? [] : [{ meeting, point, task, pointIndex, taskIndex }])));
   const search = taskView.search.trim().toLocaleLowerCase('de');
   const responsible = taskView.responsible.trim().toLocaleLowerCase('de');
   const tasks = allTasks.filter(({ meeting, point, task }) => {
@@ -212,36 +212,43 @@ function taskResults() {
     const indicator = active ? (taskView.direction === 'ascending' ? ' ↑' : ' ↓') : '';
     return `<th scope="col"${active ? ` aria-sort="${taskView.direction}"` : ''}><button class="sort-button" data-action="sort-tasks" data-sort="${key}" aria-label="${label} sortieren">${label}${indicator}</button></th>`;
   };
-  return `<p class="task-count" role="status">${tasks.length} von ${allTasks.length} offenen Aufgaben</p>
-    ${allTasks.length === 0 ? '<p>Keine offenen Aufgaben.</p>' : tasks.length === 0 ? '<p>Keine Aufgaben entsprechen den Filtern.</p>' :
-      `<div class="table-scroll" role="region" aria-label="Aufgabentabelle, horizontal scrollbar" tabindex="0"><table class="tasks-table open-tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption>
+  const isOverdue = item => !item.task.done && clubDates.overdue(item.task.dueDate, today);
+  const overdueTasks = tasks.filter(isOverdue);
+  const otherTasks = tasks.filter(item => !isOverdue(item));
+  const table = (items, group, title) => `<section data-task-group="${group}"><h2>${title}</h2>
+      <div class="table-scroll" role="region" aria-label="${title}, horizontal scrollbar" tabindex="0"><table class="tasks-table open-tasks-table"><caption class="sr-only">${title} aus Sitzungen</caption>
       <colgroup><col class="task-col-check"><col class="task-col-description"><col class="task-col-responsible"><col class="task-col-meeting"><col class="task-col-point"><col class="task-col-details"><col class="task-col-date"><col class="task-col-due"><col class="task-col-action"></colgroup><thead><tr>
         <th scope="col">Erledigt</th>${header('description', 'Aufgabe')}${header('responsible', 'Verantwortlich')}
         ${header('meeting', 'Sitzung')}${header('point', 'TOP')}<th scope="col">Details</th>${header('date', 'Sitzungsdatum')}${header('dueDate', 'Fällig am')}
         <th scope="col">Aktion</th></tr></thead><tbody>
-      ${tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => {
+      ${items.map(({ meeting, point, task, pointIndex, taskIndex }) => {
         const expanded = taskView.expanded === `${meeting.id}:${pointIndex}:${taskIndex}`;
         const detailsId = `task-details-${meeting.id}-${pointIndex}-${taskIndex}`;
         return `<tr data-task-row>
-        <td><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}" aria-label="${escape(`${task.description || 'Aufgabe ohne Titel'} – ${meeting.title || 'Sitzung ohne Titel'} als erledigt markieren`)}"></td>
+        <td><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}" ${task.done ? 'checked' : ''} aria-label="${escape(`${task.description || 'Aufgabe ohne Titel'} – ${meeting.title || 'Sitzung ohne Titel'} ${task.done ? 'wieder öffnen' : 'als erledigt markieren'}`)}"></td>
         <td>${escape(task.description || 'Aufgabe ohne Titel')}</td>
         <td>${escape(task.responsible || clubDeutsch.unassigned)}</td>
         <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
         <td>${escape(point.headline || 'TOP ohne Titel')}</td>
         <td><button class="top-details-toggle" data-action="toggle-task-details" data-id="${escape(meeting.id)}" data-index="${pointIndex}" data-task-index="${taskIndex}" aria-controls="${escape(detailsId)}" aria-expanded="${expanded}">${expanded ? 'Details ausblenden' : 'Details anzeigen'}</button></td>
         <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
-        <td>${task.dueDate ? `<time datetime="${escape(task.dueDate)}">${escape(formatDate(task.dueDate))}</time>${clubDates.overdue(task.dueDate, today) ? ' <span class="overdue">Überfällig</span>' : ''}` : '—'}</td>
+        <td>${task.dueDate ? `<time datetime="${escape(task.dueDate)}">${escape(formatDate(task.dueDate))}</time>${!task.done && clubDates.overdue(task.dueDate, today) ? ' <span class="overdue">Überfällig</span>' : ''}` : '—'}</td>
         <td><button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
       </tr>${expanded ? `<tr class="top-details-row"><td colspan="9"><div class="top-details-content" id="${escape(detailsId)}">${escape(point.details || 'Keine Details vorhanden.')}</div></td></tr>` : ''}`;
-      }).join('')}</tbody></table></div>`}`;
+      }).join('')}</tbody></table></div></section>`;
+  return `<p class="task-count" role="status">${tasks.length} von ${allTasks.length} ${taskView.showCompleted ? 'Aufgaben' : 'offenen Aufgaben'}</p>
+    ${allTasks.length === 0 ? `<p>${taskView.showCompleted ? 'Keine Aufgaben vorhanden.' : 'Keine offenen Aufgaben.'}</p>` : tasks.length === 0 ? '<p>Keine Aufgaben entsprechen den Filtern.</p>' :
+      `${overdueTasks.length ? table(overdueTasks, 'overdue', 'Überfällige Aufgaben') : ''}
+      ${otherTasks.length ? table(otherTasks, 'other', taskView.showCompleted ? 'Weitere Aufgaben' : 'Weitere offene Aufgaben') : ''}`}`;
 }
 
 function tasksView() {
-  return `<div class="topline"><div><h1>Offene Aufgaben</h1><p>Offene Aufgaben aus gespeicherten Sitzungen.</p></div>${button('refresh-tasks', 'Aufgaben neu laden')}</div>
+  return `<div class="topline"><div><h1>Offene Aufgaben</h1><p>Aufgaben aus gespeicherten Sitzungen; erledigte Aufgaben können eingeblendet werden.</p></div>${button('refresh-tasks', 'Aufgaben neu laden')}</div>
     <div class="card">
       <div class="task-filters">
         <label>Aufgaben suchen<input type="search" data-task-filter="search" value="${escape(taskView.search)}" placeholder="Aufgabe, Sitzung, TOP oder Datum"></label>
         <label>Verantwortliche filtern<input type="search" data-task-filter="responsible" value="${escape(taskView.responsible)}" placeholder="Name"></label>
+        <label class="checkbox task-show-completed"><input type="checkbox" data-show-completed ${taskView.showCompleted ? 'checked' : ''}> Erledigte Aufgaben anzeigen</label>
         ${button('clear-task-filters', 'Filter zurücksetzen')}
       </div>
       <div id="task-results">${taskResults()}</div>
@@ -379,6 +386,7 @@ function statisticsView() {
 
 function renderNavigation() {
   document.querySelector('.activity').classList.toggle('collapsed', state.sidebarCollapsed);
+  updateOverdueBadge();
   const sidebarToggle = document.querySelector('[data-action="toggle-sidebar"]');
   sidebarToggle.setAttribute('aria-pressed', String(state.sidebarCollapsed));
   sidebarToggle.title = state.sidebarCollapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen';
@@ -395,6 +403,18 @@ function renderNavigation() {
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
   document.querySelector('#meeting-subnav').hidden = !meetingNavExpanded;
+}
+
+function updateOverdueBadge() {
+  const today = clubDates.localDate();
+  const count = state.meetings.reduce((total, { meeting }) => total + meeting.points.reduce((sum, point) =>
+    sum + point.tasks.filter(task => !task.done && clubDates.overdue(task.dueDate, today)).length, 0), 0);
+  const nav = document.querySelector('[data-view="tasks"]');
+  const badge = nav.querySelector('[data-overdue-badge]');
+  badge.hidden = count === 0;
+  badge.textContent = count > 99 ? '99+' : String(count);
+  nav.setAttribute('aria-label', count ? `Offene Aufgaben, ${count} überfällig` : 'Offene Aufgaben');
+  if (state.sidebarCollapsed) nav.title = nav.getAttribute('aria-label');
 }
 
 function settingsView() {
@@ -442,6 +462,8 @@ function render() {
   document.querySelector('.activity').inert = false;
   const previousContent = app.querySelector('.content');
   const tableScroll = app.querySelector('.table-scroll')?.scrollLeft ?? 0;
+  const taskScroll = Object.fromEntries([...app.querySelectorAll('[data-task-group]')].map(group =>
+    [group.dataset.taskGroup, group.querySelector('.table-scroll').scrollLeft]));
   const preserveScroll = previousContent?.dataset.viewContext === state.view &&
     previousContent?.dataset.meetingId === (state.meeting?.id || '');
   const scrollTop = preserveScroll ? previousContent.scrollTop : 0;
@@ -516,31 +538,39 @@ function render() {
     newContent.scrollLeft = scrollLeft;
   }
   if (preserveScroll && ['tasks', 'decisions', 'tops'].includes(state.view)) {
-    const table = app.querySelector('.table-scroll');
-    if (table) table.scrollLeft = tableScroll;
+    if (state.view === 'tasks') app.querySelectorAll('[data-task-group]').forEach(group => {
+      group.querySelector('.table-scroll').scrollLeft = taskScroll[group.dataset.taskGroup] ?? 0;
+    });
+    else {
+      const table = app.querySelector('.table-scroll');
+      if (table) table.scrollLeft = tableScroll;
+    }
   }
   scheduleTaskDateRefresh();
 }
 
 function scheduleTaskDateRefresh() {
   clearTimeout(taskDateRefresh);
-  if (!['tasks', 'statistics'].includes(state.view) || !state.folder) return;
+  if (!state.folder) return;
   displayedTaskDate = clubDates.localDate();
   const now = new Date();
   const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   taskDateRefresh = setTimeout(() => {
-    if (['tasks', 'statistics'].includes(state.view) && state.folder) {
-      if (state.view === 'tasks') { refreshTaskResults(); scheduleTaskDateRefresh(); }
-      else render();
-    }
+    updateForNewDay();
   }, Math.max(1000, nextDay.getTime() - now.getTime() + 100));
 }
 
+function updateForNewDay() {
+  updateOverdueBadge();
+  if (state.view === 'tasks') refreshTaskResults();
+  else if (state.view === 'statistics') render();
+  scheduleTaskDateRefresh();
+}
+
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && ['tasks', 'statistics'].includes(state.view) && state.folder &&
+  if (document.visibilityState === 'visible' && state.folder &&
       displayedTaskDate !== clubDates.localDate()) {
-    if (state.view === 'tasks') { refreshTaskResults(); scheduleTaskDateRefresh(); }
-    else render();
+    updateForNewDay();
   }
 });
 
@@ -552,10 +582,12 @@ async function refresh() {
 
 function refreshTaskResults() {
   const results = document.querySelector('#task-results');
-  const scrollLeft = results.querySelector('.table-scroll')?.scrollLeft ?? 0;
+  const scrollPositions = Object.fromEntries([...results.querySelectorAll('[data-task-group]')].map(group =>
+    [group.dataset.taskGroup, group.querySelector('.table-scroll').scrollLeft]));
   results.innerHTML = taskResults();
-  const table = results.querySelector('.table-scroll');
-  if (table) table.scrollLeft = scrollLeft;
+  results.querySelectorAll('[data-task-group]').forEach(group => {
+    group.querySelector('.table-scroll').scrollLeft = scrollPositions[group.dataset.taskGroup] ?? 0;
+  });
 }
 
 function refreshDecisionResults() {
@@ -773,6 +805,7 @@ async function run(action, target) {
     case 'clear-task-filters':
       taskView.search = '';
       taskView.responsible = '';
+      taskView.showCompleted = false;
       break;
     case 'sort-tasks':
       if (taskView.sort === target.dataset.sort) {
@@ -867,7 +900,7 @@ document.addEventListener('click', async event => {
   }
   render();
   if (target.dataset.action === 'sort-tasks') {
-    document.querySelector(`[data-action="sort-tasks"][data-sort="${target.dataset.sort}"]`)?.focus();
+    document.querySelector(`[data-task-group="${target.closest('[data-task-group]')?.dataset.taskGroup}"] [data-action="sort-tasks"][data-sort="${target.dataset.sort}"]`)?.focus();
   } else if (target.dataset.action === 'toggle-decision-details' || target.dataset.action === 'toggle-task-details') {
     document.querySelectorAll(`[data-action="${target.dataset.action}"]`).forEach(button => {
       if (button.dataset.id === target.dataset.id && button.dataset.index === target.dataset.index &&
@@ -960,20 +993,25 @@ app.addEventListener('change', async event => {
     includeEarlierTasks = target.checked;
     return;
   }
-  if (!target.matches('[data-complete-task]') || !target.checked) return;
+  if (target.hasAttribute('data-show-completed')) {
+    taskView.showCompleted = target.checked;
+    refreshTaskResults();
+    return;
+  }
+  if (!target.matches('[data-complete-task]')) return;
   document.body.inert = true;
   try {
     const record = state.meetings.find(item => item.meeting.id === target.dataset.id);
     if (!record) throw new Error('Die Sitzung ist nicht mehr vorhanden. Laden Sie die Aufgaben neu und versuchen Sie es erneut.');
     const meeting = structuredClone(record.meeting);
     const task = meeting.points[Number(target.dataset.pointIndex)]?.tasks[Number(target.dataset.taskIndex)];
-    if (!task || task.done) throw new Error('Die Aufgabe ist nicht mehr offen. Laden Sie die Aufgaben neu und versuchen Sie es erneut.');
-    setTaskDone(task, true);
+    if (!task || task.done === target.checked) throw new Error('Der Aufgabenstatus hat sich geändert. Laden Sie die Aufgaben neu und versuchen Sie es erneut.');
+    setTaskDone(task, target.checked);
     const revision = await window.club.saveMeeting(meeting, record.revision);
     record.meeting = meeting;
     record.revision = revision;
     if (taskView.expanded === `${target.dataset.id}:${target.dataset.pointIndex}:${target.dataset.taskIndex}`) taskView.expanded = '';
-    setMessage('Aufgabe als erledigt markiert.');
+    setMessage(target.checked ? 'Aufgabe als erledigt markiert.' : 'Aufgabe wieder geöffnet.');
   } catch (error) {
     setMessage(`${error.message} Laden Sie die Aufgaben neu, um den aktuellen Stand anzuzeigen.`, true);
   } finally {

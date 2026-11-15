@@ -197,10 +197,13 @@ the system's default PDF viewer. It does not include subsequent meeting changes
 until the PDF is exported again. The save and PDF actions remain at the top
 while scrolling through a meeting. Save the open meeting with **Ctrl+S** (also
 **Cmd+S** on macOS), including while editing Markdown.
-In **Offene Aufgaben**, filter the table by text and responsible person, and
-click a column heading to change its sort order. **Details anzeigen** expands
-the corresponding TOP's details across the table. Check a task to mark it done
-and save immediately. Use **Aufgaben neu laden** to refresh the list, including
+In **Offene Aufgaben**, overdue open tasks appear in a separate table above the
+other tasks; the sidebar badge counts all overdue open tasks, independent of filters.
+Filter both tables by text and responsible person, and click a column heading to
+change the sort order within each table. Select **Erledigte Aufgaben anzeigen**
+to include completed tasks in the lower table. **Details anzeigen** expands
+the corresponding TOP's details across the table. Check or uncheck a task to
+complete or reopen it and save immediately. Use **Aufgaben neu laden** to refresh the list, including
 after an on-disk conflict. Meeting tasks can have an optional due date; an open
 task becomes overdue after that date in the computer's local time zone. The
 deadline is also included in newly exported protocols. On narrower windows,

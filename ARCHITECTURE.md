@@ -193,9 +193,12 @@ separate operational steps.
 - Meeting and letter lists filter saved records by title or displayed/ISO date
   as the user types. Each search remains in renderer memory independently and
   updating results leaves the open editor and its unsaved changes untouched.
-- Open Tasks aggregates unfinished tasks from saved meetings, filters and sorts
-  them, expands each task's corresponding TOP details across the table, and
-  marks a task complete via an immediate revision-checked save. A
+- Open Tasks aggregates saved meeting tasks, optionally includes completed tasks,
+  and filters and sorts an overdue-open table and a separate remaining-tasks table.
+  Its sidebar badge counts all overdue open tasks independently of filters and
+  updates on saved changes, refresh, local midnight and return to the app.
+  The view expands each task's corresponding TOP details across the table and
+  completes or reopens tasks via an immediate revision-checked save. A
   local completion date is set on completion and cleared when reopened;
   overdue display uses the local date and refreshes when the day changes.
 - Statistics shows current open, completed and overdue task counts across all

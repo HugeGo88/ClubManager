@@ -1092,6 +1092,82 @@ async function main() {
         } finally {
           await fs.unlink(detailFile);
         }
+        const badgeFixture = structuredClone(saved);
+        badgeFixture.meeting.id = randomUUID();
+        badgeFixture.meeting.title = 'Badge Test';
+        const badgeNow = new Date();
+        const badgeToday = [badgeNow.getFullYear(), String(badgeNow.getMonth() + 1).padStart(2, '0'), String(badgeNow.getDate()).padStart(2, '0')].join('-');
+        badgeFixture.meeting.points = [{ headline: 'Badge TOP', type: 'info', details: 'Badge Details', tasks: [
+          { description: 'Überfällig A', responsible: 'Alex', done: false, dueDate: '2000-01-01' },
+          { description: 'Heute fällig', responsible: 'Alex', done: false, dueDate: badgeToday },
+          { description: 'Bereits erledigt', responsible: 'Sam', done: true, dueDate: '2000-01-01', completedDate: '2000-01-02' }
+        ] }];
+        const badgeFile = path.join(meetingsDir, `${badgeFixture.meeting.id}.json`);
+        await fs.writeFile(badgeFile, JSON.stringify(badgeFixture));
+        try {
+          await window.webContents.executeJavaScript(`(async () => {
+            const waitFor = async test => {
+              for (let i = 0; i < 200; i++) {
+                if (test()) return;
+                await new Promise(resolve => setTimeout(resolve, 25));
+              }
+              throw new Error('Timed out testing overdue badge and completed tasks');
+            };
+            const badge = () => document.querySelector('[data-overdue-badge]');
+            const clickAndWait = async selector => {
+              document.querySelector(selector).click();
+              await waitFor(() => !document.body.inert);
+            };
+            await clickAndWait('[data-action="refresh-tasks"]');
+            if (badge().hidden || badge().textContent !== '2' ||
+                !document.querySelector('[data-view="tasks"]').getAttribute('aria-label').includes('2 überfällig')) throw new Error('Badge must count all saved overdue open tasks');
+            const search = document.querySelector('[data-task-filter="search"]');
+            search.value = 'Badge Test';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            const group = name => document.querySelector('[data-task-group="' + name + '"]');
+            if (badge().textContent !== '2' || !group('overdue')?.textContent.includes('Überfällig A') ||
+                !group('other')?.textContent.includes('Heute fällig') ||
+                document.querySelector('#task-results').textContent.includes('Bereits erledigt') ||
+                group('overdue').compareDocumentPosition(group('other')) !== Node.DOCUMENT_POSITION_FOLLOWING) {
+              throw new Error('Overdue and non-overdue open tasks must be separated without filtering the badge');
+            }
+            document.querySelector('[data-show-completed]').click();
+            if (!group('other')?.textContent.includes('Bereits erledigt') ||
+                group('overdue').textContent.includes('Bereits erledigt') ||
+                !group('other').querySelector('[data-complete-task]:checked')) throw new Error('Completed overdue task belongs in the other table');
+            const task = index => document.querySelector('[data-complete-task][data-id="${badgeFixture.meeting.id}"][data-task-index="' + index + '"]');
+            task(0).click();
+            await waitFor(() => document.querySelector('.notice')?.textContent === 'Aufgabe als erledigt markiert.');
+            if (badge().textContent !== '1' || !group('other').textContent.includes('Überfällig A') || !task(0).checked) throw new Error('Completing overdue task must update badge and move row');
+            task(0).click();
+            await waitFor(() => document.querySelector('.notice')?.textContent === 'Aufgabe wieder geöffnet.');
+            if (badge().textContent !== '2' || !group('overdue').textContent.includes('Überfällig A') || task(0).checked) throw new Error('Reopening overdue task must update badge and move row');
+            document.querySelector('[data-show-completed]').click();
+            if (document.querySelector('#task-results').textContent.includes('Bereits erledigt')) throw new Error('Completed tasks should be hidden again');
+            await clickAndWait('[data-action="clear-task-filters"]');
+            const RealDate = Date;
+            const nextDay = new RealDate();
+            nextDay.setDate(nextDay.getDate() + 1);
+            class Tomorrow extends RealDate {
+              constructor(...args) { super(...(args.length ? args : [nextDay.getTime()])); }
+              static now() { return nextDay.getTime(); }
+            }
+            try {
+              window.Date = Tomorrow;
+              document.dispatchEvent(new Event('visibilitychange'));
+              if (badge().textContent !== '3' || !group('overdue').textContent.includes('Heute fällig')) throw new Error('Badge and overdue table must update on a new local day');
+            } finally {
+              window.Date = RealDate;
+              document.dispatchEvent(new Event('visibilitychange'));
+            }
+            if (badge().textContent !== '2') throw new Error('Badge must restore after local day changes back');
+          })()`);
+          const reopened = JSON.parse(await fs.readFile(badgeFile, 'utf8')).meeting.points[0].tasks[0];
+          assert.equal(reopened.done, false);
+          assert.equal(reopened.completedDate, undefined);
+        } finally {
+          await fs.unlink(badgeFile);
+        }
         const now = new Date();
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
         saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false, dueDate: today });
@@ -1158,8 +1234,8 @@ async function main() {
         assert.ok(table.columnWidths[7] >= 120, 'Deadline column should remain readable');
         assert.ok(table.scrollAtEnd > 0);
         assert.equal(table.scrollAfterSort, table.scrollAtEnd);
-        assert.equal(table.scrollAfterFilter, table.scrollAtEnd);
-        assert.deepEqual(table.ascending, ['Budget prüfen', 'Veranstaltungsort kontaktieren']);
+        assert.equal(table.scrollAfterFilter, 0, 'A different table starts at its own scroll position');
+        assert.deepEqual(table.ascending, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
         assert.deepEqual(table.overdueRows, ['Veranstaltungsort kontaktieren']);
         assert.deepEqual(table.dueOrder, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
         assert.deepEqual(table.descending, ['Veranstaltungsort kontaktieren', 'Budget prüfen']);
@@ -1195,6 +1271,8 @@ async function main() {
           document.querySelector('[data-complete-task]').click();
           await waitFor(() => document.querySelector('[role="status"]')?.textContent === 'Aufgabe als erledigt markiert.');
           const empty = document.querySelector('main').textContent.includes('Keine offenen Aufgaben.');
+          if (!document.querySelector('[data-overdue-badge]').hidden ||
+              document.querySelector('[data-view="tasks"]').getAttribute('aria-label') !== 'Offene Aufgaben') throw new Error('Empty overdue badge must be hidden');
           document.querySelector('[data-view="meetings"]').click();
           await waitFor(() => document.querySelector('[data-action="select"]'));
           document.querySelector('[data-action="select"]').click();

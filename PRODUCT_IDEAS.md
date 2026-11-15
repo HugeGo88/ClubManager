@@ -70,6 +70,8 @@ items are still open, partially implemented, or ongoing design goals.
   Decision TOPs use voting results instead; existing legacy tasks are retained.
 - [x] Allow one or more responsible persons to be associated with each task.
 - [x] Allow an optional deadline on each task and highlight overdue open tasks.
+- [x] Show an overdue task badge and a separate overdue table, with an option
+  to include and reopen completed tasks in the task overview.
 - [x] Store the local completion date when a task is completed; clear it if the
   task is reopened. Show task checkboxes and completion dates in the PDF.
 - [x] Include an Open Tasks submodule for checking outstanding meeting tasks and

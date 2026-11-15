@@ -21,7 +21,7 @@ Mit **PDF exportieren** erstellen Sie ein Protokoll des gespeicherten Stands. Da
 
 ## Sitzungsübersichten
 
-- **Offene Aufgaben** zeigt gespeicherte offene Aufgaben. Sie können suchen, nach Verantwortlichen filtern, sortieren, TOP-Details anzeigen und Aufgaben direkt als erledigt markieren. Überfällige Aufgaben werden hervorgehoben.
+- **Offene Aufgaben** zeigt gespeicherte offene Aufgaben. Überfällige offene Aufgaben stehen in einer eigenen Tabelle darüber; die Zahl am Symbol zählt alle überfälligen offenen Aufgaben unabhängig von Filtern. Mit **Erledigte Aufgaben anzeigen** erscheinen auch abgeschlossene Aufgaben in der unteren Tabelle. Sie können beide Tabellen durchsuchen, nach Verantwortlichen filtern, sortieren, TOP-Details anzeigen und Aufgaben direkt erledigen oder wieder öffnen.
 - **Entscheidungen** zeigt Entscheidungen mit Suche und Ergebnisfilter. Details und die zugehörige Sitzung lassen sich öffnen.
 - **Alle TOPs** durchsucht und filtert die TOPs gespeicherter Sitzungen; Details und die zugehörige Sitzung lassen sich öffnen.
 - **Statistiken** zeigt aktuelle Aufgabenzahlen und einen geschätzten Verlauf. Der Verlauf verwendet Sitzungs- und Erledigungsdaten; er ist keine vollständige Aufgabenhistorie.

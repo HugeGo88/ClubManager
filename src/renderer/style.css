@@ -13,6 +13,9 @@ button { cursor: pointer; }
 .activity.collapsed .meeting-subnav { padding-left: 0; }
 .activity.collapsed button:not(.brand) { justify-content: center; }
 .activity .nav-icon { flex: 0 0 30px; text-align: center; font-size: 24px; }
+.activity .task-nav-icon { position: relative; flex: 0 0 30px; text-align: center; }
+.activity .task-nav-icon .nav-icon { display: block; }
+.activity .task-badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #d32f2f; color: white; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; }
 .activity [data-module-view="meetings"] { --module-color: #9dc9ff; }
 .activity [data-module-view="members"] { --module-color: #9bdfbe; }
 .activity [data-module-view="invoices"] { --module-color: #f0c484; }
@@ -115,6 +118,7 @@ button:disabled { opacity: .45; cursor: default; }
 .task-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .task-filters label { flex: 1 1 200px; margin: 0; }
 .task-filters .action { margin-bottom: 1px; }
+.task-filters .task-show-completed { flex: 0 1 auto; align-self: center; }
 .task-count { font-size: 13px; }
 .table-scroll { overflow-x: auto; border: 1px solid #e1e6ed; border-radius: 6px; }
 .table-scroll:focus-visible { outline: 2px solid #2867c7; outline-offset: 2px; }
