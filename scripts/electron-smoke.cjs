@@ -1488,6 +1488,7 @@ async function main() {
           await waitFor(() => document.querySelector('[data-action="new-letter"]'));
           document.querySelector('[data-action="new-letter"]').click();
           await waitFor(() => document.querySelector('[data-letter-field="title"]'));
+          if (!document.querySelector('[data-letter-address]').hidden) throw new Error('Address fields should initially be hidden');
           const title = document.querySelector('[data-letter-field="title"]');
           title.value = 'Testbrief';
           title.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1522,10 +1523,17 @@ async function main() {
           await waitFor(() => document.querySelector('[data-letter-field="title"]')?.value === 'Testbrief');
           const addressToggle = document.querySelector('[data-letter-field="includeAddress"]');
           addressToggle.click();
-          const address = document.querySelector('[data-letter-field="address"]');
-          if (address.closest('label').hidden) throw new Error('Address field did not open');
-          address.value = 'Alex Beispiel\\nHauptstraße 1';
-          address.dispatchEvent(new Event('input', { bubbles: true }));
+          const addressFields = document.querySelector('[data-letter-address]');
+          if (addressFields.hidden) throw new Error('Address fields did not open');
+          for (const [field, value] of Object.entries({ company: 'Beispielfirma', name: 'Alex Beispiel', street: 'Hauptstraße 1', postalCode: '01234', city: 'Musterstadt' })) {
+            const input = document.querySelector('[data-letter-address-field="' + field + '"]');
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          addressToggle.click();
+          if (!addressFields.hidden) throw new Error('Address fields did not hide');
+          addressToggle.click();
+          if (addressFields.hidden || document.querySelector('[data-letter-address-field="postalCode"]').value !== '01234') throw new Error('Address fields were not restored');
           for (const checkbox of document.querySelectorAll('[data-letter-signature]')) checkbox.click();
           if (document.querySelectorAll('[data-letter-signature]:checked').length !== 2) throw new Error('Multiple signatures not selected');
           document.querySelector('[data-action="save-letter"]').click();
@@ -1533,11 +1541,12 @@ async function main() {
           document.querySelector('[data-action="export-letter"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);
-        assert.match(pdfDocuments.at(-1), /Alex Beispiel<br>Hauptstraße 1/);
+        assert.match(pdfDocuments.at(-1), /Beispielfirma<br>Alex Beispiel<br>Hauptstraße 1<br>01234 Musterstadt/);
         assert.equal((pdfDocuments.at(-1).match(/class="letter-signature"/g) || []).length, 2);
         const letterFiles = (await fs.readdir(path.join(data, 'letters'))).filter(name => name.endsWith('.json'));
         assert.equal(letterFiles.length, 1);
         const savedLetter = JSON.parse(await fs.readFile(path.join(data, 'letters', letterFiles[0]), 'utf8')).letter;
+        assert.deepEqual(savedLetter.address, { company: 'Beispielfirma', name: 'Alex Beispiel', street: 'Hauptstraße 1', postalCode: '01234', city: 'Musterstadt' });
         assert.equal(savedLetter.signatures.length, 2);
         assert.equal((await fs.readFile(path.join(data, 'letters', 'pdf', `${savedLetter.id}.pdf`))).subarray(0, 5).toString(), '%PDF-');
         await fs.unlink(signatureSvg);
@@ -1578,6 +1587,9 @@ async function main() {
           await waitFor(() => document.querySelector('[data-action="select-letter"]'));
           document.querySelector('[data-action="select-letter"]').click();
           await waitFor(() => document.querySelector('[data-action="export-letter"]'));
+          for (const [field, value] of Object.entries({ company: 'Beispielfirma', name: 'Alex Beispiel', street: 'Hauptstraße 1', postalCode: '01234', city: 'Musterstadt' })) {
+            if (document.querySelector('[data-letter-address-field="' + field + '"]')?.value !== value) throw new Error('Address field not restored: ' + field);
+          }
           document.querySelector('[data-action="export-letter"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);

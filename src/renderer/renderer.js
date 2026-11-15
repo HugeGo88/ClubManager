@@ -30,7 +30,8 @@ function blankMeeting() {
 }
 
 function blankLetter() {
-  return { id: crypto.randomUUID(), title: '', date: clubDates.localDate(), includeAddress: false, address: '', content: '', signatures: [] };
+  return { id: crypto.randomUUID(), title: '', date: clubDates.localDate(), includeAddress: false,
+    address: { name: '', company: '', street: '', postalCode: '', city: '' }, content: '', signatures: [] };
 }
 
 function letterList() {
@@ -49,7 +50,15 @@ function letterEditor(letter) {
       <label>Datum<input type="date" data-letter-field="date" value="${escape(letter.date)}"></label>
     </div>
     <label class="checkbox"><input type="checkbox" data-letter-field="includeAddress" ${letter.includeAddress ? 'checked' : ''}> Adressfeld einfügen</label>
-    <label data-letter-address ${letter.includeAddress ? '' : 'hidden'}>Adresse<textarea data-letter-field="address" rows="4">${escape(letter.address)}</textarea></label>
+    <div data-letter-address ${letter.includeAddress ? '' : 'hidden'}>
+      <label>Firma<input data-letter-address-field="company" value="${escape(letter.address.company)}"></label>
+      <label>Name<textarea data-letter-address-field="name" rows="2">${escape(letter.address.name)}</textarea></label>
+      <label>Straße und Hausnummer<input data-letter-address-field="street" value="${escape(letter.address.street)}"></label>
+      <div class="fields">
+        <label>PLZ<input data-letter-address-field="postalCode" value="${escape(letter.address.postalCode)}" inputmode="numeric" autocomplete="postal-code"></label>
+        <label>Ort<input data-letter-address-field="city" value="${escape(letter.address.city)}"></label>
+      </div>
+    </div>
     <div class="markdown-field"><span class="markdown-label">Briefinhalt <span class="muted">(Markdown mit Live-Vorschau)</span></span><div data-letter-editor></div></div>
     <h2>Unterschriften</h2>
     ${letterState.signatures.length ? letterState.signatures.map(signature => `<label class="checkbox"><input type="checkbox" data-letter-signature="${escape(signature.id)}" ${letter.signatures.includes(signature.id) ? 'checked' : ''}> ${escape(signature.name)}</label>`).join('') : '<p>Keine Unterschriften in den Einstellungen hinzugefügt.</p>'}
@@ -953,10 +962,12 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
-  if (letterState.letter && (target.dataset.letterField || target.dataset.letterSignature)) {
+  if (letterState.letter && (target.dataset.letterField || target.dataset.letterSignature || target.dataset.letterAddressField)) {
     if (target.dataset.letterSignature) {
       const id = target.dataset.letterSignature;
       letterState.letter.signatures = target.checked ? [...letterState.letter.signatures, id] : letterState.letter.signatures.filter(value => value !== id);
+    } else if (target.dataset.letterAddressField) {
+      letterState.letter.address[target.dataset.letterAddressField] = target.value;
     } else {
       letterState.letter[target.dataset.letterField] = target.type === 'checkbox' ? target.checked : target.value;
       if (target.dataset.letterField === 'includeAddress') document.querySelector('[data-letter-address]').hidden = !target.checked;

@@ -96,7 +96,9 @@ the default again.
 
 Enable **Briefe** in **Einstellungen → Briefe**. Create and save individual
 letters in the selected data folder; open saved letters from the list. The
-editor supports Markdown and an optional manually entered, multiline address.
+editor supports Markdown and an optional manually entered address with separate
+company, name, street, postal code and city fields. Existing multiline addresses
+are preserved in the name field and can be reorganized manually.
 Select any configured signatures with the checkboxes, save, then export to PDF.
 The saved PDF can be opened from the letter editor and is a snapshot of the
 last export. Letter records are stored in `letters/<id>.json` and PDFs in

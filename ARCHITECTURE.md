@@ -109,7 +109,10 @@ settings.json in userData    user-selected data folder
   Storage validation is the source of truth for accepted fields and dates.
 - [src/main/letters.js](src/main/letters.js) stores individual letters as
   versioned `letters/<UUID>.json` files and their PDFs in `letters/pdf/`.
-  Letters have optional manually entered addresses and signature IDs.
+  Letters have optional manually entered structured addresses (company, name,
+  street, postal code and city) and signature IDs. Legacy multiline address
+  strings load into the name field without guessing their components and are
+  stored in structured form on the next save.
   Settings contain linked image paths, not copies; missing images or removed
   signature entries cause an export error. SVG and raster images are decoded
   in an isolated window and rasterized before embedding.

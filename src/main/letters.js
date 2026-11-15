@@ -7,16 +7,25 @@ const { isDate, formatDate } = require('../shared/dates');
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const placeholders = { title: '', date: '', address: '', content: '', signatures: '' };
+const addressFields = ['name', 'company', 'street', 'postalCode', 'city'];
 
 function validateLetter(letter) {
+  const validAddress = letter && (typeof letter.address === 'string' ||
+    (letter.address && typeof letter.address === 'object' && !Array.isArray(letter.address) &&
+      addressFields.every(field => typeof letter.address[field] === 'string')));
   if (!letter || typeof letter.id !== 'string' || !ID.test(letter.id) || typeof letter.title !== 'string' ||
       typeof letter.date !== 'string' || (letter.date !== '' && !isDate(letter.date)) ||
       typeof letter.content !== 'string' || typeof letter.includeAddress !== 'boolean' ||
-      typeof letter.address !== 'string' || !Array.isArray(letter.signatures) ||
+      !validAddress || !Array.isArray(letter.signatures) ||
       letter.signatures.some(id => typeof id !== 'string' || !ID.test(id)) ||
       new Set(letter.signatures).size !== letter.signatures.length) {
     throw new Error('Ungültige Briefdaten.');
   }
+}
+
+function normalizeLetter(letter) {
+  if (typeof letter.address !== 'string') return letter;
+  return { ...letter, address: { name: letter.address, company: '', street: '', postalCode: '', city: '' } };
 }
 
 function letterPath(folder, id) {
@@ -62,7 +71,7 @@ async function listLetters(folder) {
         throw new Error(`${entry.name} konnte nicht gelesen werden: ungültiger Briefdatensatz.`);
       }
       validateLetter(record.letter);
-      return { letter: record.letter, revision: revision(content) };
+      return { letter: normalizeLetter(record.letter), revision: revision(content) };
     })));
   }
   return records.sort((a, b) => b.letter.date.localeCompare(a.letter.date) || a.letter.title.localeCompare(b.letter.title, 'de'));
@@ -87,8 +96,11 @@ function validateLetterTemplate(template) {
 }
 
 function letterHtml(letter, css, images, template = null) {
-  const address = letter.includeAddress && letter.address.trim()
-    ? `<div class="letter-address">${escapeHtml(letter.address).replace(/\r?\n/g, '<br>')}</div>` : '';
+  const fields = normalizeLetter(letter).address;
+  const addressLines = [fields.company, fields.name, fields.street, [fields.postalCode.trim(), fields.city.trim()].filter(Boolean).join(' ')]
+    .filter(line => line.trim());
+  const address = letter.includeAddress && addressLines.length
+    ? `<div class="letter-address">${escapeHtml(addressLines.join('\n')).replace(/\r?\n/g, '<br>')}</div>` : '';
   const signatures = images.length ? `<div class="letter-signatures">${images.map(({ name, data }) =>
     `<figure class="letter-signature"><img src="${escapeHtml(data)}" alt="${escapeHtml(name)}"><figcaption>${escapeHtml(name)}</figcaption></figure>`).join('')}</div>` : '';
   const values = { title: escapeHtml(letter.title), date: escapeHtml(formatDate(letter.date)), address, content: markdown(letter.content), signatures };
