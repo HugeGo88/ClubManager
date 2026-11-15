@@ -2,6 +2,7 @@ const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
+const listSearch = { meetings: '', letters: '' };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -34,10 +35,31 @@ function blankLetter() {
     address: { name: '', company: '', street: '', postalCode: '', city: '' }, content: '', signatures: [] };
 }
 
+function savedListResults(module) {
+  const isMeeting = module === 'meetings';
+  const records = isMeeting ? state.meetings.map(item => item.meeting) : letterState.letters.map(item => item.letter);
+  const selected = isMeeting ? state.meeting : letterState.letter;
+  const singular = isMeeting ? 'Sitzung' : 'Brief';
+  const plural = isMeeting ? 'Sitzungen' : 'Briefe';
+  const search = listSearch[module].trim().toLocaleLowerCase('de');
+  const matches = records.filter(record =>
+    [record.title || `${singular} ohne Titel`, record.date || 'Kein Datum', formatDate(record.date)]
+      .join(' ').toLocaleLowerCase('de').includes(search));
+  if (!records.length) return `<p>Noch keine ${plural} gespeichert.</p>`;
+  if (!matches.length) return `<p>Keine ${plural} entsprechen der Suche.</p>`;
+  return matches.map(record =>
+    `<button class="list-item ${selected?.id === record.id ? 'selected' : ''}" data-action="${isMeeting ? 'select' : 'select-letter'}" data-id="${escape(record.id)}">
+      <strong>${escape(record.title || `${singular} ohne Titel`)}</strong><small>${escape(record.date ? formatDate(record.date) : 'Kein Datum')}</small></button>`).join('');
+}
+
+function savedList(module, heading, action, label) {
+  return `<aside class="list"><h2>${heading}</h2>${button(action, label, 'primary')}
+    <label>${heading} suchen<input type="search" data-list-search="${module}" value="${escape(listSearch[module])}" placeholder="Titel oder Datum"></label>
+    <div data-list-results aria-live="polite">${savedListResults(module)}</div></aside>`;
+}
+
 function letterList() {
-  return `<aside class="list"><h2>Briefe</h2>${button('new-letter', '+ Neuer Brief', 'primary')}
-    ${letterState.letters.length ? letterState.letters.map(({ letter }) =>
-      `<button class="list-item ${letterState.letter?.id === letter.id ? 'selected' : ''}" data-action="select-letter" data-id="${escape(letter.id)}"><strong>${escape(letter.title || 'Brief ohne Titel')}</strong><small>${escape(letter.date ? formatDate(letter.date) : 'Kein Datum')}</small></button>`).join('') : '<p>Noch keine Briefe gespeichert.</p>'}</aside>`;
+  return savedList('letters', 'Briefe', 'new-letter', '+ Neuer Brief');
 }
 
 function letterEditor(letter) {
@@ -86,13 +108,7 @@ function closeProtocolPreview() {
 }
 
 function meetingList() {
-  return `<aside class="list"><h2>Sitzungen</h2>
-    ${button('new', '+ Neue Sitzung', 'primary')}
-    ${state.meetings.length ? state.meetings.map(({ meeting }) =>
-      `<button class="list-item ${state.meeting?.id === meeting.id ? 'selected' : ''}" data-action="select" data-id="${escape(meeting.id)}">
-      <strong>${escape(meeting.title || 'Sitzung ohne Titel')}</strong><small>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</small></button>`).join('') :
-      '<p>Noch keine Sitzungen gespeichert.</p>'}
-  </aside>`;
+  return savedList('meetings', 'Sitzungen', 'new', '+ Neue Sitzung');
 }
 
 function options(values, selected) {
@@ -962,6 +978,12 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.dataset.listSearch) {
+    const module = target.dataset.listSearch;
+    listSearch[module] = target.value;
+    app.querySelector('[data-list-results]').innerHTML = savedListResults(module);
+    return;
+  }
   if (letterState.letter && (target.dataset.letterField || target.dataset.letterSignature || target.dataset.letterAddressField)) {
     if (target.dataset.letterSignature) {
       const id = target.dataset.letterSignature;

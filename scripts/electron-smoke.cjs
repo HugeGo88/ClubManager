@@ -512,6 +512,22 @@ async function main() {
           title.focus();
           title.value = 'Beispiel: Vorstandssitzung aktualisiert';
           title.dispatchEvent(new Event('input', { bubbles: true }));
+          const meetingSearch = document.querySelector('[data-list-search="meetings"]');
+          const searchMeetings = value => {
+            meetingSearch.value = value;
+            meetingSearch.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          searchMeetings('VORSTANDS');
+          if (document.querySelectorAll('[data-list-results] [data-action="select"]').length !== 1) throw new Error('Meeting title search failed');
+          searchMeetings('nicht vorhanden');
+          if (!document.querySelector('[data-list-results]').textContent.includes('Keine Sitzungen entsprechen der Suche.')) throw new Error('Meeting no-results message missing');
+          if (document.querySelector('[data-field="title"]') !== title || title.value !== 'Beispiel: Vorstandssitzung aktualisiert' ||
+              !document.querySelector('.status').textContent.includes('Ungespeicherte')) throw new Error('Meeting search changed the dirty editor');
+          const meetingDate = document.querySelector('[data-field="date"]').value;
+          searchMeetings(meetingDate);
+          if (!document.querySelector('[data-list-results] [data-action="select"]')) throw new Error('Meeting ISO date search failed');
+          searchMeetings('');
+          if (!document.querySelector('[data-list-results] .selected')) throw new Error('Meeting selection lost after clearing search');
           title.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }));
           await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('Sitzung gespeichert'));
           await click('[data-action="export"]');
@@ -661,6 +677,13 @@ async function main() {
           };
           document.querySelector('[data-view="meetings"]').click();
           await waitFor(() => document.querySelector('[data-action="select"][data-id="${saved.meeting.id}"]'));
+          const search = document.querySelector('[data-list-search="meetings"]');
+          search.value = 'andere';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+          if (document.querySelectorAll('[data-list-results] [data-action="select"]').length !== 4 ||
+              document.querySelector('[data-action="select"][data-id="${saved.meeting.id}"]')) throw new Error('Meeting search must filter multiple records');
+          search.value = '';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
           document.querySelector('[data-action="select"][data-id="${saved.meeting.id}"]').click();
           await waitFor(() => document.querySelector('[data-include-earlier-tasks]'));
           const option = document.querySelector('[data-include-earlier-tasks]');
@@ -1534,6 +1557,23 @@ async function main() {
           if (!addressFields.hidden) throw new Error('Address fields did not hide');
           addressToggle.click();
           if (addressFields.hidden || document.querySelector('[data-letter-address-field="postalCode"]').value !== '01234') throw new Error('Address fields were not restored');
+          const letterSearch = document.querySelector('[data-list-search="letters"]');
+          const searchLetters = value => {
+            letterSearch.value = value;
+            letterSearch.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          searchLetters('TESTBRIEF');
+          if (document.querySelectorAll('[data-list-results] [data-action="select-letter"]').length !== 1) throw new Error('Letter title search failed');
+          searchLetters('nicht vorhanden');
+          if (!document.querySelector('[data-list-results]').textContent.includes('Keine Briefe entsprechen der Suche.')) throw new Error('Letter no-results message missing');
+          if (document.querySelector('[data-letter-address]') !== addressFields ||
+              document.querySelector('[data-letter-address-field="postalCode"]').value !== '01234' ||
+              !document.querySelector('.status').textContent.includes('Ungespeicherte')) throw new Error('Letter search changed the dirty editor');
+          const letterDate = document.querySelector('[data-letter-field="date"]').value.split('-').reverse().join('.');
+          searchLetters(letterDate);
+          if (!document.querySelector('[data-list-results] [data-action="select-letter"]')) throw new Error('Letter formatted date search failed');
+          searchLetters('');
+          if (!document.querySelector('[data-list-results] .selected')) throw new Error('Letter selection lost after clearing search');
           for (const checkbox of document.querySelectorAll('[data-letter-signature]')) checkbox.click();
           if (document.querySelectorAll('[data-letter-signature]:checked').length !== 2) throw new Error('Multiple signatures not selected');
           document.querySelector('[data-action="save-letter"]').click();

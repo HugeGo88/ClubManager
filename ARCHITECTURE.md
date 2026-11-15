@@ -182,6 +182,9 @@ separate operational steps.
   shared Markdown editor, and exports saved content with optional address and
   selected linked signatures. Letter templates use sanitized body fragments
   with documented placeholders; the shared PDF CSS overrides the default.
+- Meeting and letter lists filter saved records by title or displayed/ISO date
+  as the user types. Each search remains in renderer memory independently and
+  updating results leaves the open editor and its unsaved changes untouched.
 - Open Tasks aggregates unfinished tasks from saved meetings, filters and sorts
   them, expands each task's corresponding TOP details across the table, and
   marks a task complete via an immediate revision-checked save. A

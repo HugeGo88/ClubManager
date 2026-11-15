@@ -96,6 +96,7 @@ the default again.
 
 Enable **Briefe** in **Einstellungen → Briefe**. Create and save individual
 letters in the selected data folder; open saved letters from the list. The
+meeting and letter lists can be searched by title or date. The
 editor supports Markdown and an optional manually entered address with separate
 company, name, street, postal code and city fields. Existing multiline addresses
 are preserved in the name field and can be reorganized manually.
