@@ -69,7 +69,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build:editor
+      - run: npm run build:assets
       - name: Validate Apple signing configuration
         if: matrix.platform == 'mac'
         shell: bash

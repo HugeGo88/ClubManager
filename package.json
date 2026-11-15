@@ -11,14 +11,16 @@
   "main": "src/main/main.js",
   "scripts": {
     "build:editor": "esbuild src/renderer/markdown-editor.js --bundle --platform=browser --format=iife --outfile=src/renderer/generated/markdown-editor.js",
-    "prestart": "npm run build:editor",
+    "build:manual": "node scripts/build-manual.cjs",
+    "build:assets": "npm run build:editor && npm run build:manual",
+    "prestart": "npm run build:assets",
     "start": "electron .",
     "test": "node --test",
-    "pretest:electron": "npm run build:editor",
+    "pretest:electron": "npm run build:assets",
     "test:electron": "electron scripts/electron-smoke.cjs",
-    "predist:mac": "npm run build:editor",
+    "predist:mac": "npm run build:assets",
     "dist:mac": "electron-builder --mac dmg --arm64",
-    "predist:win": "npm run build:editor",
+    "predist:win": "npm run build:assets",
     "dist:win": "electron-builder --win nsis --x64"
   },
   "dependencies": {

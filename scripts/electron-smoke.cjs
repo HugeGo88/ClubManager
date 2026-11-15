@@ -143,6 +143,14 @@ async function main() {
               getComputedStyle(document.querySelector('[data-view="meetings"] .nav-label')).visibility !== 'visible') throw new Error('Sidebar must expand again');
           if ([...document.querySelectorAll('.activity [data-view]')].some(nav => nav.hasAttribute('title'))) throw new Error('Expanded sidebar must not show redundant tooltips');
           if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') throw new Error('Same version must not reopen history');
+          const manualButton = document.querySelector('[data-view="manual"]');
+          if (manualButton.nextElementSibling?.dataset.view !== 'changelog') throw new Error('Manual must be above the version history');
+          manualButton.click();
+          for (let i = 0; i < 200 && document.querySelector('main h1')?.textContent !== 'ClubManager-Handbuch'; i++) await new Promise(resolve => setTimeout(resolve, 25));
+          if (document.querySelector('main h1')?.textContent !== 'ClubManager-Handbuch' ||
+              !document.querySelector('main').textContent.includes('Version ${app.getVersion()}') ||
+              !document.querySelector('main').textContent.includes('Erste Schritte und Navigation') ||
+              !document.querySelector('main').textContent.includes('Briefe')) throw new Error('Versioned manual must be available without a data folder');
           document.querySelector('[data-view="changelog"]').click();
           for (let i = 0; i < 200; i++) {
             if (document.querySelector('main h1')?.textContent === 'Versionsverlauf') return;
@@ -604,7 +612,7 @@ async function main() {
         assert.deepEqual(result.tasksBefore, [false, true]);
         assert.deepEqual(result.persistedChecks, [true, true]);
         assert.ok(result.absentBeforeExport);
-        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Briefe', 'Versionsverlauf', 'Einstellungen']);
+        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Briefe', 'Handbuch', 'Versionsverlauf', 'Einstellungen']);
         assert.deepEqual(result.visibleNavigation.map(item => item.text), result.navigation);
         assert.ok(result.visibleNavigation.every(item => item.visible), 'Navigation labels must be visible next to their icons');
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
@@ -1515,6 +1523,16 @@ async function main() {
           const title = document.querySelector('[data-letter-field="title"]');
           title.value = 'Testbrief';
           title.dispatchEvent(new Event('input', { bubbles: true }));
+          const confirm = window.confirm;
+          window.confirm = () => false;
+          try {
+            document.querySelector('[data-view="manual"]').click();
+            await waitFor(() => !document.body.inert);
+            if (document.querySelector('[data-letter-field="title"]')?.value !== 'Testbrief' ||
+                !document.querySelector('.status').textContent.includes('Ungespeicherte')) throw new Error('Manual navigation must honor unsaved changes');
+          } finally {
+            window.confirm = confirm;
+          }
           const editor = document.querySelector('[data-letter-editor] .cm-content');
           editor.focus();
           document.execCommand('insertText', false, '**Briefinhalt**');

@@ -2,9 +2,9 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Markdown-Editor bauen",
+			"label": "App-Ressourcen bauen",
 			"type": "npm",
-			"script": "build:editor",
+			"script": "build:assets",
 			"problemMatcher": []
 		},
 		{
@@ -16,7 +16,7 @@
 				"."
 			],
 			"isBackground": true,
-			"dependsOn": "Markdown-Editor bauen",
+			"dependsOn": "App-Ressourcen bauen",
 			"problemMatcher": []
 		}
 	]

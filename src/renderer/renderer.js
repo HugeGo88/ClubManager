@@ -3,6 +3,7 @@ document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
 const listSearch = { meetings: '', letters: '' };
+let manual = null;
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -451,6 +452,8 @@ function render() {
   let content = '';
   if (state.view === 'settings') {
     content = settingsView();
+  } else if (state.view === 'manual') {
+    content = `<p>Version ${escape(manual.version)}</p><article class="card manual-content">${manual.html}</article>`;
   } else if (state.view === 'changelog') {
     content = `<h1>Versionsverlauf</h1><p>Änderungen in ClubManager.</p>${state.changelog === null ? '<p>Der Versionsverlauf konnte nicht geladen werden.</p>' : state.changelog.length === 0 ? '<p>Keine Versionseinträge vorhanden.</p>' : state.changelog.map(entry =>
       `<section class="card"><h2>Version ${escape(entry.version)}</h2><ul>${entry.changes.map(change => `<li>${escape(change)}</li>`).join('')}</ul></section>`).join('')}`;
@@ -572,11 +575,12 @@ function refreshTopResults() {
 async function changeView(view) {
   if (view === state.view) return;
   const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(view) ? 'meetings' : view;
-  if (view !== 'settings' && view !== 'changelog' && !state.modules[module]) {
+  if (!['settings', 'changelog', 'manual'].includes(view) && !state.modules[module]) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
   }
   if (!confirmDiscard()) return;
+  if (view === 'manual') manual = await window.club.getManual();
   closeProtocolPreview();
   state.meeting = null;
   letterState.letter = null;
@@ -588,7 +592,7 @@ async function changeView(view) {
   state.dirty = false;
   state.view = view;
   setMessage('');
-  if (view !== 'changelog') await refresh();
+  if (!['changelog', 'manual'].includes(view)) await refresh();
 }
 
 async function run(action, target) {

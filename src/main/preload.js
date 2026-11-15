@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('club', {
   awaitStartup: () => invoke('app:startup'),
   startupComplete: () => ipcRenderer.send('app:startup-complete'),
   getVersion: () => invoke('app:version'),
+  getManual: () => invoke('manual:get'),
   getChangelog: () => invoke('changelog:get'),
   shouldShowChangelog: () => invoke('changelog:should-show'),
   markChangelogSeen: () => invoke('changelog:mark-seen'),

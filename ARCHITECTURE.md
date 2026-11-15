@@ -37,7 +37,7 @@ tab and can be disabled; only Meetings is enabled by default. A disabled module
 and its navigation entries are hidden, and the renderer rejects navigation into
 it. The entire Meetings heading toggles its subnavigation and opens the meeting
 view when necessary; toggling while already editing a meeting preserves unsaved
-edits. Settings and Versionsverlauf remain available even if all modules are disabled.
+edits. Handbuch, Settings and Versionsverlauf remain available even if all modules are disabled.
 The version history opens on first launch of each version, including fresh
 installs and legacy settings without a version marker.
 
@@ -89,6 +89,13 @@ settings.json in userData    user-selected data folder
   version entry for each release. The main process serializes marking the
   current version as seen only after the history is rendered; a failure is
   reported and will be retried on the next launch.
+- [src/shared/manual.md](src/shared/manual.md) is the maintained German user
+  guide. `npm run build:manual` packages its text together with the version in
+  `package.json` as `src/shared/generated/manual.json`. On navigation, the main
+  process checks that version against the running app and renders sanitized
+  Markdown through restricted IPC; missing, invalid or mismatched manuals
+  produce an error. Each build generates the current version's manual, not an
+  archive or automatically authored content.
 - Choosing a data folder creates `meetings/`, `members/`, `invoices/` and
   `letters/` under it. Changing folders opens the new location without moving
   existing data. An unavailable saved folder is reported; it is not silently
@@ -151,7 +158,7 @@ PDF also contains the title and date, page header/footer and page numbers.
 build scripts and electron-builder targets. The
 [release workflow](.github/workflows/release.yml) runs manually or when a push
 to `main` changes the package version. It checks matching lockfile versions and
-a nonempty changelog entry before building macOS ARM64 DMG/ZIP
+a nonempty changelog entry before generating app assets and building macOS ARM64 DMG/ZIP
 on macOS and a Windows x64 NSIS installer on Windows, then publishes a GitHub
 Release and update metadata after successful builds. Release versioning,
 signing/notarization secrets and operational steps are documented in the
@@ -239,7 +246,7 @@ npm install
 npm start
 npm test
 npm run test:electron
-npm run build:editor
+npm run build:assets
 npm run dist:mac
 npm run dist:win
 ```
@@ -248,5 +255,5 @@ npm run dist:win
 desktop and exercises the application through Electron, including meeting
 editing, navigation, settings, lists, conflicts and PDF export; it also checks
 expected failure paths. The `start`, Electron smoke test and distribution scripts
-build the editor through npm lifecycle scripts. VS Code's debug configurations
-also run the editor build first.
+build the editor and versioned manual through npm lifecycle scripts. VS Code's
+debug configurations also build these assets first.

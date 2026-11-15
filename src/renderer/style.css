@@ -35,7 +35,7 @@ button { cursor: pointer; }
 .activity .meeting-subnav button { min-height: 42px; border-left-width: 2px; }
 .activity .meeting-subnav .nav-icon { font-size: 19px; }
 .activity .meeting-nav-heading.parent-active { color: white; }
-.activity .changelog-nav { margin-top: auto; }
+.activity .manual-nav { margin-top: auto; }
 .activity .settings-nav { margin-bottom: 12px; }
 @media (prefers-reduced-motion: reduce) {
   .activity.sidebar-transition, .activity.sidebar-transition .nav-label, .activity.sidebar-transition .nav-chevron { transition: none; }
@@ -69,6 +69,8 @@ main { flex: 1; min-width: 0; }
 .preview-pane iframe { width: 100%; flex: 1; min-height: 0; border: 0; background: #80858c; }
 .content-inner { max-width: 900px; margin: auto; }
 .content-inner-wide { max-width: 1600px; }
+.manual-content { line-height: 1.6; overflow-wrap: anywhere; }
+.manual-content h2 { margin-top: 1.6em; }
 .topline, .row, .card-header { display: flex; align-items: center; gap: 10px; }
 .topline { justify-content: space-between; margin-bottom: 24px; }
 .meeting-toolbar { position: sticky; top: -34px; z-index: 5; margin: -34px -42px 24px; padding: 18px 42px; background: #f5f7fa; border-bottom: 1px solid #e1e6ed; flex-wrap: wrap; }

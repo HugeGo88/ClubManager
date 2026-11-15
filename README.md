@@ -53,6 +53,13 @@ Only Meetings is enabled by default; disabled modules disappear from the sidebar
 The **Allgemein** settings tab shows the running app version in its
 **Über ClubManager** section.
 
+**Handbuch** in the sidebar opens the German user guide for the installed
+version, even without a data folder. Its maintained source is
+[`src/shared/manual.md`](src/shared/manual.md); update it when user-facing
+features change. App builds generate a version-stamped copy automatically via
+`npm run build:manual`. This packages the maintained guide rather than
+automatically writing new instructions or retaining an archive of older guides.
+
 **Versionsverlauf**, directly above Settings, displays the bundled release
 notes. It opens automatically the first time a version is launched, including
 fresh installations and installations upgrading from before version tracking.
@@ -226,8 +233,8 @@ VS Code starts Electron and attaches the debugger automatically. Set breakpoints
 in the main process, such as `src/main/main.js`; stop debugging to close the
 launched app. Install dependencies first with `npm install`. To debug renderer
 code, use the Electron window's Developer Tools.
-The debug launch builds the Markdown editor automatically. If launching Electron
-directly without `npm start`, run `npm run build:editor` first.
+The debug launch builds the editor and manual automatically. If launching Electron
+directly without `npm start`, run `npm run build:assets` first.
 
 Alternatively, run the **Electron: debug main process** task and select
 **Attach to Electron main** to attach to that running instance. Its inspector

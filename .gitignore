@@ -1,4 +1,5 @@
 node_modules/
 dist/
 src/renderer/generated/
+src/shared/generated/
 .DS_Store

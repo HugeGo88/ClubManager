@@ -7,6 +7,7 @@ const { protocolHtml, validateProtocolTemplate } = require('./protocol');
 const { isDate } = require('../shared/dates');
 const { startUpdates } = require('./updates');
 const letters = require('./letters');
+const { loadManual } = require('./manual');
 const { randomUUID } = require('node:crypto');
 
 let mainWindow;
@@ -158,6 +159,7 @@ function registerHandlers() {
     } else if (!mainWindow.isDestroyed()) mainWindow.show();
   });
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('manual:get', () => loadManual(path.join(__dirname, '../shared/generated/manual.json'), app.getVersion()));
   ipcMain.handle('changelog:get', async () => {
     const entries = JSON.parse(await fs.readFile(path.join(__dirname, '../shared/changelog.json'), 'utf8'));
     if (!Array.isArray(entries) || !entries.every(entry => entry && typeof entry.version === 'string' &&
