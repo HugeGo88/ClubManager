@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const storage = require('./storage');
 const settings = require('./settings');
-const { protocolHtml } = require('./protocol');
+const { protocolHtml, validateProtocolTemplate } = require('./protocol');
 const { isDate } = require('../shared/dates');
 const { startUpdates } = require('./updates');
 
@@ -12,6 +12,7 @@ let splashWindow;
 let folder;
 let configuredFolder = null;
 let protocolCss = null;
+let meetingTemplate = null;
 let enabledModules = { ...settings.DEFAULT_MODULES };
 let lastSeenVersion = null;
 let settingsLoaded = false;
@@ -36,6 +37,7 @@ async function loadFolder() {
   const config = await settings.loadSettings(settingsFile());
   configuredFolder = config.folder;
   protocolCss = config.protocolCss;
+  meetingTemplate = config.meetingTemplate;
   enabledModules = config.modules;
   lastSeenVersion = config.lastSeenVersion;
   settingsLoaded = true;
@@ -58,7 +60,7 @@ function settingsFile() {
 }
 
 async function saveSettings(nextFolder, nextProtocolCss) {
-  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, modules: enabledModules, lastSeenVersion });
+  await settings.saveSettings(settingsFile(), { folder: nextFolder || null, protocolCss: nextProtocolCss, meetingTemplate, modules: enabledModules, lastSeenVersion });
 }
 
 async function readProtocolCss(file) {
@@ -67,6 +69,17 @@ async function readProtocolCss(file) {
   } catch (error) {
     throw new Error(`Die CSS-Datei für PDF-Protokolle konnte nicht gelesen werden: ${error.message}`);
   }
+}
+
+async function readMeetingTemplate(file) {
+  let template;
+  try {
+    template = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    throw new Error(`Die HTML-Vorlage für Sitzungsprotokolle konnte nicht gelesen werden: ${error.message}`);
+  }
+  validateProtocolTemplate(template);
+  return template;
 }
 
 function registerHandlers() {
@@ -108,7 +121,7 @@ function registerHandlers() {
   ipcMain.handle('changelog:mark-seen', () => serializeWrite(async () => {
     if (!settingsLoaded) throw new Error('Die angezeigte Version konnte nicht gespeichert werden.');
     const version = app.getVersion();
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, modules: enabledModules, lastSeenVersion: version });
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: enabledModules, lastSeenVersion: version });
     lastSeenVersion = version;
   }));
   ipcMain.handle('update:install', event => {
@@ -122,14 +135,14 @@ function registerHandlers() {
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
     const nextModules = settings.validateModules(modules);
-    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, modules: nextModules, lastSeenVersion });
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, modules: nextModules, lastSeenVersion });
     enabledModules = nextModules;
     return { ...enabledModules };
   }));
   ipcMain.handle('protocol-css:get', () => protocolCss);
   ipcMain.handle('protocol-css:choose', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'CSS-Datei für PDF-Protokolle auswählen',
+      title: 'Gemeinsame CSS-Datei für PDF-Dokumente auswählen',
       buttonLabel: 'CSS-Datei auswählen',
       properties: ['openFile'],
       filters: [{ name: 'CSS-Dateien', extensions: ['css'] }]
@@ -149,6 +162,30 @@ function registerHandlers() {
   ipcMain.handle('protocol-css:reset', () => serializeWrite(async () => {
     await saveSettings(configuredFolder, null);
     protocolCss = null;
+  }));
+  ipcMain.handle('meeting-template:get', () => meetingTemplate);
+  ipcMain.handle('meeting-template:choose', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'HTML-Vorlage für Sitzungsprotokolle auswählen',
+      buttonLabel: 'HTML-Vorlage auswählen',
+      properties: ['openFile'],
+      filters: [{ name: 'HTML-Dateien', extensions: ['html', 'htm'] }]
+    });
+    if (result.canceled) return null;
+    return serializeWrite(async () => {
+      const selected = result.filePaths[0];
+      if (typeof selected !== 'string' || !path.isAbsolute(selected) || !['.html', '.htm'].includes(path.extname(selected).toLowerCase())) {
+        throw new Error('Wählen Sie eine gültige HTML-Datei aus.');
+      }
+      await readMeetingTemplate(selected);
+      await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: selected, modules: enabledModules, lastSeenVersion });
+      meetingTemplate = selected;
+      return selected;
+    });
+  });
+  ipcMain.handle('meeting-template:reset', () => serializeWrite(async () => {
+    await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate: null, modules: enabledModules, lastSeenVersion });
+    meetingTemplate = null;
   }));
   ipcMain.handle('folder:choose', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -201,9 +238,10 @@ function registerHandlers() {
     const earlierMeetings = includeEarlierTasks ? records.map(record => record.meeting)
       .filter(other => other.id !== current.meeting.id && isDate(other.date) && other.date < current.meeting.date) : [];
     const css = await readProtocolCss(protocolCss || path.join(__dirname, '../shared/document.css'));
+    const template = meetingTemplate ? await readMeetingTemplate(meetingTemplate) : null;
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
     try {
-      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(current.meeting, css, earlierMeetings))}`);
+      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(current.meeting, css, earlierMeetings, template))}`);
       const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
       const directory = path.join(currentFolder, 'meetings', 'protocols');
       await fs.mkdir(directory, { recursive: true });

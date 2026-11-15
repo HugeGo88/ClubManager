@@ -12,15 +12,29 @@ test('loads legacy settings and persists PDF CSS independently of the data folde
   const folder = path.join(root, 'data');
   const protocolCss = path.join(root, 'protocol.css');
   const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, modules: defaultModules, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, meetingTemplate: null, modules: defaultModules, lastSeenVersion: null });
   await fs.writeFile(file, JSON.stringify({ folder }));
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, modules: defaultModules, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, modules: defaultModules, lastSeenVersion: null });
   await saveSettings(file, { folder: null, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, modules: defaultModules, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, meetingTemplate: null, modules: defaultModules, lastSeenVersion: null });
   await saveSettings(file, { folder, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss, modules: defaultModules, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss, meetingTemplate: null, modules: defaultModules, lastSeenVersion: null });
   await saveSettings(file, { folder, protocolCss: null });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, modules: defaultModules, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, modules: defaultModules, lastSeenVersion: null });
+});
+
+test('persists and validates the meeting template path independently of shared CSS', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'settings.json');
+  const meetingTemplate = path.join(root, 'template.html');
+  const protocolCss = path.join(root, 'shared.css');
+  await saveSettings(file, { meetingTemplate, protocolCss });
+  assert.equal((await loadSettings(file)).meetingTemplate, meetingTemplate);
+  assert.equal((await loadSettings(file)).protocolCss, protocolCss);
+  await assert.rejects(saveSettings(file, { meetingTemplate: 'relative.html' }), /HTML-Vorlage/);
+  await fs.writeFile(file, JSON.stringify({ meetingTemplate: 'relative.html' }));
+  await assert.rejects(loadSettings(file), /HTML-Vorlage/);
 });
 
 test('loads, validates and persists module enablement', async t => {

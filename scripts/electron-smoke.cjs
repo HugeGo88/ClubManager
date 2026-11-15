@@ -12,22 +12,27 @@ async function main() {
   process.on('exit', () => fsSync.rmSync(root, { recursive: true, force: true }));
   const data = path.join(root, 'data');
   const cssFile = path.join(root, 'custom.css');
+  const templateFile = path.join(root, 'meeting.html');
   await fs.writeFile(cssFile, 'body { color: rgb(12, 34, 56); }');
+  await fs.writeFile(templateFile, '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
   await fs.mkdir(data);
   app.setPath('userData', path.join(root, 'settings'));
   await fs.mkdir(app.getPath('userData'));
   let cancelCssDialog = false;
   dialog.showOpenDialog = async (window, options) => options.properties.includes('openFile')
-    ? (cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
+    ? (options.filters?.[0]?.extensions.includes('html') ? { canceled: false, filePaths: [templateFile] }
+      : cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
     : { canceled: false, filePaths: [data] };
   const pdfColors = [];
   const pdfPointHeadings = [];
   const pdfVoteResults = [];
   const pdfOpenTasks = [];
+  const pdfTitles = [];
   app.on('browser-window-created', (event, window) => {
     if (window.isVisible()) return;
     const printToPDF = window.webContents.printToPDF.bind(window.webContents);
     window.webContents.printToPDF = async options => {
+      pdfTitles.push(await window.webContents.executeJavaScript('document.querySelector("main h1")?.textContent'));
       pdfColors.push(await window.webContents.executeJavaScript('getComputedStyle(document.body).color'));
       pdfPointHeadings.push(await window.webContents.executeJavaScript(
         `Array.from(document.querySelectorAll('.point-heading h3'), element => element.textContent)`));
@@ -168,7 +173,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: null, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
+          folder: null, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
         });
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
@@ -524,7 +529,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: cssFile, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
+          folder: data, protocolCss: cssFile, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1108,8 +1113,104 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
+          folder: data, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, lastSeenVersion: app.getVersion()
         });
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Meeting template selection timed out');
+          };
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => document.querySelector('[data-settings-tab="meetings"]'));
+          document.querySelector('[data-settings-tab="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="choose-meeting-template"]'));
+          document.querySelector('[data-action="choose-meeting-template"]').click();
+          await waitFor(() => document.querySelector('[data-action="reset-meeting-template"]'));
+        })()`);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, templateFile);
+        await fs.writeFile(cssFile, 'body { color: rgb(10, 20, 30); }');
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-settings-tab="general"]').click();
+          for (let i = 0; i < 200 && !document.querySelector('[data-action="choose-protocol-css"]'); i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          document.querySelector('[data-action="choose-protocol-css"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('[data-action="reset-protocol-css"]')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Shared CSS selection timed out');
+        })()`);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, templateFile);
+        const reloadTemplate = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+        window.webContents.reload();
+        await reloadTemplate;
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Custom template export timed out');
+          };
+          await waitFor(() => document.querySelector('#app')?.dataset.modulesLoaded === 'true');
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="select"]'));
+          document.querySelector('[data-action="select"]').click();
+          await waitFor(() => document.querySelector('[data-action="export"]'));
+          document.querySelector('[data-action="export"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+        })()`);
+        assert.match(pdfTitles.at(-1), /^Vorlage Beispiel:/);
+        assert.equal(pdfColors.at(-1), 'rgb(10, 20, 30)');
+        await fs.writeFile(templateFile, '<main><h1>Aktualisiert {{title}}</h1>{{points}}</main>');
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="export"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (!document.body.inert && document.querySelector('.notice')?.textContent.includes('PDF gespeichert')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Updated template export timed out');
+        })()`);
+        assert.match(pdfTitles.at(-1), /^Aktualisiert Beispiel:/);
+        await fs.unlink(templateFile);
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="export"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('.notice.error')?.textContent.includes('HTML-Vorlage')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Missing template error was not shown');
+        })()`);
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Meeting template reset timed out');
+          };
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => document.querySelector('[data-settings-tab="meetings"]'));
+          document.querySelector('[data-settings-tab="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="reset-meeting-template"]'));
+          document.querySelector('[data-action="reset-meeting-template"]').click();
+          await waitFor(() => document.querySelector('[data-meeting-template]')?.textContent.includes('Standardvorlage'));
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-action="select"]'));
+          document.querySelector('[data-action="select"]').click();
+          await waitFor(() => document.querySelector('[data-action="export"]'));
+          document.querySelector('[data-action="export"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+        })()`);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, null);
+        assert.match(pdfTitles.at(-1), /^Beispiel:/);
         for (const module of ['members', 'letters', 'invoices']) {
           assert.ok((await fs.stat(path.join(data, module))).isDirectory());
         }

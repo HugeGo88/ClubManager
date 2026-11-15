@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
-const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
@@ -337,14 +337,20 @@ function settingsView() {
       <p>${selected[2]}.</p>
       <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''}> Modul aktivieren</label>
       <p class="muted">${state.modules[selected[0]] ? 'Das Modul wird in der Seitenleiste angezeigt.' : 'Das Modul ist deaktiviert und wird aus der Seitenleiste ausgeblendet.'}</p>
+      ${selected[0] === 'meetings' ? `<h2>HTML-Vorlage für Sitzungsprotokolle</h2>
+        <p>Optional: Eine HTML-Datei bestimmt den Aufbau des Protokolls. Die gemeinsame CSS-Datei gilt weiterhin.</p>
+        <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{attendance}}</code>, <code>{{points}}</code>, <code>{{open_tasks}}</code>.</p>
+        <p class="path" data-meeting-template>${escape(state.meetingTemplate || 'Standardvorlage wird verwendet')}</p>
+        <div class="row">${button('choose-meeting-template', state.meetingTemplate ? 'HTML-Vorlage ändern' : 'HTML-Vorlage auswählen')}${state.meetingTemplate ? button('reset-meeting-template', 'Standardvorlage verwenden') : ''}</div>
+        <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>` : ''}
     </section>` : `<section role="tabpanel" aria-labelledby="settings-tab-general">
       <div class="card"><h2>Datenordner</h2>
         <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
         <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
         ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
         <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
-      <div class="card"><h2>CSS für PDF-Protokolle</h2>
-        <p>Eine CSS-Datei ersetzt das Standardlayout beim nächsten PDF-Export.</p>
+      <div class="card"><h2>Gemeinsame CSS-Datei für PDF-Dokumente</h2>
+        <p>Diese CSS-Datei ist für PDF-Dokumente aller Module vorgesehen und ersetzt das Standardlayout beim PDF-Export. Derzeit unterstützt das Sitzungsmodul den Export.</p>
         <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
         <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
         <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>
@@ -530,6 +536,19 @@ async function run(action, target) {
       await window.club.resetProtocolCss();
       state.protocolCss = null;
       setMessage('Das Standardlayout für PDF-Protokolle wird verwendet.');
+      break;
+    case 'choose-meeting-template': {
+      const selected = await window.club.chooseMeetingTemplate();
+      if (selected) {
+        state.meetingTemplate = selected;
+        setMessage('HTML-Vorlage für Sitzungsprotokolle ausgewählt.');
+      }
+      break;
+    }
+    case 'reset-meeting-template':
+      await window.club.resetMeetingTemplate();
+      state.meetingTemplate = null;
+      setMessage('Die Standardvorlage für Sitzungsprotokolle wird verwendet.');
       break;
     case 'new':
       if (!confirmDiscard()) return;
@@ -889,13 +908,15 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, protocolCss, modules] = await Promise.all([
+    const [folder, protocolCss, meetingTemplate, modules] = await Promise.all([
       window.club.getFolder(),
       window.club.getProtocolCss(),
+      window.club.getMeetingTemplate(),
       window.club.getModules()
     ]);
     state.folder = folder;
     state.protocolCss = protocolCss;
+    state.meetingTemplate = meetingTemplate;
     state.modules = modules;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     state.meetings = state.folder ? await window.club.listMeetings() : [];

@@ -52,7 +52,38 @@ function openTasksHtml(meetings) {
     ).join('')}</ul></div>`).join('') : '<p>Keine offenen Aufgaben.</p>'}`;
 }
 
-function protocolHtml(meeting, css, earlierMeetings = []) {
+function renderTemplate(template, values) {
+  if (typeof template !== 'string' || !template.trim()) throw new Error('Die HTML-Vorlage ist leer.');
+  const placeholders = [...template.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)];
+  if (!placeholders.length) throw new Error('Die HTML-Vorlage muss mindestens einen Platzhalter enthalten.');
+  for (const match of placeholders) {
+    if (!Object.hasOwn(values, match[1])) throw new Error(`Unbekannter Platzhalter in der HTML-Vorlage: ${match[1]}`);
+  }
+  let inserted = 0;
+  const html = sanitizeHtml(template, {
+    allowedTags: [...sanitizeHtml.defaults.allowedTags, 'main', 'header', 'footer', 'section', 'article', 'img'],
+    allowedAttributes: { '*': ['class', 'id'], img: ['src', 'alt', 'width', 'height'] },
+    allowedSchemes: ['data'],
+    disallowedTagsMode: 'escape',
+    textFilter(text) {
+      return text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (match, name) => {
+        if (!Object.hasOwn(values, name)) return match;
+        inserted++;
+        return values[name];
+      });
+    }
+  });
+  if (inserted !== placeholders.length) {
+    throw new Error('Platzhalter müssen im Text der HTML-Vorlage stehen, nicht in Attributen oder nicht unterstützten Elementen.');
+  }
+  return html;
+}
+
+function validateProtocolTemplate(template) {
+  renderTemplate(template, { title: '', date: '', attendance: '', points: '', open_tasks: '' });
+}
+
+function protocolHtml(meeting, css, earlierMeetings = [], template = null) {
   const attendance = Object.entries(de.attendance).map(([status, label]) => {
     const names = meeting.attendance.filter(person => person.status === status).map(person => escapeHtml(person.name));
     return names.length ? `<p class="attendance-group"><strong>${escapeHtml(label)}:</strong> ${names.join(', ')}</p>` : '';
@@ -72,6 +103,18 @@ function protocolHtml(meeting, css, earlierMeetings = []) {
     ).join('')}</ul>` : ''}</section>`;
   }).join('');
   const date = formatDate(meeting.date);
+  const attendanceContent = attendance || '<p>Keine Anwesenheit erfasst.</p>';
+  const pointsContent = points || '<p>Keine TOPs vorhanden.</p>';
+  const openTasks = openTasksHtml([meeting, ...earlierMeetings]);
+  const body = template === null
+    ? `<main><h1>${escapeHtml(meeting.title)}${date ? ` — ${escapeHtml(date)}` : ''}</h1>
+    <h2>Anwesenheit</h2>${attendanceContent}
+    <h2>TOPs</h2>${pointsContent}
+    ${openTasks}</main>`
+    : renderTemplate(template, {
+      title: escapeHtml(meeting.title), date: escapeHtml(date),
+      attendance: attendanceContent, points: pointsContent, open_tasks: openTasks
+    });
   const pageLayout = `@page {
     size: A4;
     margin: 20mm;
@@ -80,10 +123,7 @@ function protocolHtml(meeting, css, earlierMeetings = []) {
     @bottom-right { content: "Seite " counter(page) " von " counter(pages); font: 9pt sans-serif; }
   }`;
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><style>${pageLayout}</style><style>${css.replace(/<\/style/gi, '<\\/style')}</style></head>
-    <body><main><h1>${escapeHtml(meeting.title)}${date ? ` — ${escapeHtml(date)}` : ''}</h1>
-    <h2>Anwesenheit</h2>${attendance || '<p>Keine Anwesenheit erfasst.</p>'}
-    <h2>TOPs</h2>${points || '<p>Keine TOPs vorhanden.</p>'}
-    ${openTasksHtml([meeting, ...earlierMeetings])}</main></body></html>`;
+    <body>${body}</body></html>`;
 }
 
-module.exports = { protocolHtml };
+module.exports = { protocolHtml, validateProtocolTemplate };

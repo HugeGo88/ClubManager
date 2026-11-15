@@ -1,7 +1,46 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { protocolHtml } = require('../src/main/protocol');
+const fs = require('node:fs');
+const path = require('node:path');
+const { protocolHtml, validateProtocolTemplate } = require('../src/main/protocol');
 const de = require('../src/shared/de');
+
+test('renders custom protocol templates with escaped data and reusable sections', () => {
+  const meeting = { title: '<script>unsafe</script> {{points}}', date: '2026-11-10', attendance: [{ name: 'Alex & Sam', status: 'attending' }], points: [
+    { headline: 'Budget', type: 'info', details: '**Text**', tasks: [{ description: 'Prüfen', responsible: 'Alex', done: false }] }
+  ] };
+  const template = '<main class="custom"><h1>{{title}}</h1><p>{{date}}</p><div>{{attendance}}</div><div>{{points}}</div><div>{{open_tasks}}</div></main>';
+  const html = protocolHtml(meeting, 'body { color: red }', [], template);
+  assert.match(html, /<main class="custom"><h1>&lt;script&gt;unsafe&lt;\/script&gt; \{\{points\}\}<\/h1>/);
+  assert.match(html, /<p>10\.11\.2026<\/p>/);
+  assert.match(html, /Alex &amp; Sam/);
+  assert.match(html, /<h3>1\. Budget<\/h3>/);
+  assert.match(html, /<strong>Text<\/strong>/);
+  assert.match(html, /<h2>Offene Aufgaben<\/h2>/);
+  assert.match(html, /body \{ color: red \}/);
+  assert.doesNotMatch(html, /<script>/);
+});
+
+test('rejects invalid template placeholders and keeps scripts and resources blocked', () => {
+  for (const template of ['', '<p>Kein Platzhalter</p>', '<p>{{unknown}}</p>', '<p title="{{title}}">Text</p>']) {
+    assert.throws(() => validateProtocolTemplate(template), /HTML-Vorlage|Platzhalter/);
+  }
+  const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [] }, '',
+    [], '<main><h1>{{title}}</h1><script>alert(1)</script><img src="https://example.com/image.png" onerror="bad()"></main>');
+  assert.doesNotMatch(html, /<script>|onerror|src="https:/);
+  assert.match(html, /default-src 'none'/);
+});
+
+test('example template includes earlier open tasks when provided', () => {
+  const template = fs.readFileSync(path.join(__dirname, '../docs/meeting-template-example.html'), 'utf8');
+  validateProtocolTemplate(template);
+  const meeting = { title: 'Aktuell', date: '', attendance: [], points: [] };
+  const earlier = { title: 'Früher', date: '', points: [
+    { headline: 'Planung', tasks: [{ description: 'Vorbereiten', responsible: 'Alex', done: false }] }
+  ] };
+  assert.doesNotMatch(protocolHtml(meeting, '', [], template), /Vorbereiten/);
+  assert.match(protocolHtml(meeting, '', [earlier], template), /Vorbereiten/);
+});
 
 test('protocol labels and statuses are German and stored values are unchanged', () => {
   const meeting = {

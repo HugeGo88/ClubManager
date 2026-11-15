@@ -76,7 +76,7 @@ settings.json in userData    user-selected data folder
 ## Settings and persistence
 
 - Electron's `userData/settings.json`, outside the club data folder, stores the
-  chosen folder, optional PDF CSS path, four Boolean module settings and the
+  chosen folder, optional shared PDF CSS and meeting HTML template paths, four Boolean module settings and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Existing settings without module selections use the Meetings-only defaults.
@@ -117,8 +117,13 @@ meeting data, escapes text and converts Markdown using `marked` followed by
 and uses `printToPDF`; the result replaces the meeting's previous export.
 Document CSP blocks external resources. The default stylesheet is
 [src/shared/document.css](src/shared/document.css); a user-selected CSS file
-replaces it and is reread on each export. A missing custom stylesheet is an
-error, not an implicit fallback.
+replaces it and is reread on each export. The CSS setting is shared for future
+PDF-exporting modules; meetings is currently the only module with PDF export.
+The optional meeting-specific HTML body template places escaped title/date and
+generated attendance, TOP and open-task sections using documented placeholders;
+template HTML is sanitized and validated both on selection and export. Without
+a template the existing built-in layout is used. Missing or invalid custom
+stylesheets or templates are errors, not implicit fallbacks.
 
 The PDF contains attendance grouped by status, TOPs, decision results and
 tasks. Its final open-task section groups by responsible person; comma- and

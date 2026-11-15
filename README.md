@@ -60,13 +60,39 @@ The notes are maintained in [`src/shared/changelog.json`](src/shared/changelog.j
 add an entry for each release.
 
 Selecting another folder opens that folder's data; it does not migrate it.
-In **Einstellungen**, optionally select a CSS file for PDF protocols. It
-replaces the default stylesheet, is stored as a path in the app settings, and
+In **Einstellungen → Allgemein**, optionally select a shared CSS file for PDF
+documents. Meetings is currently the only module that exports PDFs; the shared
+setting is intended for future modules as they add PDF export. It replaces the
+default stylesheet, is stored as a path in the app settings, and
 is reread for each export. Use **Standardlayout verwenden** to reset it.
 If the selected file is missing or unreadable, export reports an error instead
 of falling back silently. Use self-contained CSS; external resources are
 blocked during PDF generation. Existing PDFs need to be exported again.
-The PDF heading combines the meeting title and date. PDF protocols repeat the
+
+In **Einstellungen → Sitzungen**, optionally select an HTML file as the meeting
+protocol template. Without one, the built-in layout is used. See the
+[example template](docs/meeting-template-example.html). Templates are HTML body
+fragments, not complete documents; the app supplies the document, page headers,
+and shared CSS. Use these placeholders in text content, not tag attributes:
+
+| Placeholder | Content |
+| --- | --- |
+| `{{title}}` | Escaped meeting title |
+| `{{date}}` | Formatted meeting date, or empty text |
+| `{{attendance}}` | Attendance grouped by status, without a section heading |
+| `{{points}}` | TOPs, including their details, decisions and tasks, without a section heading |
+| `{{open_tasks}}` | Open-task summary, including its heading and optionally earlier meetings |
+
+Placeholders may be reordered or omitted, so include all sections needed in the
+finished protocol. Unknown placeholders and placeholders in attributes are
+rejected. HTML is sanitized: scripts, event handlers, inline styles and external
+resources are not supported. Use classes and the shared CSS for styling; data
+images may be embedded. The template is checked when selected and reread and
+checked for every export. Missing or invalid templates cause an error rather
+than silently falling back. Reset the template in the meeting settings to use
+the default again.
+
+The default PDF heading combines the meeting title and date. PDF protocols repeat the
 meeting title in the page header and the meeting date
 and page number in the footer. The header and footer use CSS `@page` margin
 boxes; custom stylesheets can change their appearance with `@top-left`,
