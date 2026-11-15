@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.1.5",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Ein Handbuch für die aktuelle Version ist über die Seitenleiste verfügbar.",
+          "Die Seitenleiste lässt sich platzsparend ein- und ausklappen; Modulgruppen sind durch Symbole und Farben unterscheidbar.",
+          "Eine gemeinsame CSS-Datei kann für PDF-Dokumente verwendet werden."
+        ]
+      },
+      {
+        "title": "Sitzungen",
+        "changes": [
+          "Die Sitzungsliste kann nach Titel oder Datum durchsucht werden.",
+          "Eine eigene HTML-Vorlage mit Platzhaltern kann für Sitzungsprotokolle ausgewählt werden.",
+          "Bei offenen Aufgaben lassen sich die Details des zugehörigen TOPs anzeigen."
+        ]
+      },
+      {
+        "title": "Briefe",
+        "changes": [
+          "Einzelne Briefe können mit Markdown erstellt, gespeichert und als PDF exportiert werden.",
+          "Ein optionales Adressfeld mit getrennten Eingaben für Firma, Name, Straße, PLZ und Ort ist verfügbar.",
+          "Optionale Unterschriftsbilder und eine eigene HTML-Vorlage können in den Einstellungen hinzugefügt werden.",
+          "Die Briefliste kann nach Titel oder Datum durchsucht werden."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.4",
     "changes": [
       "App-Start beschleunigt und einen Startbildschirm hinzugefügt.",

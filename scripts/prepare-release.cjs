@@ -22,8 +22,11 @@ function evaluateRelease(event, current, previous, lock, changelog) {
     throw new Error('package-lock.json versions must match package.json.');
   }
   const entry = Array.isArray(changelog) && changelog.find(item => item?.version === version);
-  if (!entry || !Array.isArray(entry.changes) || entry.changes.length === 0 ||
-      !entry.changes.every(change => typeof change === 'string' && change.trim())) {
+  const nonemptyChanges = changes => Array.isArray(changes) && changes.length > 0 &&
+    changes.every(change => typeof change === 'string' && change.trim());
+  if (!entry || !(nonemptyChanges(entry.changes) ||
+      (Array.isArray(entry.sections) && entry.sections.length > 0 && entry.sections.every(section =>
+        section && typeof section.title === 'string' && section.title.trim() && nonemptyChanges(section.changes))))) {
     throw new Error(`changelog.json must contain nonempty release notes for version ${version}.`);
   }
   return true;

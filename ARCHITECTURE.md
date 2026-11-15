@@ -85,8 +85,9 @@ settings.json in userData    user-selected data folder
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Existing settings without module selections use the Meetings-only defaults.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
-  of release notes displayed by the renderer through restricted IPC. Add a
-  version entry for each release. The main process serializes marking the
+  of release notes displayed by the renderer through restricted IPC. New entries
+  group changes in named module or Allgemein sections; legacy flat entries remain
+  supported. Add a version entry for each release. The main process serializes marking the
   current version as seen only after the history is rendered; a failure is
   reported and will be retried on the next launch.
 - [src/shared/manual.md](src/shared/manual.md) is the maintained German user

@@ -31,3 +31,14 @@ test('requires a nonempty changelog entry for the release version', () => {
     assert.throws(() => evaluateRelease('workflow_dispatch', current, null, lock, entries), /release notes/);
   }
 });
+
+test('accepts valid sectioned release notes and rejects invalid sections', () => {
+  const entry = sections => [{ version: current.version, sections }];
+  assert.equal(evaluateRelease('workflow_dispatch', current, null, lock, entry([
+    { title: 'Allgemein', changes: ['Neue Funktion.'] }, { title: 'Sitzungen', changes: ['Neue Suche.'] }
+  ])), true);
+  for (const sections of [[], [null], [{ title: ' ', changes: ['Text'] }],
+    [{ title: 'Briefe', changes: [] }], [{ title: 'Briefe', changes: [null] }]]) {
+    assert.throws(() => evaluateRelease('workflow_dispatch', current, null, lock, entry(sections)), /release notes/);
+  }
+});

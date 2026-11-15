@@ -81,6 +81,15 @@ async function main() {
               JSON.stringify({ heading: document.querySelector('main h1')?.textContent,
                 content: document.querySelector('main').textContent, expectedVersion: '${app.getVersion()}' }));
           }
+          const sectionedEntry = [...document.querySelectorAll('main .card')].find(card =>
+            card.querySelector('h2')?.textContent === 'Version 0.1.5');
+          const sectionTitles = [...sectionedEntry.querySelectorAll('h3')].map(heading => heading.textContent);
+          if (sectionTitles.join('|') !== 'Allgemein|Sitzungen|Briefe' ||
+              !sectionedEntry.querySelector('ul li') ||
+              ![...document.querySelectorAll('main .card')].some(card =>
+                card.querySelector('h2')?.textContent === 'Version 0.1.4' && card.querySelector('ul li'))) {
+            throw new Error('Current release sections and legacy release notes must be displayed');
+          }
         })()`);
         for (let attempt = 0; attempt < 100 && !window.isVisible(); attempt++) {
           await new Promise(resolve => setTimeout(resolve, 10));

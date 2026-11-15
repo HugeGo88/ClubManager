@@ -163,7 +163,11 @@ function registerHandlers() {
   ipcMain.handle('changelog:get', async () => {
     const entries = JSON.parse(await fs.readFile(path.join(__dirname, '../shared/changelog.json'), 'utf8'));
     if (!Array.isArray(entries) || !entries.every(entry => entry && typeof entry.version === 'string' &&
-        Array.isArray(entry.changes) && entry.changes.every(change => typeof change === 'string'))) {
+        ((Array.isArray(entry.changes) && entry.changes.every(change => typeof change === 'string')) ||
+         (Array.isArray(entry.sections) && entry.sections.length > 0 && entry.sections.every(section =>
+           section && typeof section.title === 'string' && section.title.trim() &&
+           Array.isArray(section.changes) && section.changes.length > 0 &&
+           section.changes.every(change => typeof change === 'string' && change.trim())))))) {
       throw new Error('Der Versionsverlauf ist ungültig.');
     }
     return entries;

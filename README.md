@@ -64,7 +64,8 @@ automatically writing new instructions or retaining an archive of older guides.
 notes. It opens automatically the first time a version is launched, including
 fresh installations and installations upgrading from before version tracking.
 The notes are maintained in [`src/shared/changelog.json`](src/shared/changelog.json);
-add an entry for each release.
+add an entry for each release, grouping changes into module sections and an
+**Allgemein** section for general changes. Older flat entries remain supported.
 
 Selecting another folder opens that folder's data; it does not migrate it.
 In **Einstellungen → Allgemein**, optionally select a shared CSS file for PDF
@@ -271,7 +272,7 @@ repository's **Actions** tab using the selected branch and commit.
 Before either kind of release, the workflow requires a stable version, matching
 versions in `package-lock.json`, and a nonempty entry for that version in
 `src/shared/changelog.json`. Update the lockfile with, for example,
-`npm version 0.1.4 --no-git-tag-version`, and add German release notes before
+`npm version 0.1.5 --no-git-tag-version`, and add German release notes before
 pushing or starting the workflow. The workflow builds a macOS Apple Silicon DMG
 and ZIP and a Windows x64 NSIS installer, then publishes them together as a
 GitHub Release. Both builds and their update metadata must succeed before the

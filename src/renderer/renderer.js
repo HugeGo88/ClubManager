@@ -456,7 +456,9 @@ function render() {
     content = `<p>Version ${escape(manual.version)}</p><article class="card manual-content">${manual.html}</article>`;
   } else if (state.view === 'changelog') {
     content = `<h1>Versionsverlauf</h1><p>Änderungen in ClubManager.</p>${state.changelog === null ? '<p>Der Versionsverlauf konnte nicht geladen werden.</p>' : state.changelog.length === 0 ? '<p>Keine Versionseinträge vorhanden.</p>' : state.changelog.map(entry =>
-      `<section class="card"><h2>Version ${escape(entry.version)}</h2><ul>${entry.changes.map(change => `<li>${escape(change)}</li>`).join('')}</ul></section>`).join('')}`;
+      `<section class="card"><h2>Version ${escape(entry.version)}</h2>${entry.sections
+        ? entry.sections.map(section => `<h3>${escape(section.title)}</h3><ul>${section.changes.map(change => `<li>${escape(change)}</li>`).join('')}</ul>`).join('')
+        : `<ul>${entry.changes.map(change => `<li>${escape(change)}</li>`).join('')}</ul>`}</section>`).join('')}`;
   } else if (!state.folder) {
     content = `<div class="empty"><h1>Willkommen bei ClubManager</h1><p>Wählen Sie zunächst in den Einstellungen einen Datenordner aus.</p>${button('open-settings', 'Einstellungen öffnen', 'primary')}</div>`;
   } else if (state.view === 'meetings') {
