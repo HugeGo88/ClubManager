@@ -166,7 +166,8 @@ separate operational steps.
   revision and dirty flag, and requires a save before exporting. A generated PDF
   is a snapshot, not automatically updated when the meeting changes.
 - Open Tasks aggregates unfinished tasks from saved meetings, filters and sorts
-  them, and marks a task complete via an immediate revision-checked save. A
+  them, expands each task's corresponding TOP details across the table, and
+  marks a task complete via an immediate revision-checked save. A
   local completion date is set on completion and cleared when reopened;
   overdue display uses the local date and refreshes when the day changes.
 - Statistics shows current open, completed and overdue task counts across all

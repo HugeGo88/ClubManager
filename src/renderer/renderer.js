@@ -1,7 +1,7 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
-const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending' };
+const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '' };
 const decisionView = { search: '', result: '', expanded: '' };
 const topView = { search: '', type: '', meeting: '', expanded: '' };
 let includeEarlierTasks = false;
@@ -159,21 +159,26 @@ function taskResults() {
   };
   return `<p class="task-count" role="status">${tasks.length} von ${allTasks.length} offenen Aufgaben</p>
     ${allTasks.length === 0 ? '<p>Keine offenen Aufgaben.</p>' : tasks.length === 0 ? '<p>Keine Aufgaben entsprechen den Filtern.</p>' :
-      `<div class="table-scroll" role="region" aria-label="Aufgabentabelle, horizontal scrollbar" tabindex="0"><table class="tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption>
-      <colgroup><col class="task-col-check"><col class="task-col-description"><col class="task-col-responsible"><col class="task-col-meeting"><col class="task-col-point"><col class="task-col-date"><col class="task-col-due"><col class="task-col-action"></colgroup><thead><tr>
+      `<div class="table-scroll" role="region" aria-label="Aufgabentabelle, horizontal scrollbar" tabindex="0"><table class="tasks-table open-tasks-table"><caption class="sr-only">Offene Aufgaben aus Sitzungen</caption>
+      <colgroup><col class="task-col-check"><col class="task-col-description"><col class="task-col-responsible"><col class="task-col-meeting"><col class="task-col-point"><col class="task-col-details"><col class="task-col-date"><col class="task-col-due"><col class="task-col-action"></colgroup><thead><tr>
         <th scope="col">Erledigt</th>${header('description', 'Aufgabe')}${header('responsible', 'Verantwortlich')}
-        ${header('meeting', 'Sitzung')}${header('point', 'TOP')}${header('date', 'Sitzungsdatum')}${header('dueDate', 'Fällig am')}
+        ${header('meeting', 'Sitzung')}${header('point', 'TOP')}<th scope="col">Details</th>${header('date', 'Sitzungsdatum')}${header('dueDate', 'Fällig am')}
         <th scope="col">Aktion</th></tr></thead><tbody>
-      ${tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => `<tr>
+      ${tasks.map(({ meeting, point, task, pointIndex, taskIndex }) => {
+        const expanded = taskView.expanded === `${meeting.id}:${pointIndex}:${taskIndex}`;
+        const detailsId = `task-details-${meeting.id}-${pointIndex}-${taskIndex}`;
+        return `<tr data-task-row>
         <td><input type="checkbox" data-complete-task data-id="${escape(meeting.id)}" data-point-index="${pointIndex}" data-task-index="${taskIndex}" aria-label="${escape(`${task.description || 'Aufgabe ohne Titel'} – ${meeting.title || 'Sitzung ohne Titel'} als erledigt markieren`)}"></td>
         <td>${escape(task.description || 'Aufgabe ohne Titel')}</td>
         <td>${escape(task.responsible || clubDeutsch.unassigned)}</td>
         <td>${escape(meeting.title || 'Sitzung ohne Titel')}</td>
         <td>${escape(point.headline || 'TOP ohne Titel')}</td>
+        <td><button class="top-details-toggle" data-action="toggle-task-details" data-id="${escape(meeting.id)}" data-index="${pointIndex}" data-task-index="${taskIndex}" aria-controls="${escape(detailsId)}" aria-expanded="${expanded}">${expanded ? 'Details ausblenden' : 'Details anzeigen'}</button></td>
         <td>${escape(meeting.date ? formatDate(meeting.date) : 'Kein Datum')}</td>
         <td>${task.dueDate ? `<time datetime="${escape(task.dueDate)}">${escape(formatDate(task.dueDate))}</time>${clubDates.overdue(task.dueDate, today) ? ' <span class="overdue">Überfällig</span>' : ''}` : '—'}</td>
         <td><button class="action" data-action="select-task-meeting" data-id="${escape(meeting.id)}">Sitzung öffnen</button></td>
-      </tr>`).join('')}</tbody></table></div>`}`;
+      </tr>${expanded ? `<tr class="top-details-row"><td colspan="9"><div class="top-details-content" id="${escape(detailsId)}">${escape(point.details || 'Keine Details vorhanden.')}</div></td></tr>` : ''}`;
+      }).join('')}</tbody></table></div>`}`;
 }
 
 function tasksView() {
@@ -456,6 +461,7 @@ document.addEventListener('visibilitychange', () => {
 
 async function refresh() {
   state.meetings = state.folder ? await window.club.listMeetings() : [];
+  taskView.expanded = '';
 }
 
 function refreshTaskResults() {
@@ -583,6 +589,11 @@ async function run(action, target) {
       await refresh();
       setMessage('Aufgaben neu geladen.');
       break;
+    case 'toggle-task-details': {
+      const key = `${target.dataset.id}:${target.dataset.index}:${target.dataset.taskIndex}`;
+      taskView.expanded = taskView.expanded === key ? '' : key;
+      break;
+    }
     case 'refresh-decisions':
       await refresh();
       setMessage('Entscheidungen neu geladen.');
@@ -691,9 +702,10 @@ document.addEventListener('click', async event => {
   render();
   if (target.dataset.action === 'sort-tasks') {
     document.querySelector(`[data-action="sort-tasks"][data-sort="${target.dataset.sort}"]`)?.focus();
-  } else if (target.dataset.action === 'toggle-decision-details') {
-    document.querySelectorAll('[data-action="toggle-decision-details"]').forEach(button => {
-      if (button.dataset.id === target.dataset.id && button.dataset.index === target.dataset.index) button.focus();
+  } else if (target.dataset.action === 'toggle-decision-details' || target.dataset.action === 'toggle-task-details') {
+    document.querySelectorAll(`[data-action="${target.dataset.action}"]`).forEach(button => {
+      if (button.dataset.id === target.dataset.id && button.dataset.index === target.dataset.index &&
+          button.dataset.taskIndex === target.dataset.taskIndex) button.focus();
     });
   }
 });
@@ -788,6 +800,7 @@ app.addEventListener('change', async event => {
     const revision = await window.club.saveMeeting(meeting, record.revision);
     record.meeting = meeting;
     record.revision = revision;
+    if (taskView.expanded === `${target.dataset.id}:${target.dataset.pointIndex}:${target.dataset.taskIndex}`) taskView.expanded = '';
     setMessage('Aufgabe als erledigt markiert.');
   } catch (error) {
     setMessage(`${error.message} Laden Sie die Aufgaben neu, um den aktuellen Stand anzuzeigen.`, true);

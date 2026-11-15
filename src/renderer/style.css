@@ -98,11 +98,13 @@ button:disabled { opacity: .45; cursor: default; }
 .table-scroll { overflow-x: auto; border: 1px solid #e1e6ed; border-radius: 6px; }
 .table-scroll:focus-visible { outline: 2px solid #2867c7; outline-offset: 2px; }
 .tasks-table { width: 100%; min-width: 1200px; table-layout: fixed; border-collapse: collapse; text-align: left; }
+.open-tasks-table { min-width: 1350px; }
 .task-col-check { width: 80px; }
 .task-col-description { width: 22%; }
 .task-col-responsible { width: 15%; }
 .task-col-meeting { width: 16%; }
 .task-col-point { width: 14%; }
+.task-col-details { width: 150px; }
 .task-col-date { width: 132px; }
 .task-col-due { width: 128px; }
 .task-col-action { width: 152px; }

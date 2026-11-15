@@ -158,7 +158,8 @@ until the PDF is exported again. The save and PDF actions remain at the top
 while scrolling through a meeting. Save the open meeting with **Ctrl+S** (also
 **Cmd+S** on macOS), including while editing Markdown.
 In **Offene Aufgaben**, filter the table by text and responsible person, and
-click a column heading to change its sort order. Check a task to mark it done
+click a column heading to change its sort order. **Details anzeigen** expands
+the corresponding TOP's details across the table. Check a task to mark it done
 and save immediately. Use **Aufgaben neu laden** to refresh the list, including
 after an on-disk conflict. Meeting tasks can have an optional due date; an open
 task becomes overdue after that date in the computer's local time zone. The

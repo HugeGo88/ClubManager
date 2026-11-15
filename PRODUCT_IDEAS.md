@@ -72,7 +72,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Allow an optional deadline on each task and highlight overdue open tasks.
 - [x] Store the local completion date when a task is completed; clear it if the
   task is reopened. Show task checkboxes and completion dates in the PDF.
-- [x] Include an Open Tasks submodule for checking outstanding meeting tasks.
+- [x] Include an Open Tasks submodule for checking outstanding meeting tasks and
+  expanding their associated TOP details.
 - [x] Show current task totals and an estimated open-task trend in a Statistics
   subview, with explicit limitations for missing dates and historical changes.
 - [x] List all TOPs across saved protocols with full-text search and filters for

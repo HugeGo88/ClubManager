@@ -894,6 +894,76 @@ async function main() {
           await fs.unlink(groupedFile);
         }
         await fs.unlink(secondFile);
+        const detailFixture = structuredClone(saved);
+        detailFixture.meeting.id = randomUUID();
+        detailFixture.meeting.title = 'Aufgaben Detailtest';
+        detailFixture.meeting.points = [
+          { headline: 'Gemeinsamer TOP', type: 'info', details: 'Details <img src=x> prüfen\nZweite Zeile', tasks: [
+            { description: 'Detailaufgabe A', responsible: '', done: false },
+            { description: 'Detailaufgabe B', responsible: '', done: false }
+          ] },
+          { headline: 'Leerer TOP', type: 'discussion', details: '', tasks: [
+            { description: 'Detailaufgabe C', responsible: '', done: false }
+          ] }
+        ];
+        const detailFile = path.join(meetingsDir, `${detailFixture.meeting.id}.json`);
+        await fs.writeFile(detailFile, JSON.stringify(detailFixture, null, 2) + '\n');
+        try {
+          await window.webContents.executeJavaScript(`(async () => {
+            const waitFor = async test => {
+              for (let i = 0; i < 200; i++) {
+                if (test()) return;
+                await new Promise(resolve => setTimeout(resolve, 25));
+              }
+              throw new Error('Timed out waiting for task details');
+            };
+            const click = async selector => {
+              document.querySelector(selector).click();
+              await waitFor(() => !document.body.inert);
+            };
+            await click('[data-action="refresh-tasks"]');
+            const search = document.querySelector('[data-task-filter="search"]');
+            search.value = 'Aufgaben Detailtest';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            const buttons = () => [...document.querySelectorAll('[data-action="toggle-task-details"]')];
+            if (buttons().length !== 3 || document.querySelector('.top-details-row')) throw new Error('Task details must initially be collapsed');
+            if (new Set(buttons().map(button => button.getAttribute('aria-controls'))).size !== 3) throw new Error('Task detail IDs must be unique');
+            await click('[data-action="toggle-task-details"][data-index="0"][data-task-index="0"]');
+            let first = document.querySelector('[data-action="toggle-task-details"][data-index="0"][data-task-index="0"]');
+            let row = first.closest('tr').nextElementSibling;
+            if (first.getAttribute('aria-expanded') !== 'true' || document.activeElement !== first ||
+                row.cells[0].colSpan !== 9 || row.querySelector('.top-details-content')?.id !== first.getAttribute('aria-controls') ||
+                row.querySelector('.top-details-content')?.textContent !== 'Details <img src=x> prüfen\\nZweite Zeile' ||
+                row.querySelector('img')) throw new Error('Task TOP details were not safely expanded');
+            await click('[data-action="toggle-task-details"][data-index="0"][data-task-index="1"]');
+            if (document.querySelectorAll('.top-details-row').length !== 1 ||
+                document.querySelector('[data-action="toggle-task-details"][data-index="0"][data-task-index="0"]').getAttribute('aria-expanded') !== 'false' ||
+                document.querySelector('[data-action="toggle-task-details"][data-index="0"][data-task-index="1"]').getAttribute('aria-expanded') !== 'true') {
+              throw new Error('Each task must have an independent detail toggle');
+            }
+            await click('[data-sort="description"]');
+            if (document.querySelector('[data-action="toggle-task-details"][data-index="0"][data-task-index="1"]').getAttribute('aria-expanded') !== 'true') throw new Error('Sorting must preserve expanded task');
+            search.value = 'Detailaufgabe B';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            if (!document.querySelector('.top-details-row')) throw new Error('Filtering must preserve matching task details');
+            search.value = 'Aufgaben Detailtest';
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+            await click('[data-action="toggle-task-details"][data-index="1"][data-task-index="0"]');
+            if (document.querySelector('.top-details-content')?.textContent !== 'Keine Details vorhanden.') throw new Error('Missing TOP detail fallback');
+            await click('[data-action="toggle-task-details"][data-index="1"][data-task-index="0"]');
+            if (document.querySelector('.top-details-row')) throw new Error('Task details must collapse');
+            await click('[data-action="toggle-task-details"][data-index="0"][data-task-index="0"]');
+            document.querySelector('[data-complete-task][data-point-index="0"][data-task-index="0"]').click();
+            await waitFor(() => document.querySelector('.notice')?.textContent === 'Aufgabe als erledigt markiert.');
+            if (document.querySelector('.top-details-row') || document.querySelectorAll('[data-task-row]').length !== 2) throw new Error('Completing expanded task must remove its details');
+            await click('[data-action="toggle-task-details"][data-index="0"][data-task-index="1"]');
+            await click('[data-action="refresh-tasks"]');
+            if (document.querySelector('.top-details-row')) throw new Error('Reload must clear stale task details');
+            await click('[data-action="clear-task-filters"]');
+          })()`);
+        } finally {
+          await fs.unlink(detailFile);
+        }
         const now = new Date();
         const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
         saved.meeting.points[0].tasks.push({ description: 'Budget prüfen', responsible: 'Zoe Beispiel', done: false, dueDate: today });
@@ -957,7 +1027,7 @@ async function main() {
         assert.ok(table.horizontalOverflow, 'Table should scroll horizontally in a narrow window');
         assert.ok(table.columnWidths[1] >= 180, 'Task column should have room for descriptions');
         assert.ok(table.columnWidths[2] >= 120, 'Responsible column should remain readable');
-        assert.ok(table.columnWidths[6] >= 120, 'Deadline column should remain readable');
+        assert.ok(table.columnWidths[7] >= 120, 'Deadline column should remain readable');
         assert.ok(table.scrollAtEnd > 0);
         assert.equal(table.scrollAfterSort, table.scrollAtEnd);
         assert.equal(table.scrollAfterFilter, table.scrollAtEnd);
