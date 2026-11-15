@@ -39,6 +39,7 @@ class TaskWidget extends WidgetType {
     checkbox.type = 'checkbox';
     checkbox.className = 'markdown-task';
     checkbox.checked = this.checked;
+    checkbox.disabled = view.state.readOnly;
     const action = this.checked ? 'als offen markieren' : 'als erledigt markieren';
     checkbox.setAttribute('aria-label', `Markdown-Aufgabe ${this.text || 'ohne Beschreibung'} ${action}`);
     checkbox.addEventListener('change', () => {
@@ -194,7 +195,7 @@ function toggleFormat(view, open, close) {
   view.focus();
 }
 
-window.createMarkdownEditor = (parent, value, onChange, label) => {
+window.createMarkdownEditor = (parent, value, onChange, label, readOnly = false) => {
   const toolbar = document.createElement('div');
   toolbar.className = 'markdown-toolbar';
   toolbar.setAttribute('role', 'group');
@@ -212,6 +213,8 @@ window.createMarkdownEditor = (parent, value, onChange, label) => {
       doc: value,
       extensions: [
         EditorView.cspNonce.of('clubmanager-editor'),
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
         EditorView.contentAttributes.of({ 'aria-label': label, 'aria-multiline': 'true', role: 'textbox' }),
         EditorView.lineWrapping,
         history(),
@@ -229,6 +232,7 @@ window.createMarkdownEditor = (parent, value, onChange, label) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `markdown-format ${format.className}`;
+    button.disabled = readOnly;
     button.textContent = format.text;
     button.title = format.name;
     button.setAttribute('aria-label', format.name);

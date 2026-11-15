@@ -1334,6 +1334,66 @@ async function main() {
         })()`);
         const recompleted = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(recompleted.meeting.points[1].tasks[0].completedDate, today);
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out testing read-only protocol');
+          };
+          document.querySelector('[data-meeting-read-only]').click();
+          if (!document.querySelector('[data-field="title"]').disabled ||
+              !document.querySelector('[data-person="0"][data-field="name"]').disabled ||
+              !document.querySelector('[data-point="0"][data-vote-result]').disabled ||
+              !document.querySelector('[data-action="add-point"]').disabled ||
+              !document.querySelector('[data-point="1"][data-task="0"][data-field="description"]').disabled ||
+              document.querySelector('[data-point="1"][data-task="0"][data-field="done"]').disabled ||
+              document.querySelector('[data-markdown-editor="0"] .cm-content').getAttribute('contenteditable') !== 'false' ||
+              !document.querySelector('[data-markdown-editor="0"] .markdown-format').disabled ||
+              !document.querySelector('.markdown-task') ||
+              [...document.querySelectorAll('.markdown-task')].some(task => !task.disabled)) {
+            throw new Error('Read-only protocol must block editing, but allow task status changes');
+          }
+          const task = document.querySelector('[data-point="1"][data-task="0"][data-field="done"]');
+          task.click();
+          document.querySelector('[data-action="save"]').click();
+          await waitFor(() => !task.isConnected && document.querySelector('.notice')?.textContent === 'Sitzung gespeichert.');
+          document.querySelector('[data-view="tasks"]').click();
+          const overviewTask = await waitFor(() => document.querySelector('[data-complete-task][data-id="${saved.meeting.id}"][data-point-index="1"][data-task-index="0"]'));
+          overviewTask.click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Aufgabe als erledigt markiert.');
+          document.querySelector('[data-view="meetings"]').click();
+          const select = await waitFor(() => document.querySelector('[data-action="select"][data-id="${saved.meeting.id}"]'));
+          select.click();
+          await waitFor(() => document.querySelector('[data-meeting-read-only]')?.checked);
+          if (!document.querySelector('[data-point="1"][data-task="0"][data-field="done"]').checked) {
+            throw new Error('Task completion in the overview must persist on a read-only protocol');
+          }
+          const originalConfirm = window.confirm;
+          let confirmations = 0;
+          try {
+            window.confirm = () => { confirmations++; return false; };
+            document.querySelector('[data-meeting-read-only]').click();
+            if (!document.querySelector('[data-meeting-read-only]').checked ||
+                !document.querySelector('[data-field="title"]').disabled) throw new Error('Cancelling unlock must retain protection');
+            window.confirm = () => { confirmations++; return true; };
+            document.querySelector('[data-meeting-read-only]').click();
+            if (document.querySelector('[data-meeting-read-only]').checked ||
+                document.querySelector('[data-field="title"]').disabled ||
+                document.querySelector('[data-markdown-editor="0"] .cm-content').getAttribute('contenteditable') !== 'true' ||
+                confirmations !== 2) throw new Error('Confirming unlock must restore editing');
+          } finally {
+            window.confirm = originalConfirm;
+          }
+          const unlock = document.querySelector('[data-meeting-read-only]');
+          document.querySelector('[data-action="save"]').click();
+          await waitFor(() => !unlock.isConnected && document.querySelector('.notice')?.textContent === 'Sitzung gespeichert.');
+        })()`);
+        const unlocked = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
+        assert.equal(unlocked.meeting.readOnly, false);
+        assert.equal(unlocked.meeting.points[1].tasks[0].done, true);
         openError = 'Testfehler';
         const openFailure = await window.webContents.executeJavaScript(`(async () => {
           document.querySelector('[data-action="open-protocol"]').click();

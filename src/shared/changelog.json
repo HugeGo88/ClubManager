@@ -13,6 +13,7 @@
       {
         "title": "Sitzungen",
         "changes": [
+          "Protokolle können schreibgeschützt und nach Bestätigung wieder bearbeitet werden; Aufgaben können weiterhin erledigt und wieder geöffnet werden.",
           "Die Sitzungsliste kann nach Titel oder Datum durchsucht werden.",
           "Eine eigene HTML-Vorlage mit Platzhaltern kann für Sitzungsprotokolle ausgewählt werden.",
           "Bei offenen Aufgaben lassen sich die Details des zugehörigen TOPs anzeigen."

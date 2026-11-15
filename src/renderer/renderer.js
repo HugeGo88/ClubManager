@@ -147,6 +147,9 @@ function meetingEditor(meeting) {
       <label class="checkbox export-option"><input type="checkbox" data-include-earlier-tasks ${includeEarlierTasks ? 'checked' : ''}> Offene Aufgaben früherer Sitzungen einbeziehen</label>
       ${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
     ${state.hasProtocol ? '<p class="muted">Das gespeicherte PDF zeigt den Stand des letzten Exports. Änderungen an der Sitzung werden erst nach einem erneuten Export übernommen.</p>' : ''}
+    <label class="checkbox"><input type="checkbox" data-meeting-read-only ${meeting.readOnly ? 'checked' : ''}> Protokoll schreibgeschützt</label>
+    ${meeting.readOnly ? '<p class="muted">Das Protokoll ist schreibgeschützt. Aufgaben können weiterhin erledigt oder wieder geöffnet werden.</p>' : ''}
+    <div data-meeting-content>
     <div class="card"><div class="fields">
       <label>Titel der Sitzung<input data-field="title" value="${escape(meeting.title)}" placeholder="Titel der Sitzung"></label>
       <label>Datum<input type="date" data-field="date" value="${escape(meeting.date)}"></label>
@@ -180,7 +183,7 @@ function meetingEditor(meeting) {
         <span class="task-completed-date">${task.done && task.completedDate ? `Erledigt am: ${escape(formatDate(task.completedDate))}` : ''}</span>
         <button class="action" data-action="remove-task" data-index="${i}" data-task="${j}" aria-label="Aufgabe entfernen">Entfernen</button>
       </div>`).join('')}` : ''}</section>`).join('') : '<p>Noch keine TOPs vorhanden.</p>'}
-    ${button('add-point', '+ TOP hinzufügen')}`;
+    ${button('add-point', '+ TOP hinzufügen')}</div>`;
 }
 
 function taskResults() {
@@ -513,6 +516,12 @@ function render() {
         </aside>` : ''}
     </div></div>`;
   if (showPreview) resizeProtocolPreview(state.previewWidth);
+  if (state.view === 'meetings' && state.meeting?.readOnly) {
+    app.querySelectorAll('[data-meeting-content] input, [data-meeting-content] select, [data-meeting-content] button')
+      .forEach(element => {
+        if (!(element.dataset.field === 'done' && element.dataset.task !== undefined)) element.disabled = true;
+      });
+  }
   app.querySelectorAll('[data-markdown-editor]').forEach(parent => {
     const index = Number(parent.dataset.markdownEditor);
     const point = state.meeting.points[index];
@@ -521,7 +530,7 @@ function render() {
       state.dirty = true;
       const status = document.querySelector('.status');
       if (status) status.textContent = 'Ungespeicherte Änderungen';
-    }, `Details für TOP ${index + 1}`));
+    }, `Details für TOP ${index + 1}`, Boolean(state.meeting.readOnly)));
   });
   const letterEditorElement = app.querySelector('[data-letter-editor]');
   if (letterEditorElement) {
@@ -974,6 +983,16 @@ document.addEventListener('keydown', event => {
 
 app.addEventListener('change', async event => {
   const target = event.target;
+  if (target.hasAttribute('data-meeting-read-only')) {
+    if (!target.checked && !window.confirm('Schreibschutz für dieses Protokoll wirklich aufheben?')) {
+      target.checked = true;
+      return;
+    }
+    state.meeting.readOnly = target.checked;
+    state.dirty = true;
+    render();
+    return;
+  }
   if (target.hasAttribute('data-module-toggle')) {
     const module = target.dataset.moduleToggle;
     const nextModules = { ...state.modules, [module]: target.checked };

@@ -108,7 +108,8 @@ settings.json in userData    user-selected data folder
   reported rather than silently skipped; startup reads meeting records in
   batches of at most eight files to reduce serial I/O without unbounded
   concurrency. There is no version migration for unsupported meeting formats.
-- Meeting data contains a title, optional date, attendance entries and ordered
+- Meeting data contains a title, optional date, an optional Boolean `readOnly`
+  flag (absent in legacy records), attendance entries and ordered
   TOPs. A TOP has a headline, `discussion`/`decision`/`info` type, Markdown
   details, optional responsible person and tasks. Tasks include description,
   responsible names, done state and optional due/completion dates. Decision
@@ -185,7 +186,11 @@ separate operational steps.
   and then re-render. Navigation checks for unsaved meeting edits.
 - The meeting editor works on a clone of the selected saved record, tracks a
   revision and dirty flag, and requires a save before exporting. A generated PDF
-  is a snapshot, not automatically updated when the meeting changes.
+  is a snapshot, not automatically updated when the meeting changes. A saved
+  read-only flag disables editing protocol content in the UI; disabling it
+  requires confirmation. Task completion and reopening remain available in the
+  editor and task overview. This is an accidental-edit guard, not file access
+  control; toggles and editor task changes follow the normal save workflow.
 - The letter editor similarly tracks unsaved changes and revisions, uses the
   shared Markdown editor, and exports saved content with optional address and
   selected linked signatures. Letter templates use sanitized body fragments

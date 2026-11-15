@@ -33,6 +33,27 @@ test('creates module folders and saves and reloads a meeting', async t => {
   assert.deepEqual((await storage.listMeetings(folder))[0].meeting, data);
 });
 
+test('persists and validates the optional meeting read-only flag', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  let revision = await storage.saveMeeting(folder, data, null);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.readOnly, undefined);
+  data.readOnly = true;
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.readOnly, true);
+  data.points[0].tasks[0].done = true;
+  data.points[0].tasks[0].completedDate = '2026-11-15';
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.points[0].tasks[0].done, true);
+  for (const invalid of [null, 'true', 1]) {
+    data.readOnly = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültiger Schreibschutz/);
+  }
+  data.readOnly = false;
+  await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.readOnly, false);
+});
+
 test('loads meetings across read batches and sorts them by date', async t => {
   const folder = await fixture(t);
   const records = [];
