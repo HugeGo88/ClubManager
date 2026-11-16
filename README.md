@@ -87,6 +87,7 @@ and shared CSS. Use these placeholders in text content, not tag attributes:
 | --- | --- |
 | `{{title}}` | Escaped meeting title |
 | `{{date}}` | Formatted meeting date, or empty text |
+| `{{recorder}}` | Escaped recorder name, or empty text |
 | `{{attendance}}` | Attendance grouped by status, without a section heading |
 | `{{points}}` | TOPs, including their details, decisions and tasks, without a section heading |
 | `{{open_tasks}}` | Open-task summary, including its heading and optionally earlier meetings |

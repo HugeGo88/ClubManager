@@ -109,8 +109,8 @@ settings.json in userData    user-selected data folder
   reported rather than silently skipped; startup reads meeting records in
   batches of at most eight files to reduce serial I/O without unbounded
   concurrency. There is no version migration for unsupported meeting formats.
-- Meeting data contains a title, optional date, an optional Boolean `readOnly`
-  flag (absent in legacy records), attendance entries and ordered
+- Meeting data contains a title, optional date, an optional recorder name, an
+  optional Boolean `readOnly` flag (absent in legacy records), attendance entries and ordered
   TOPs. A TOP has a headline, `discussion`/`decision`/`info` type, Markdown
   details, optional responsible person and tasks. Tasks include description,
   responsible names, done state and optional due/completion dates. Decision
@@ -143,13 +143,14 @@ Document CSP blocks external resources. The default stylesheet is
 replaces it and is reread on each export. The CSS setting is shared for future
 PDF-exporting modules; Meetings and Letters both use it.
 The optional meeting-specific HTML body template places escaped title/date and
-generated attendance, TOP and open-task sections using documented placeholders;
+recorder name and generated attendance, TOP and open-task sections using
+documented placeholders, including `{{recorder}}`;
 template HTML is sanitized and validated both on selection and export. Without
 a template the existing built-in layout is used. Missing or invalid custom
 stylesheets or templates are errors, not implicit fallbacks.
 
 The PDF contains attendance grouped by status, TOPs, decision results and
-tasks. Its final open-task section groups by responsible person; comma- and
+tasks, plus the optional recorder name. Its final open-task section groups by responsible person; comma- and
 semicolon-separated names place a task under each person. An optional export
 checkbox includes open tasks from saved meetings with valid dates strictly
 before the current meeting; the current meeting must have a valid date. The

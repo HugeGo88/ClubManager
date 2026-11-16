@@ -54,6 +54,23 @@ test('persists and validates the optional meeting read-only flag', async t => {
   assert.equal((await storage.listMeetings(folder))[0].meeting.readOnly, false);
 });
 
+test('persists the optional meeting recorder and accepts legacy records without it', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  let revision = await storage.saveMeeting(folder, data, null);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.recorder, undefined);
+  data.recorder = 'Alex & Sam';
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.recorder, 'Alex & Sam');
+  for (const invalid of [null, 123, {}, []]) {
+    data.recorder = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültige Protokollführung/);
+  }
+  data.recorder = '';
+  await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.recorder, '');
+});
+
 test('loads meetings across read batches and sorts them by date', async t => {
   const folder = await fixture(t);
   const records = [];
