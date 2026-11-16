@@ -146,11 +146,6 @@ function registerHandlers() {
       startupComplete = true;
       if (!mainWindow.isDestroyed()) mainWindow.show();
       if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
-      if (app.isPackaged) {
-        const { autoUpdater } = require('electron-updater');
-        autoUpdater.on('update-downloaded', () => { downloadedUpdate = true; });
-        startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow });
-      }
       if (startupError) {
         void dialog.showMessageBox(mainWindow, {
           type: 'error',
@@ -414,6 +409,11 @@ app.whenReady().then(async () => {
   letters = require('./letters');
   ({ loadManual } = require('./manual'));
   enabledModules = { ...settings.DEFAULT_MODULES };
+
+  if (app.isPackaged) {
+    const { autoUpdater } = require('electron-updater');
+    startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow, getSplashWindow: () => splashWindow, autoInstall: true });
+  }
 
   registerHandlers();
   startupReady = loadFolder().catch(error => { startupError = error.message; });

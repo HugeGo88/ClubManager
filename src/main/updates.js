@@ -1,20 +1,52 @@
-function startUpdates({ updater, app, dialog, getWindow, platform = process.platform }) {
+function startUpdates({ updater, app, dialog, getWindow, getSplashWindow, platform = process.platform, autoInstall = false }) {
   if (!app.isPackaged || !['darwin', 'win32'].includes(platform)) return;
 
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = false;
-  updater.on('error', error => {
-    console.error('Update fehlgeschlagen:', error);
-    const window = getWindow();
-    if (window && !window.isDestroyed()) {
-      void dialog.showMessageBox(window, {
-        type: 'error', title: 'Update fehlgeschlagen',
-        message: 'Das Update konnte nicht geprüft oder heruntergeladen werden.',
-        detail: error.message, buttons: ['OK']
-      });
+  
+  updater.on('checking-for-update', () => {
+    if (autoInstall && getSplashWindow) {
+      const splash = getSplashWindow();
+      if (splash && !splash.isDestroyed()) {
+        splash.webContents.send('splash:update-message', 'Prüfe auf Updates …');
+      }
     }
   });
+  
+  updater.on('update-available', info => {
+    if (autoInstall && getSplashWindow) {
+      const splash = getSplashWindow();
+      if (splash && !splash.isDestroyed()) {
+        splash.webContents.send('splash:update-message', `Neue Version ${info.version} wird heruntergeladen …`);
+      }
+    }
+  });
+  
+  updater.on('error', error => {
+    console.error('Update fehlgeschlagen:', error);
+    if (!autoInstall) {
+      const window = getWindow();
+      if (window && !window.isDestroyed()) {
+        void dialog.showMessageBox(window, {
+          type: 'error', title: 'Update fehlgeschlagen',
+          message: 'Das Update konnte nicht geprüft oder heruntergeladen werden.',
+          detail: error.message, buttons: ['OK']
+        });
+      }
+    }
+  });
+  
   updater.on('update-downloaded', async info => {
+    if (autoInstall) {
+      if (getSplashWindow) {
+        const splash = getSplashWindow();
+        if (splash && !splash.isDestroyed()) {
+          splash.webContents.send('splash:update-message', `Version ${info.version} wird installiert …`);
+        }
+      }
+      updater.quitAndInstall(false, true);
+      return;
+    }
     const window = getWindow();
     if (!window || window.isDestroyed()) return;
     const { response } = await dialog.showMessageBox(window, {
@@ -26,6 +58,7 @@ function startUpdates({ updater, app, dialog, getWindow, platform = process.plat
     if (response !== 0 || window.isDestroyed()) return;
     window.webContents.send('update:prepare-install');
   });
+  
   updater.checkForUpdates()
     .then(result => result?.downloadPromise?.catch(error => {
       console.error('Update-Download fehlgeschlagen:', error);

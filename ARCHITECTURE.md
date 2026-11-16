@@ -58,11 +58,14 @@ settings.json in userData    user-selected data folder
   platforms. The application window uses context isolation and sandboxing
   with Node integration disabled. The main process validates and performs
   privileged operations on behalf of the renderer. It displays the lightweight
-  splash before loading app main-process modules, then keeps it visible while
-  the hidden app window loads saved settings, the selected data folder and its
-  first view. A startup IPC handshake keeps settings access behind
-  initialization and closes the splash only after the first render. The
-  renderer loads independent settings and release-note requests in parallel.
+  splash before loading app main-process modules, then initiates the update check
+  while keeping the splash visible. The hidden app window loads saved settings,
+  the selected data folder and its first view. If a new version is available,
+  it is downloaded and installed automatically with status messages shown on
+  the splash screen, before the main window opens. A startup IPC handshake keeps
+  settings access behind initialization and closes the splash only after the
+  first render or after update installation. The renderer loads independent
+  settings and release-note requests in parallel.
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.
   IPC covers application version, folder selection, module settings, PDF CSS,
@@ -171,11 +174,14 @@ builds may be unsigned, while the release workflow requires signing and
 notarization; Windows signing and Linux packaging remain open.
 
 [src/main/updates.js](src/main/updates.js) uses `electron-updater` for packaged
-macOS and Windows builds: updates download in the background and require user
-confirmation before installation. The renderer can guard unsaved meeting edits
-before restart. Update errors are reported. Source-mode runs do not check for
-updates, and real-device signing, release and update verification remain
-separate operational steps.
+macOS and Windows builds. On startup, while the splash screen is displayed,
+updates are checked automatically and downloaded in the background. If a new
+version is available, it is installed silently without user confirmation,
+with status messages displayed on the splash screen. This provides a seamless
+update experience before the application window opens. The renderer can guard
+unsaved meeting edits before restart. Update errors are reported. Source-mode
+runs do not check for updates, and real-device signing, release and update
+verification remain separate operational steps.
 
 ## Renderer and interactions
 
