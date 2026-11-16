@@ -63,14 +63,38 @@ async function main() {
     console.error('Electron smoke test timed out.');
     app.exit(1);
   }, 30000);
+  let splash;
+  let splashWasFirstWindow;
+  let appWindowCreatedAfterSplashShown;
   app.once('browser-window-created', (event, window) => {
+    splash = window;
+    splashWasFirstWindow = BrowserWindow.getAllWindows().length === 1;
     window.webContents.once('did-finish-load', async () => {
       try {
-        assert.equal(window.isVisible(), false, 'The app window stays hidden until its first render is ready');
-        const splash = BrowserWindow.getAllWindows().find(candidate => candidate !== window && candidate.isVisible());
-        assert.ok(splash, 'The splash screen remains visible while the app initializes');
-        assert.match(await splash.webContents.executeJavaScript('document.body.textContent'), /ClubManager[\s\S]*Wird gestartet/,
+        assert.equal(splashWasFirstWindow, true, 'The splash is the only window created initially');
+        for (let attempt = 0; attempt < 100 && !window.isVisible(); attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.equal(window.isVisible(), true, 'The splash screen appears after its page loads');
+        assert.match(await window.webContents.executeJavaScript('document.body.textContent'), /ClubManager[\s\S]*Wird gestartet/,
           'The splash screen identifies the app and indicates that it is starting');
+      } catch (error) {
+        console.error(error);
+        clearTimeout(timeout);
+        app.exit(1);
+      }
+    });
+  });
+  let startupWindowHandled = false;
+  app.on('browser-window-created', (event, window) => {
+    if (window === splash || startupWindowHandled) return;
+    startupWindowHandled = true;
+    appWindowCreatedAfterSplashShown = Boolean(splash && splash.isVisible());
+    window.webContents.once('did-finish-load', async () => {
+      try {
+        assert.equal(appWindowCreatedAfterSplashShown, true, 'The splash appears before the app window is created');
+        assert.equal(window.isVisible(), false, 'The app window stays hidden until its first render is ready');
+        assert.ok(splash && splash.isVisible(), 'The splash screen remains visible while the app initializes');
         await window.webContents.executeJavaScript(`(async () => {
           for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
             await new Promise(resolve => setTimeout(resolve, 25));
