@@ -90,10 +90,12 @@ settings.json in userData    user-selected data folder
   Existing settings without module selections use the Meetings-only defaults.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
-  group changes in named module or Allgemein sections; legacy flat entries remain
-  supported. Add a version entry for each release. The main process serializes marking the
-  current version as seen only after the history is rendered; a failure is
-  reported and will be retried on the next launch.
+  include the release date as an ISO `YYYY-MM-DD` value, displayed in German
+  date format, and group changes in named module or Allgemein sections; legacy
+  flat entries remain supported. Historical entries without dates remain
+  supported. Add a dated version entry for each release. The main process
+  serializes marking the current version as seen only after the history is
+  rendered; a failure is reported and will be retried on the next launch.
 - [src/shared/manual.md](src/shared/manual.md) is the maintained German user
   guide. `npm run build:manual` packages its text together with the version in
   `package.json` as `src/shared/generated/manual.json`. On navigation, the main

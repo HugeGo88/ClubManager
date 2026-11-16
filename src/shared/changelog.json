@@ -1,11 +1,19 @@
 [
   {
     "version": "0.1.6",
+    "date": "2026-11-16",
     "sections": [
       {
         "title": "Allgemein",
         "changes": [
-          "Beim Start werden Updates automatisch geprüft und installiert; der Startbildschirm informiert über den Vorgang."
+          "Beim Start werden Updates automatisch geprüft und installiert; der Startbildschirm informiert über den Vorgang.",
+          "Das Datumsfeld nutzt das deutsche Datumsformat."
+        ]
+      },
+      {
+        "title": "Sitzungen",
+        "changes": [
+          "Sitzungen können optional eine protokollführende Person enthalten."
         ]
       }
     ]
