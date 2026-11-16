@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, Menu, shell } = require('electron');
 const assert = require('node:assert/strict');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
@@ -66,6 +66,7 @@ async function main() {
   app.once('browser-window-created', (event, window) => {
     window.webContents.once('did-finish-load', async () => {
       try {
+        assert.equal(Menu.getApplicationMenu(), null, 'The app has no native application menu');
         assert.equal(window.isVisible(), false, 'The app window stays hidden until its first render is ready');
         const splash = BrowserWindow.getAllWindows().find(candidate => candidate !== window && candidate.isVisible());
         assert.ok(splash, 'The splash screen remains visible while the app initializes');
