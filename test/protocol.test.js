@@ -9,7 +9,7 @@ test('renders custom protocol templates with escaped data and reusable sections'
   const meeting = { title: '<script>unsafe</script> {{points}}', date: '2026-11-10', attendance: [{ name: 'Alex & Sam', status: 'attending' }], points: [
     { headline: 'Budget', type: 'info', details: '**Text**', tasks: [{ description: 'Prüfen', responsible: 'Alex', done: false }] }
   ] };
-  const template = '<main class="custom"><h1>{{title}}</h1><p>{{date}}</p><div>{{attendance}}</div><div>{{points}}</div><div>{{open_tasks}}</div></main>';
+  const template = '<main class="custom"><h1>{{title}}</h1><p>{{date}}</p><p>{{recorder}}</p><div>{{attendance}}</div><div>{{points}}</div><div>{{open_tasks}}</div></main>';
   const html = protocolHtml(meeting, 'body { color: red }', [], template);
   assert.match(html, /<main class="custom"><h1>&lt;script&gt;unsafe&lt;\/script&gt; \{\{points\}\}<\/h1>/);
   assert.match(html, /<p>10\.11\.2026<\/p>/);
@@ -75,6 +75,16 @@ test('protocol labels and statuses are German and stored values are unchanged', 
 test('omits the heading date separator when no date is provided', () => {
   const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [] }, '');
   assert.match(html, /<main><h1>Sitzung<\/h1>/);
+});
+
+test('renders optional recorder in the default protocol and supports it in custom templates', () => {
+  const meeting = { title: 'Sitzung', date: '', recorder: 'Alex & <Sam>', attendance: [], points: [] };
+  const html = protocolHtml(meeting, '');
+  assert.match(html, /<p class="recorder">Protokollführer\/in: Alex &amp; &lt;Sam&gt;<\/p>/);
+  assert.doesNotMatch(protocolHtml({ ...meeting, recorder: '  ' }, ''), /class="recorder"/);
+  assert.match(protocolHtml(meeting, '', [], '<main>{{recorder}}</main>'),
+    /<main>Alex &amp; &lt;Sam&gt;<\/main>/);
+  assert.doesNotThrow(() => validateProtocolTemplate('<main>{{recorder}}</main>'));
 });
 
 test('includes escaped TOP responsibility only when provided', () => {

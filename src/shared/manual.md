@@ -11,7 +11,7 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 
 ## Sitzungen
 
-Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf die Teilnahme. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.
+Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf Protokollführer/in und Teilnahme. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.
 
 Details können in Markdown geschrieben und mit den Formatierungsschaltflächen bearbeitet werden. Aufgaben unter einem TOP haben eine Beschreibung, Verantwortliche und optional ein Fälligkeitsdatum. Bei Entscheidungen können Sie ein Abstimmungsergebnis und gegebenenfalls Stimmenzahlen erfassen. Neue Aufgaben können nur bei Informations- und Diskussionsthemen hinzugefügt werden.
 
@@ -40,7 +40,7 @@ Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PD
 
 ## PDF-Gestaltung
 
-Unter **Einstellungen → Allgemein** können Sie eine gemeinsame CSS-Datei für PDF-Dokumente auswählen. Sie ersetzt das Standardlayout und wird bei jedem Export neu gelesen. Unter **Einstellungen → Sitzungen** und **Einstellungen → Briefe** können Sie jeweils eine eigene HTML-Vorlage auswählen; ohne Vorlage wird das Standardlayout verwendet.
+Unter **Einstellungen → Allgemein** können Sie eine gemeinsame CSS-Datei für PDF-Dokumente auswählen. Sie ersetzt das Standardlayout und wird bei jedem Export neu gelesen. Unter **Einstellungen → Sitzungen** und **Einstellungen → Briefe** können Sie jeweils eine eigene HTML-Vorlage auswählen; ohne Vorlage wird das Standardlayout verwendet. Sitzungsprotokolle können die optionale Protokollführung mit `{{recorder}}` ausgeben.
 
 Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. Fehlende oder ungültige Dateien werden beim Export als Fehler angezeigt. Bereits exportierte PDFs ändern sich nicht automatisch.
 

@@ -51,6 +51,9 @@ function validateMeeting(meeting) {
   if (!meeting || !ID.test(meeting.id) || !string(meeting.title) ||
       !string(meeting.date) || !Array.isArray(meeting.attendance) ||
       !Array.isArray(meeting.points)) throw new Error('Ungültige Sitzungsdaten.');
+  if (meeting.recorder !== undefined && !string(meeting.recorder)) {
+    throw new Error('Ungültige Protokollführung.');
+  }
   if (meeting.readOnly !== undefined && typeof meeting.readOnly !== 'boolean') {
     throw new Error('Ungültiger Schreibschutz für die Sitzung.');
   }
