@@ -1,15 +1,16 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const storage = require('./storage');
-const settings = require('./settings');
-const { protocolHtml, validateProtocolTemplate } = require('./protocol');
-const { isDate } = require('../shared/dates');
-const { startUpdates } = require('./updates');
-const letters = require('./letters');
-const { loadManual } = require('./manual');
 const { randomUUID } = require('node:crypto');
 
+let storage;
+let settings;
+let protocolHtml;
+let validateProtocolTemplate;
+let isDate;
+let startUpdates;
+let letters;
+let loadManual;
 let mainWindow;
 let splashWindow;
 let folder;
@@ -18,7 +19,7 @@ let protocolCss = null;
 let meetingTemplate = null;
 let letterTemplate = null;
 let signatures = [];
-let enabledModules = { ...settings.DEFAULT_MODULES };
+let enabledModules = {};
 let sidebarCollapsed = false;
 let lastSeenVersion = null;
 let settingsLoaded = false;
@@ -395,12 +396,6 @@ function registerHandlers() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
-  registerHandlers();
-  startupReady = loadFolder().catch(error => { startupError = error.message; });
-  mainWindow = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
-  });
   splashWindow = new BrowserWindow({
     width: 420, height: 240, frame: false, resizable: false, minimizable: false,
     maximizable: false, fullscreenable: false, show: false, backgroundColor: '#f5f7fa',
@@ -408,6 +403,22 @@ app.whenReady().then(async () => {
   });
   await splashWindow.loadFile(path.join(__dirname, 'splash.html'));
   splashWindow.show();
+
+  storage = require('./storage');
+  settings = require('./settings');
+  ({ protocolHtml, validateProtocolTemplate } = require('./protocol'));
+  ({ isDate } = require('../shared/dates'));
+  ({ startUpdates } = require('./updates'));
+  letters = require('./letters');
+  ({ loadManual } = require('./manual'));
+  enabledModules = { ...settings.DEFAULT_MODULES };
+
+  registerHandlers();
+  startupReady = loadFolder().catch(error => { startupError = error.message; });
+  mainWindow = new BrowserWindow({
+    width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   app.on('activate', () => {
     if (startupComplete && mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
