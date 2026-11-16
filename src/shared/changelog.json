@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.1.7",
+    "date": "2026-11-16",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Ein Ubuntu-Installationspaket für x64 ist verfügbar und unterstützt automatische Aktualisierungen nach Freigabe durch die Systemverwaltung.",
+          "Der Versionsverlauf zeigt vorhandene Veröffentlichungsdaten an."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.6",
     "date": "2026-11-16",
     "sections": [
@@ -7,8 +20,7 @@
         "title": "Allgemein",
         "changes": [
           "Beim Start werden Updates automatisch geprüft und installiert; der Startbildschirm informiert über den Vorgang.",
-          "Das Datumsfeld nutzt das deutsche Datumsformat.",
-          "Ein Ubuntu-Installationspaket für x64 ist verfügbar und unterstützt automatische Aktualisierungen nach Freigabe durch die Systemverwaltung."
+          "Das Datumsfeld nutzt das deutsche Datumsformat."
         ]
       },
       {
