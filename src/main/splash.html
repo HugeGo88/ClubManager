@@ -52,13 +52,5 @@
     <div class="status" role="status"><span class="spinner" aria-hidden="true"></span>Wird gestartet …</div>
     <div class="message" id="message"></div>
   </main>
-  <script>
-    const { ipcRenderer } = require('electron');
-    const messageEl = document.getElementById('message');
-    
-    ipcRenderer.on('splash:update-message', (event, message) => {
-      messageEl.textContent = message;
-    });
-  </script>
 </body>
 </html>

@@ -62,7 +62,8 @@ settings.json in userData    user-selected data folder
   while keeping the splash visible. The hidden app window loads saved settings,
   the selected data folder and its first view. If a new version is available,
   it is downloaded and installed automatically with status messages shown on
-  the splash screen, before the main window opens. A startup IPC handshake keeps
+  the splash screen via a restricted preload. On Linux, startup waits for this
+  check and any download before the main window opens. A startup IPC handshake keeps
   settings access behind initialization and closes the splash only after the
   first render or after update installation. The renderer loads independent
   settings and release-note requests in parallel.
@@ -168,19 +169,24 @@ build scripts and electron-builder targets. The
 [release workflow](.github/workflows/release.yml) runs manually or when a push
 to `main` changes the package version. It checks matching lockfile versions and
 a nonempty changelog entry before generating app assets and building macOS ARM64 DMG/ZIP
-on macOS and a Windows x64 NSIS installer on Windows, then publishes a GitHub
-Release and update metadata after successful builds. Release versioning,
+on macOS, a Windows x64 NSIS installer on Windows and an Ubuntu x64 `.deb`
+package on Ubuntu, then publishes a GitHub Release and platform update
+metadata after successful builds. Release versioning,
 signing/notarization secrets and operational steps are documented in the
 [README](README.md); never put credentials in the repository. Local macOS
 builds may be unsigned, while the release workflow requires signing and
-notarization; Windows signing and Linux packaging remain open.
+notarization; Windows signing remains open. Ubuntu package installation and
+updates still need verification on a real Ubuntu installation.
 
 [src/main/updates.js](src/main/updates.js) uses `electron-updater` for packaged
-macOS and Windows builds. On startup, while the splash screen is displayed,
+macOS, Windows and Ubuntu `.deb` builds. On startup,
 updates are checked automatically and downloaded in the background. If a new
-version is available, it is installed silently without user confirmation,
-with status messages displayed on the splash screen. This provides a seamless
-update experience before the application window opens. The renderer can guard
+version is available, installation starts automatically, with status messages
+displayed on the splash screen. This provides a seamless
+update experience. On Linux, startup waits for the update check and any download
+and installation attempt before opening the application window, avoiding
+interrupting edits; installation may require administrator authentication.
+Linux update errors are shown to the user. The renderer can guard
 unsaved meeting edits before restart. Update errors are reported. Source-mode
 runs do not check for updates, and real-device signing, release and update
 verification remain separate operational steps.
@@ -270,6 +276,7 @@ npm run test:electron
 npm run build:assets
 npm run dist:mac
 npm run dist:win
+npm run dist:linux
 ```
 
 `npm test` runs Node's test runner. The Electron smoke test requires a graphical

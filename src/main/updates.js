@@ -1,5 +1,5 @@
 function startUpdates({ updater, app, dialog, getWindow, getSplashWindow, platform = process.platform, autoInstall = false }) {
-  if (!app.isPackaged || !['darwin', 'win32'].includes(platform)) return;
+  if (!app.isPackaged || !['darwin', 'win32', 'linux'].includes(platform)) return;
 
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = false;
@@ -24,7 +24,19 @@ function startUpdates({ updater, app, dialog, getWindow, getSplashWindow, platfo
   
   updater.on('error', error => {
     console.error('Update fehlgeschlagen:', error);
-    if (!autoInstall) {
+    if (autoInstall && platform === 'linux') {
+      const splash = getSplashWindow?.();
+      const window = splash && !splash.isDestroyed() ? splash : getWindow();
+      const options = {
+        type: 'error', title: 'Update fehlgeschlagen',
+        message: 'Das Update konnte nicht geprüft oder installiert werden.',
+        detail: error.message, buttons: ['OK']
+      };
+      const shown = window && !window.isDestroyed()
+        ? dialog.showMessageBox(window, options)
+        : dialog.showMessageBox(options);
+      void shown.catch(dialogError => console.error('Fehlerdialog konnte nicht angezeigt werden:', dialogError));
+    } else if (!autoInstall) {
       const window = getWindow();
       if (window && !window.isDestroyed()) {
         void dialog.showMessageBox(window, {
@@ -59,7 +71,7 @@ function startUpdates({ updater, app, dialog, getWindow, getSplashWindow, platfo
     window.webContents.send('update:prepare-install');
   });
   
-  updater.checkForUpdates()
+  return updater.checkForUpdates()
     .then(result => result?.downloadPromise?.catch(error => {
       console.error('Update-Download fehlgeschlagen:', error);
     }))

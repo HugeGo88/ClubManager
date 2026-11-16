@@ -396,7 +396,10 @@ app.whenReady().then(async () => {
   splashWindow = new BrowserWindow({
     width: 420, height: 240, frame: false, resizable: false, minimizable: false,
     maximizable: false, fullscreenable: false, show: false, backgroundColor: '#f5f7fa',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+    webPreferences: {
+      preload: path.join(__dirname, 'splash-preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: true
+    }
   });
   await splashWindow.loadFile(path.join(__dirname, 'splash.html'));
   splashWindow.show();
@@ -410,13 +413,17 @@ app.whenReady().then(async () => {
   ({ loadManual } = require('./manual'));
   enabledModules = { ...settings.DEFAULT_MODULES };
 
+  let updateReady;
   if (app.isPackaged) {
     const { autoUpdater } = require('electron-updater');
-    startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow, getSplashWindow: () => splashWindow, autoInstall: true });
+    updateReady = startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow, getSplashWindow: () => splashWindow, autoInstall: true });
   }
 
   registerHandlers();
-  startupReady = loadFolder().catch(error => { startupError = error.message; });
+  const folderReady = loadFolder().catch(error => { startupError = error.message; });
+  startupReady = process.platform === 'linux'
+    ? Promise.all([folderReady, updateReady]).then(() => {})
+    : folderReady;
   mainWindow = new BrowserWindow({
     width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }

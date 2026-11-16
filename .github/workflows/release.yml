@@ -60,6 +60,8 @@ jobs:
             platform: mac
           - os: windows-latest
             platform: win
+          - os: ubuntu-latest
+            platform: linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -98,6 +100,9 @@ jobs:
       - name: Build Windows x64 installer
         if: matrix.platform == 'win'
         run: npx electron-builder --win nsis --x64 --publish never
+      - name: Build Ubuntu x64 package
+        if: matrix.platform == 'linux'
+        run: npx electron-builder --linux deb --x64 --publish never
       - name: Upload macOS packages
         if: matrix.platform == 'mac'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -118,6 +123,15 @@ jobs:
             dist/*.exe
             dist/*.blockmap
             dist/latest.yml
+          if-no-files-found: error
+      - name: Upload Ubuntu package
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: linux-release
+          path: |
+            dist/*.deb
+            dist/latest-linux.yml
           if-no-files-found: error
 
   publish:
@@ -144,12 +158,13 @@ jobs:
             exit 1
           fi
           tag="v$version"
-          for file in release/latest.yml release/latest-mac.yml; do
+          for file in release/latest.yml release/latest-mac.yml release/latest-linux.yml; do
             test -s "$file" || { echo "::error::Missing $file"; exit 1; }
           done
           compgen -G 'release/*.exe' >/dev/null
           compgen -G 'release/*.dmg' >/dev/null
           compgen -G 'release/*.zip' >/dev/null
+          compgen -G 'release/*.deb' >/dev/null
           existing="$(git ls-remote --tags origin "refs/tags/$tag")"
           if [ -n "$existing" ]; then
             echo "::error::Tag $tag already exists; increase the version before releasing."

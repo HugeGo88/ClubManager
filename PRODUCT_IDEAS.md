@@ -48,7 +48,8 @@ items are still open, partially implemented, or ongoing design goals.
 
 - [x] Package the macOS app for Apple Silicon first.
 - [x] Prepare an installer build configuration for Windows.
-- [ ] Prepare Linux packaging.
+- [x] Prepare an Ubuntu x64 `.deb` installer in the release workflow.
+- [ ] Verify the Ubuntu package and automatic update process on Ubuntu.
 - [x] Initial macOS builds are for testing and are not signed or notarized.
 - [x] Add a manually started GitHub Releases workflow and startup update checks,
   with user confirmation before installation.

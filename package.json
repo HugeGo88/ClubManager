@@ -5,6 +5,7 @@
   "private": true,
   "description": "A modular desktop app for managing a club.",
   "author": "ClubManager",
+  "homepage": "https://github.com/HugeGo88/ClubManager",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -21,7 +22,9 @@
     "predist:mac": "npm run build:assets",
     "dist:mac": "electron-builder --mac dmg --arm64",
     "predist:win": "npm run build:assets",
-    "dist:win": "electron-builder --win nsis --x64"
+    "dist:win": "electron-builder --win nsis --x64",
+    "predist:linux": "npm run build:assets",
+    "dist:linux": "electron-builder --linux deb --x64"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.0",
@@ -56,6 +59,13 @@
     },
     "win": {
       "target": "nsis"
+    },
+    "linux": {
+      "target": "deb",
+      "category": "Office"
+    },
+    "deb": {
+      "maintainer": "ClubManager"
     },
     "publish": {
       "provider": "github",

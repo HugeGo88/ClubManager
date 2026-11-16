@@ -257,14 +257,20 @@ The output is in `dist/`. Without a configured signing identity the local build
 is unsigned and not notarized; macOS Gatekeeper may block it or display a
 warning. The release workflow below requires signing and notarization.
 
-A Windows x64 NSIS installer target is prepared for a future Windows build:
+Build a Windows x64 NSIS installer on Windows with:
 
 ```sh
 npm run dist:win
 ```
 
-Run this on Windows for the most reliable results. Windows code signing and
-Linux packaging are deferred.
+Build an Ubuntu x64 `.deb` package on Ubuntu with:
+
+```sh
+npm run dist:linux
+```
+
+Install a downloaded package with `sudo apt install ./ClubManager-<version>-linux-amd64.deb`.
+Windows code signing is deferred.
 
 ## GitHub releases and updates
 
@@ -278,9 +284,10 @@ versions in `package-lock.json`, and a nonempty entry for that version in
 `src/shared/changelog.json`. Update the lockfile with, for example,
 `npm version 0.1.5 --no-git-tag-version`, and add German release notes before
 pushing or starting the workflow. The workflow builds a macOS Apple Silicon DMG
-and ZIP and a Windows x64 NSIS installer, then publishes them together as a
-GitHub Release. Both builds and their update metadata must succeed before the
-release is published. It creates tag `v<version>` and refuses to reuse an
+and ZIP, a Windows x64 NSIS installer, and an Ubuntu x64 `.deb` package, then
+publishes them together as a GitHub Release. All three builds and their update
+metadata must succeed before the release is published. It creates
+tag `v<version>` and refuses to reuse an
 existing tag. A failed publishing step can leave a draft release or tag that
 must be inspected and resolved before retrying.
 
@@ -312,3 +319,8 @@ configure private-release credentials. macOS automatic updates require the
 signed ZIP, so existing unsigned installations must first be replaced manually
 with a signed release. Test a release on each target platform before relying on
 automatic updates.
+
+Ubuntu `.deb` installations check for and download updates at startup before
+opening the app. Installing a downloaded update may require administrator
+authentication. If installation fails, download and install the new `.deb`
+package from GitHub Releases manually.
