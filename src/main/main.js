@@ -395,6 +395,7 @@ function registerHandlers() {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   splashWindow = new BrowserWindow({
     width: 420, height: 240, frame: false, resizable: false, minimizable: false,
     maximizable: false, fullscreenable: false, show: false, backgroundColor: '#f5f7fa',
@@ -412,24 +413,6 @@ app.whenReady().then(async () => {
   ({ loadManual } = require('./manual'));
   enabledModules = { ...settings.DEFAULT_MODULES };
 
-  const menu = [
-    ...(process.platform === 'darwin' ? [{ label: 'ClubManager', submenu: [
-      { role: 'about', label: 'Über ClubManager' }, { type: 'separator' },
-      { role: 'hide', label: 'ClubManager ausblenden' }, { role: 'hideOthers', label: 'Andere ausblenden' },
-      { role: 'unhide', label: 'Alle einblenden' }, { type: 'separator' }, { role: 'quit', label: 'ClubManager beenden' }
-    ] }] : []),
-    { label: 'Bearbeiten', submenu: [
-      { role: 'undo', label: 'Rückgängig' }, { role: 'redo', label: 'Wiederholen' }, { type: 'separator' },
-      { role: 'cut', label: 'Ausschneiden' }, { role: 'copy', label: 'Kopieren' },
-      { role: 'paste', label: 'Einfügen' }, { role: 'selectAll', label: 'Alles auswählen' }
-    ] },
-    { label: 'Ansicht', submenu: [
-      { role: 'reload', label: 'Neu laden' }, { role: 'toggleDevTools', label: 'Entwicklertools' },
-      { type: 'separator' }, { role: 'togglefullscreen', label: 'Vollbild umschalten' }
-    ] },
-    { label: 'Fenster', submenu: [{ role: 'minimize', label: 'Minimieren' }, { role: 'close', label: 'Schließen' }] }
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   registerHandlers();
   startupReady = loadFolder().catch(error => { startupError = error.message; });
   mainWindow = new BrowserWindow({

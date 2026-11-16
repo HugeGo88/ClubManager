@@ -54,13 +54,14 @@ settings.json in userData    user-selected data folder
 ```
 
 - [src/main/main.js](src/main/main.js) manages the Electron lifecycle, window,
-  dialogs and IPC handlers. The application window uses context isolation and
-  sandboxing with Node integration disabled. The main process validates and
-  performs privileged operations on behalf of the renderer. It displays the
-  lightweight splash before loading app main-process modules, then keeps it
-  visible while the hidden app window loads saved settings, the selected data
-  folder and its first view. A startup IPC handshake keeps settings access
-  behind initialization and closes the splash only after the first render. The
+  dialogs and IPC handlers. It disables the native application menu on all
+  platforms. The application window uses context isolation and sandboxing
+  with Node integration disabled. The main process validates and performs
+  privileged operations on behalf of the renderer. It displays the lightweight
+  splash before loading app main-process modules, then keeps it visible while
+  the hidden app window loads saved settings, the selected data folder and its
+  first view. A startup IPC handshake keeps settings access behind
+  initialization and closes the splash only after the first render. The
   renderer loads independent settings and release-note requests in parallel.
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, Menu, shell } = require('electron');
 const assert = require('node:assert/strict');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
@@ -71,6 +71,7 @@ async function main() {
     splashWasFirstWindow = BrowserWindow.getAllWindows().length === 1;
     window.webContents.once('did-finish-load', async () => {
       try {
+        assert.equal(Menu.getApplicationMenu(), null, 'The app has no native application menu');
         assert.equal(splashWasFirstWindow, true, 'The splash is the only window created initially');
         for (let attempt = 0; attempt < 100 && !window.isVisible(); attempt++) {
           await new Promise(resolve => setTimeout(resolve, 10));
