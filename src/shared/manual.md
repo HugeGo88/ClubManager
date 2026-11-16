@@ -11,7 +11,7 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 
 ## Sitzungen
 
-Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf Protokollführer/in und Teilnahme. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.
+Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf Protokollführer/in und Teilnahme. Datumsfelder zeigen das deutsche Format (TT.MM.JJJJ); die Kalenderwoche beginnt am Montag. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.
 
 Details können in Markdown geschrieben und mit den Formatierungsschaltflächen bearbeitet werden. Aufgaben unter einem TOP haben eine Beschreibung, Verantwortliche und optional ein Fälligkeitsdatum. Bei Entscheidungen können Sie ein Abstimmungsergebnis und gegebenenfalls Stimmenzahlen erfassen. Neue Aufgaben können nur bei Informations- und Diskussionsthemen hinzugefügt werden.
 

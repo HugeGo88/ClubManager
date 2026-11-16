@@ -183,7 +183,9 @@ separate operational steps.
   application container, local scripts and content security policy.
 - [src/renderer/renderer.js](src/renderer/renderer.js) is a vanilla JavaScript
   UI: module-level state, HTML template functions, delegated event handlers and
-  an explicit `render()` cycle. It escapes user content inserted into HTML.
+  an explicit `render()` cycle. Electron starts Chromium with the `de-DE`
+  locale so native date controls display German dates and start weeks on Monday.
+  The renderer escapes user content inserted into HTML.
   Async button actions make the body inert, handle failures as visible notices
   and then re-render. Navigation checks for unsaved meeting edits.
 - The meeting editor works on a clone of the selected saved record, tracks a
