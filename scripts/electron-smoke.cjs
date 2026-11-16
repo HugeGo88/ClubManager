@@ -94,6 +94,8 @@ async function main() {
     window.webContents.once('did-finish-load', async () => {
       try {
         assert.equal(appWindowCreatedAfterSplashShown, true, 'The splash appears before the app window is created');
+        assert.equal(app.commandLine.getSwitchValue('lang'), 'de-DE',
+          'Chromium uses the German locale for native date controls');
         assert.equal(window.isVisible(), false, 'The app window stays hidden until its first render is ready');
         assert.ok(splash && splash.isVisible(), 'The splash screen remains visible while the app initializes');
         await window.webContents.executeJavaScript(`(async () => {

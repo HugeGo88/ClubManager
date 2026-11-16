@@ -3,6 +3,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
+app.commandLine.appendSwitch('lang', 'de-DE');
+
 let storage;
 let settings;
 let protocolHtml;
