@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.6",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Beim Start werden Updates automatisch geprüft und installiert; der Startbildschirm informiert über den Vorgang."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.5",
     "sections": [
       {

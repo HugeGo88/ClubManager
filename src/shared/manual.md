@@ -48,4 +48,4 @@ Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. Fehlende od
 
 ClubManager speichert Daten im gewählten Ordner. Erstellen Sie regelmäßig Sicherungskopien. Die Daten sind nicht verschlüsselt; Änderungen durch mehrere gleichzeitig laufende Instanzen werden nicht synchronisiert. Bei einem Konflikt laden Sie den aktuellen Stand erneut, bevor Sie speichern.
 
-Bei unterstützten installierten Versionen werden Updates im Hintergrund heruntergeladen und nach Ihrer Bestätigung installiert. Ungespeicherte Änderungen sollten vorher gespeichert werden.
+Bei unterstützten installierten Versionen prüft ClubManager beim Start auf Updates. Eine neue Version wird automatisch heruntergeladen und installiert; der Startbildschirm informiert Sie darüber. Währenddessen startet ClubManager neu.
