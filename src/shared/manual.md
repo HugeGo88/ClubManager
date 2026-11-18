@@ -4,7 +4,7 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 
 ## Erste Schritte und Navigation
 
-1. Öffnen Sie **Einstellungen → Allgemein** und wählen Sie einen Datenordner. ClubManager erstellt darin für jedes Modul einen Unterordner. Ein Wechsel des Ordners verschiebt keine vorhandenen Daten.
+1. Öffnen Sie **Einstellungen → Allgemein** und wählen Sie einen Datenordner. ClubManager erstellt darin für jedes Modul einen Unterordner. Über das Auswahlmenü oben können Sie registrierte Datenordner wechseln; mit **Datenordner hinzufügen** nehmen Sie weitere Ordner auf. Unter **Einstellungen → Allgemein** können Sie die Bezeichnung des aktiven Ordners ändern. Ein Wechsel verschiebt keine vorhandenen Daten.
 2. Aktivieren oder deaktivieren Sie Module im jeweiligen Einstellungsbereich. Standardmäßig ist nur **Sitzungen** aktiviert. **Mitglieder** und **Rechnungen** sind noch Platzhalter.
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
@@ -15,7 +15,7 @@ Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und er
 
 Details können in Markdown geschrieben und mit den Formatierungsschaltflächen bearbeitet werden. Aufgaben unter einem TOP haben eine Beschreibung, Verantwortliche und optional ein Fälligkeitsdatum. Bei Entscheidungen können Sie ein Abstimmungsergebnis und gegebenenfalls Stimmenzahlen erfassen. Neue Aufgaben können nur bei Informations- und Diskussionsthemen hinzugefügt werden.
 
-Speichern Sie die Sitzung mit **Sitzung speichern** oder Strg+S (auf macOS auch Cmd+S). Die Liste kann nach Titel oder Datum durchsucht werden. Ungespeicherte Änderungen gehen beim Verlassen nur nach Bestätigung verloren.
+Speichern Sie die Sitzung mit **Sitzung speichern** oder Strg+S (auf macOS auch Cmd+S). Die Liste kann nach Titel oder Datum durchsucht werden. Vor einem Datenordnerwechsel können Sie ungespeicherte Änderungen speichern, verwerfen oder den Wechsel abbrechen. Wenn das Speichern fehlschlägt, bleiben Ordner und Änderungen erhalten.
 
 Mit **Protokoll schreibgeschützt** schützen Sie den Inhalt vor versehentlichen Änderungen. Speichern Sie die Sitzung, um die Einstellung dauerhaft zu übernehmen. Zum Aufheben des Schreibschutzes entfernen Sie das Häkchen und bestätigen den Dialog. Aufgaben können auch bei aktiviertem Schreibschutz in der Sitzung oder in der Aufgabenübersicht erledigt und wieder geöffnet werden. Änderungen in der Sitzung müssen gespeichert werden. Der Schreibschutz ist kein Zugriffsschutz für die Dateien.
 
@@ -46,7 +46,7 @@ Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. Fehlende od
 
 ## Daten und Aktualisierungen
 
-ClubManager speichert Daten im gewählten Ordner. Erstellen Sie regelmäßig Sicherungskopien. Die Daten sind nicht verschlüsselt; Änderungen durch mehrere gleichzeitig laufende Instanzen werden nicht synchronisiert. Bei einem Konflikt laden Sie den aktuellen Stand erneut, bevor Sie speichern.
+ClubManager speichert Daten in den jeweiligen registrierten Ordnern. Erstellen Sie regelmäßig Sicherungskopien. Die Daten sind nicht verschlüsselt; Änderungen durch mehrere gleichzeitig laufende Instanzen werden nicht synchronisiert. Bei einem Konflikt laden Sie den aktuellen Stand erneut, bevor Sie speichern.
 
 Bei unterstützten installierten Versionen prüft ClubManager beim Start auf Updates. Eine neue Version wird automatisch heruntergeladen und installiert; der Startbildschirm informiert Sie darüber. Währenddessen startet ClubManager neu.
 

@@ -16,6 +16,7 @@ let loadManual;
 let mainWindow;
 let splashWindow;
 let folder;
+let dataFolders = [];
 let configuredFolder = null;
 let protocolCss = null;
 let meetingTemplate = null;
@@ -44,7 +45,8 @@ function requireFolder() {
 
 async function loadFolder() {
   const config = await settings.loadSettings(settingsFile());
-  configuredFolder = config.folder;
+  dataFolders = config.dataFolders;
+  configuredFolder = config.activeFolder;
   protocolCss = config.protocolCss;
   meetingTemplate = config.meetingTemplate;
   letterTemplate = config.letterTemplate;
@@ -53,30 +55,37 @@ async function loadFolder() {
   sidebarCollapsed = config.sidebarCollapsed;
   lastSeenVersion = config.lastSeenVersion;
   settingsLoaded = true;
-  if (!config.folder) return;
+  if (!config.activeFolder) return;
   // Do not recreate a missing location automatically, e.g. an unmounted drive.
   let info;
   try {
-    info = await fs.stat(config.folder);
+    info = await fs.stat(config.activeFolder);
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
     throw new Error('Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie ihn in den Einstellungen erneut aus.');
   }
   if (!info.isDirectory()) throw new Error('Der gespeicherte Speicherort ist kein Ordner.');
-  await storage.initializeFolder(config.folder);
-  folder = config.folder;
+  await storage.initializeFolder(config.activeFolder);
+  folder = config.activeFolder;
 }
 
 function settingsFile() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
-async function saveSettings(nextFolder, nextProtocolCss) {
-  await persistSettings({ folder: nextFolder || null, protocolCss: nextProtocolCss });
+async function persistSettings(overrides = {}) {
+  await settings.saveSettings(settingsFile(), { dataFolders, activeFolder: configuredFolder, protocolCss, meetingTemplate, letterTemplate, signatures, modules: enabledModules, sidebarCollapsed, lastSeenVersion, ...overrides });
 }
 
-async function persistSettings(overrides = {}) {
-  await settings.saveSettings(settingsFile(), { folder: configuredFolder, protocolCss, meetingTemplate, letterTemplate, signatures, modules: enabledModules, sidebarCollapsed, lastSeenVersion, ...overrides });
+async function initializeFolder(folderPath) {
+  const info = await fs.stat(folderPath);
+  if (!info.isDirectory()) throw new Error('Der ausgewählte Speicherort ist kein Ordner.');
+  await storage.initializeFolder(folderPath);
+  await storage.listMeetings(folderPath);
+}
+
+function folderRegistry() {
+  return dataFolders.map(item => ({ ...item }));
 }
 
 async function readProtocolCss(file) {
@@ -188,6 +197,29 @@ function registerHandlers() {
     require('electron-updater').autoUpdater.quitAndInstall(false, true);
   });
   ipcMain.handle('folder:get', () => folder || null);
+  ipcMain.handle('folders:get', () => ({ dataFolders: folderRegistry(), activeFolder: configuredFolder }));
+  ipcMain.handle('folder:activate', (event, selected) => serializeWrite(async () => {
+    if (typeof selected !== 'string' || !dataFolders.some(item => item.path === selected)) {
+      throw new Error('Der ausgewählte Datenordner ist nicht registriert.');
+    }
+    await initializeFolder(selected);
+    await persistSettings({ activeFolder: selected });
+    configuredFolder = selected;
+    folder = selected;
+    return selected;
+  }));
+  ipcMain.handle('folder:rename', (event, selected, name) => serializeWrite(async () => {
+    if (typeof selected !== 'string' || typeof name !== 'string' || !name.trim()) {
+      throw new Error('Geben Sie einen gültigen Namen für den Datenordner ein.');
+    }
+    const index = dataFolders.findIndex(item => item.path === selected);
+    if (index === -1) throw new Error('Der Datenordner wurde nicht gefunden.');
+    const nextFolders = dataFolders.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, name: name.trim() } : item);
+    await persistSettings({ dataFolders: nextFolders });
+    dataFolders = nextFolders;
+    return folderRegistry();
+  }));
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
     const nextModules = settings.validateModules(modules);
@@ -221,13 +253,13 @@ function registerHandlers() {
         throw new Error('Wählen Sie eine gültige CSS-Datei aus.');
       }
       await readProtocolCss(selected);
-      await saveSettings(configuredFolder, selected);
+      await persistSettings({ protocolCss: selected });
       protocolCss = selected;
       return selected;
     });
   });
   ipcMain.handle('protocol-css:reset', () => serializeWrite(async () => {
-    await saveSettings(configuredFolder, null);
+    await persistSettings({ protocolCss: null });
     protocolCss = null;
   }));
   ipcMain.handle('meeting-template:get', () => meetingTemplate);
@@ -301,9 +333,14 @@ function registerHandlers() {
     if (result.canceled) return null;
     return serializeWrite(async () => {
       const selected = result.filePaths[0];
-      await storage.initializeFolder(selected);
-      await storage.listMeetings(selected);
-      await saveSettings(selected, protocolCss);
+      if (typeof selected !== 'string' || !path.isAbsolute(selected)) {
+        throw new Error('Wählen Sie einen gültigen Datenordner aus.');
+      }
+      await initializeFolder(selected);
+      const current = dataFolders.find(item => item.path === selected);
+      const nextFolders = current ? dataFolders : [...dataFolders, { path: selected, name: path.basename(selected) || selected }];
+      await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
+      dataFolders = nextFolders;
       configuredFolder = selected;
       folder = selected;
       return folder;

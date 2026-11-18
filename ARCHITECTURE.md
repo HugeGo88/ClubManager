@@ -60,7 +60,7 @@ settings.json in userData    user-selected data folder
   privileged operations on behalf of the renderer. It displays the lightweight
   splash before loading app main-process modules, then initiates the update check
   while keeping the splash visible. The hidden app window loads saved settings,
-  the selected data folder and its first view. If a new version is available,
+  the active registered data folder and its first view. If a new version is available,
   it is downloaded and installed automatically with status messages shown on
   the splash screen via a restricted preload. On Linux, startup waits for this
   check and any download before the main window opens. A startup IPC handshake keeps
@@ -69,7 +69,8 @@ settings.json in userData    user-selected data folder
   settings and release-note requests in parallel.
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.
-  IPC covers application version, folder selection, module settings, PDF CSS,
+  IPC covers application version, folder selection, registry, activation and
+  renaming, module settings, PDF CSS,
   meeting list/save/export, opening exported PDFs, reading an existing meeting
   PDF for its resizable in-app preview and update installation.
   Add new privileged operations through an explicit preload method and
@@ -83,12 +84,16 @@ settings.json in userData    user-selected data folder
 
 ## Settings and persistence
 
-- Electron's `userData/settings.json`, outside the club data folder, stores the
-  chosen folder, optional shared PDF CSS and meeting/letter HTML template paths,
+- Electron's `userData/settings.json`, outside the club data folders, stores the
+  registered folder paths and display names plus the active folder path,
+  optional shared PDF CSS and meeting/letter HTML template paths,
   linked signature metadata, four Boolean module settings, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
-  Existing settings without module selections use the Meetings-only defaults.
+  A legacy single `folder` setting loads as one registered folder named after
+  its final path component. Existing settings without module selections use the
+  Meetings-only defaults. Module visibility and the sidebar preference remain
+  app-wide rather than following the active folder.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German
@@ -104,10 +109,13 @@ settings.json in userData    user-selected data folder
   Markdown through restricted IPC; missing, invalid or mismatched manuals
   produce an error. Each build generates the current version's manual, not an
   archive or automatically authored content.
-- Choosing a data folder creates `meetings/`, `members/`, `invoices/` and
-  `letters/` under it. Changing folders opens the new location without moving
-  existing data. An unavailable saved folder is reported; it is not silently
-  recreated.
+- Choosing a data folder registers it and creates `meetings/`, `members/`,
+  `invoices/` and `letters/` under it. The header selector activates only
+  registered folders; the Settings page can rename their display labels.
+  Changing folders opens the new location without moving existing data. When
+  there are unsaved edits, the renderer offers save, discard or cancel; a failed
+  save prevents switching and preserves the current draft. An unavailable
+  saved folder is reported; it is not silently recreated.
 - [src/main/storage.js](src/main/storage.js) stores each meeting in
   `meetings/<UUID>.json` as `{ "version": 1, "meeting": { ... } }` and its last
   exported PDF in `meetings/protocols/<UUID>.pdf`. The meeting ID must match the

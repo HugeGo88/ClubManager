@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
-const state = { view: 'meetings', version: null, changelog: null, folder: null, protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
 const listSearch = { meetings: '', letters: '' };
 let manual = null;
@@ -91,6 +91,52 @@ function letterEditor(letter) {
 
 function confirmDiscard() {
   return !state.dirty || window.confirm('Ungespeicherte Änderungen verwerfen?');
+}
+
+function confirmFolderSwitch() {
+  if (!state.dirty) return Promise.resolve('discard');
+  const dialog = document.createElement('dialog');
+  dialog.className = 'folder-switch-dialog';
+  dialog.innerHTML = `<form method="dialog"><p>Es gibt ungespeicherte Änderungen. Möchten Sie sie vor dem Ordnerwechsel speichern?</p>
+    <div class="row"><button class="action primary" value="save">Speichern</button>
+    <button class="action" value="discard">Verwerfen</button>
+    <button class="action" value="cancel">Abbrechen</button></div></form>`;
+  document.body.append(dialog);
+  return new Promise(resolve => {
+    dialog.addEventListener('close', () => {
+      const choice = ['save', 'discard'].includes(dialog.returnValue) ? dialog.returnValue : 'cancel';
+      dialog.remove();
+      resolve(choice);
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
+async function saveCurrentDraft() {
+  if (state.meeting) {
+    if (!state.meeting.title.trim()) throw new Error('Geben Sie vor dem Speichern einen Titel für die Sitzung ein.');
+    state.revision = await window.club.saveMeeting(state.meeting, state.revision);
+  } else if (letterState.letter) {
+    if (!letterState.letter.title.trim()) throw new Error('Geben Sie vor dem Speichern einen Titel für den Brief ein.');
+    letterState.revision = await window.club.saveLetter(letterState.letter, letterState.revision);
+  } else {
+    throw new Error('Die ungespeicherten Änderungen können nicht gespeichert werden.');
+  }
+  state.dirty = false;
+}
+
+async function adoptActiveFolder(folder) {
+  state.folder = folder;
+  state.dataFolders = (await window.club.getFolders()).dataFolders;
+  closeProtocolPreview();
+  state.meeting = null;
+  letterState.letter = null;
+  letterState.revision = null;
+  letterState.hasPdf = false;
+  state.revision = null;
+  state.hasProtocol = false;
+  state.dirty = false;
+  await refresh();
 }
 
 function notice() {
@@ -424,6 +470,7 @@ function updateOverdueBadge() {
 function settingsView() {
   const selected = settingsTab === 'general' ? null : MODULES.find(([id]) => id === settingsTab);
   const tabs = [['general', 'Allgemein'], ...MODULES.map(([id, name]) => [id, name])];
+  const activeFolder = state.dataFolders.find(item => item.path === state.folder);
   const moduleSettings = selected ? `<section class="card" role="tabpanel" aria-labelledby="settings-tab-${selected[0]}">
       <h2>${selected[1]}</h2>
       <p>${selected[2]}.</p>
@@ -447,6 +494,8 @@ function settingsView() {
         <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
         <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
         ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
+        ${activeFolder ? `<label>Bezeichnung dieses Datenordners<input data-folder-name value="${escape(activeFolder.name)}"></label>
+          ${button('rename-folder', 'Bezeichnung speichern')}` : ''}
         <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
       <div class="card"><h2>Gemeinsame CSS-Datei für PDF-Dokumente</h2>
         <p>Diese CSS-Datei gilt für PDF-Dokumente aller Module und ersetzt das Standardlayout beim PDF-Export.</p>
@@ -506,7 +555,12 @@ function render() {
   const showPreview = state.view === 'meetings' && state.folder && state.meeting &&
     state.hasProtocol && state.previewOpen && state.protocolPreviewUrl;
   const showPreviewToggle = state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol;
-  app.innerHTML = `<div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : state.view === 'letters' && state.folder ? letterList() : ''}
+  const folderOptions = state.dataFolders.length
+    ? state.dataFolders.map(item => `<option value="${escape(item.path)}" title="${escape(item.path)}" ${item.path === state.folder ? 'selected' : ''}>${escape(item.name)}</option>`).join('')
+    : '<option value="" selected>Kein Datenordner</option>';
+  app.innerHTML = `<header class="app-header"><label>Datenordner<select data-folder-switcher aria-label="Datenordner wechseln" ${state.dataFolders.length ? '' : 'disabled'}>${folderOptions}</select></label>
+    ${button('choose-folder', 'Datenordner hinzufügen', 'primary')}</header>
+    <div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : state.view === 'letters' && state.folder ? letterList() : ''}
     <div class="meeting-stage ${showPreview ? 'preview-open' : ''}" ${showPreview ? `style="--preview-width: ${state.previewWidth}px"` : ''}>
       ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="toggle-preview" aria-label="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" title="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" aria-pressed="${state.previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
       <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div>
@@ -649,20 +703,20 @@ async function run(action, target) {
       setMessage('');
       break;
     case 'choose-folder': {
+      const choice = await confirmFolderSwitch();
+      if (choice === 'cancel') break;
+      if (choice === 'save') await saveCurrentDraft();
       const selected = await window.club.chooseFolder();
       if (selected) {
-        closeProtocolPreview();
-        state.folder = selected;
-        state.meeting = null;
-        letterState.letter = null;
-        letterState.revision = null;
-        letterState.hasPdf = false;
-        state.revision = null;
-        state.hasProtocol = false;
-        state.dirty = false;
-        await refresh();
+        await adoptActiveFolder(selected);
         setMessage('Datenordner ausgewählt. Die Modulordner sind bereit.');
       }
+      break;
+    }
+    case 'rename-folder': {
+      const input = app.querySelector('[data-folder-name]');
+      state.dataFolders = await window.club.renameFolder(state.folder, input.value);
+      setMessage('Bezeichnung des Datenordners gespeichert.');
       break;
     }
     case 'choose-protocol-css': {
@@ -1124,6 +1178,19 @@ app.addEventListener('input', event => {
 
 app.addEventListener('change', event => {
   const target = event.target;
+  if (target.hasAttribute('data-folder-switcher')) {
+    (async () => {
+      const selected = target.value;
+      if (!selected || selected === state.folder) return;
+      const choice = await confirmFolderSwitch();
+      if (choice === 'cancel') return;
+      if (choice === 'save') await saveCurrentDraft();
+      await window.club.activateFolder(selected);
+      await adoptActiveFolder(selected);
+      setMessage('Datenordner gewechselt.');
+    })().catch(error => setMessage(error.message, true)).finally(render);
+    return;
+  }
   if (target.hasAttribute('data-decision-result')) {
     decisionView.result = target.value;
     refreshDecisionResults();
@@ -1171,8 +1238,9 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, protocolCss, meetingTemplate, modules, sidebarCollapsed, letterSettings] = await Promise.all([
+    const [folder, folders, protocolCss, meetingTemplate, modules, sidebarCollapsed, letterSettings] = await Promise.all([
       window.club.getFolder(),
+      window.club.getFolders(),
       window.club.getProtocolCss(),
       window.club.getMeetingTemplate(),
       window.club.getModules(),
@@ -1180,6 +1248,7 @@ window.club.onPrepareUpdate(async () => {
       window.club.getLetterSettings()
     ]);
     state.folder = folder;
+    state.dataFolders = folders.dataFolders;
     state.protocolCss = protocolCss;
     state.meetingTemplate = meetingTemplate;
     state.modules = modules;

@@ -29,13 +29,31 @@ function validateSidebarCollapsed(value) {
   return value;
 }
 
+function validateDataFolders(dataFolders) {
+  if (!Array.isArray(dataFolders) || dataFolders.some(item => !item ||
+      typeof item.path !== 'string' || !path.isAbsolute(item.path) ||
+      typeof item.name !== 'string' || !item.name.trim()) ||
+      new Set(dataFolders.map(item => item.path)).size !== dataFolders.length) {
+    throw new Error('Die Datenordner-Liste ist ungültig.');
+  }
+  return dataFolders.map(({ path: folderPath, name }) => ({ path: folderPath, name: name.trim() }));
+}
+
+function validateActiveFolder(activeFolder, dataFolders) {
+  if (activeFolder != null && (typeof activeFolder !== 'string' || !path.isAbsolute(activeFolder) ||
+      !dataFolders.some(item => item.path === activeFolder))) {
+    throw new Error('Der aktive Datenordner ist ungültig.');
+  }
+  return activeFolder ?? null;
+}
+
 async function loadSettings(file) {
   let content;
   try {
     content = await fs.readFile(file, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return { folder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { ...DEFAULT_MODULES }, sidebarCollapsed: false, lastSeenVersion: null };
+    return { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { ...DEFAULT_MODULES }, sidebarCollapsed: false, lastSeenVersion: null };
   }
   let config;
   try {
@@ -47,21 +65,31 @@ async function loadSettings(file) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('Die gespeicherten Einstellungen sind ungültig.');
   }
-  for (const [key, label] of [['folder', 'Datenordner'], ['protocolCss', 'CSS-Datei'], ['meetingTemplate', 'HTML-Vorlage'], ['letterTemplate', 'Briefvorlage']]) {
+  for (const [key, label] of [['folder', 'Datenordner'], ['activeFolder', 'Datenordner'], ['protocolCss', 'CSS-Datei'], ['meetingTemplate', 'HTML-Vorlage'], ['letterTemplate', 'Briefvorlage']]) {
     if (config[key] != null && (typeof config[key] !== 'string' || !path.isAbsolute(config[key]))) {
       throw new Error(`Der gespeicherte Pfad für ${label} ist ungültig.`);
     }
   }
+  const legacyFolder = config.folder ?? null;
+  const dataFolders = config.dataFolders === undefined
+    ? legacyFolder ? [{ path: legacyFolder, name: path.basename(legacyFolder) || legacyFolder }] : []
+    : validateDataFolders(config.dataFolders);
+  const activeFolder = validateActiveFolder(
+    config.dataFolders === undefined ? legacyFolder : config.activeFolder,
+    dataFolders
+  );
   const modules = config.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(config.modules);
   const sidebarCollapsed = config.sidebarCollapsed === undefined ? false : validateSidebarCollapsed(config.sidebarCollapsed);
   const signatures = config.signatures === undefined ? [] : validateSignatures(config.signatures);
   if (config.lastSeenVersion != null && (typeof config.lastSeenVersion !== 'string' || !config.lastSeenVersion.trim())) {
     throw new Error('Die gespeicherte App-Version ist ungültig.');
   }
-  return { folder: config.folder ?? null, protocolCss: config.protocolCss ?? null, meetingTemplate: config.meetingTemplate ?? null, letterTemplate: config.letterTemplate ?? null, signatures, modules, sidebarCollapsed, lastSeenVersion: config.lastSeenVersion ?? null };
+  return { dataFolders, activeFolder, protocolCss: config.protocolCss ?? null, meetingTemplate: config.meetingTemplate ?? null, letterTemplate: config.letterTemplate ?? null, signatures, modules, sidebarCollapsed, lastSeenVersion: config.lastSeenVersion ?? null };
 }
 
 async function saveSettings(file, settings) {
+  const dataFolders = validateDataFolders(settings.dataFolders ?? []);
+  const activeFolder = validateActiveFolder(settings.activeFolder, dataFolders);
   const modules = settings.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(settings.modules);
   const sidebarCollapsed = settings.sidebarCollapsed === undefined ? false : validateSidebarCollapsed(settings.sidebarCollapsed);
   const signatures = settings.signatures === undefined ? [] : validateSignatures(settings.signatures);
@@ -75,7 +103,7 @@ async function saveSettings(file, settings) {
     throw new Error('Die gespeicherte App-Version ist ungültig.');
   }
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await atomicWrite(file, JSON.stringify({ folder: settings.folder ?? null, protocolCss: settings.protocolCss ?? null, meetingTemplate: settings.meetingTemplate ?? null, letterTemplate: settings.letterTemplate ?? null, signatures, modules, sidebarCollapsed, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
+  await atomicWrite(file, JSON.stringify({ dataFolders, activeFolder, protocolCss: settings.protocolCss ?? null, meetingTemplate: settings.meetingTemplate ?? null, letterTemplate: settings.letterTemplate ?? null, signatures, modules, sidebarCollapsed, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
 }
 
-module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules, validateSidebarCollapsed };
+module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules, validateSidebarCollapsed, validateDataFolders, validateActiveFolder };

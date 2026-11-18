@@ -27,14 +27,14 @@ items are still open, partially implemented, or ongoing design goals.
 
 ## Multiple data folders
 
-- [ ] Register multiple local data folders and switch between them from the app
+- [x] Register multiple local data folders and switch between them from the app
   header, remembering the active folder.
 - [ ] Keep meeting and letter PDF templates, shared PDF CSS, and letter
   signatures with their data folder; use packaged defaults for missing custom
   document files.
-- [ ] Allow folder display names to be customized, and remove folders from the
-  app's list without deleting their files.
-- [ ] Keep module visibility and sidebar preference app-wide rather than
+- [x] Allow folder display names to be customized.
+- [ ] Remove folders from the app's list without deleting their files.
+- [x] Keep module visibility and sidebar preference app-wide rather than
   changing them with the active folder.
 - [ ] Migrate existing global templates, CSS, and signatures into the active
   folder (or the first folder added), preserving existing destination files and

@@ -13,15 +13,43 @@ test('loads legacy settings and persists PDF CSS independently of the data folde
   const folder = path.join(root, 'data');
   const protocolCss = path.join(root, 'protocol.css');
   const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await fs.writeFile(file, JSON.stringify({ folder }));
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
-  await saveSettings(file, { folder: null, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder: null, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
-  await saveSettings(file, { folder, protocolCss });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
-  await saveSettings(file, { folder, protocolCss: null });
-  assert.deepEqual(await loadSettings(file), { folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  await saveSettings(file, { dataFolders: [], activeFolder: null, protocolCss });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  await saveSettings(file, { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  await saveSettings(file, { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+});
+
+test('migrates the legacy folder and persists a registered folder list with an active folder', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'settings.json');
+  const firstPath = path.join(root, 'verein-a');
+  const secondPath = path.join(root, 'verein-b');
+  const firstFolder = { path: firstPath, name: 'Verein A' };
+  const secondFolder = { path: secondPath, name: 'Verein B' };
+  await fs.writeFile(file, JSON.stringify({ folder: firstPath }));
+
+  const legacy = await loadSettings(file);
+  assert.deepEqual(legacy.dataFolders, [{ path: firstPath, name: 'verein-a' }]);
+  assert.equal(legacy.activeFolder, firstPath);
+
+  const rootFolder = path.parse(firstPath).root;
+  await fs.writeFile(file, JSON.stringify({ folder: rootFolder }));
+  assert.deepEqual((await loadSettings(file)).dataFolders, [{ path: rootFolder, name: rootFolder }]);
+
+  await saveSettings(file, {
+    ...legacy,
+    dataFolders: [firstFolder, secondFolder],
+    activeFolder: secondPath
+  });
+  const saved = await loadSettings(file);
+  assert.deepEqual(saved.dataFolders, [firstFolder, secondFolder]);
+  assert.equal(saved.activeFolder, secondPath);
 });
 
 test('persists and validates the sidebar preference', async t => {

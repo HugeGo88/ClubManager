@@ -11,18 +11,21 @@ async function main() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-electron-test-'));
   process.on('exit', () => fsSync.rmSync(root, { recursive: true, force: true }));
   const data = path.join(root, 'data');
+  const secondData = path.join(root, 'second-club');
   const cssFile = path.join(root, 'custom.css');
   const templateFile = path.join(root, 'meeting.html');
   const letterTemplateFile = path.join(root, 'letter.html');
   const signaturePng = path.join(root, 'signature.png');
   const signatureSvg = path.join(root, 'signature.svg');
   let selectedSignature = signaturePng;
+  let selectedDataFolder = data;
   await fs.writeFile(cssFile, 'body { color: rgb(12, 34, 56); }');
   await fs.writeFile(templateFile, '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
   await fs.writeFile(letterTemplateFile, '<main class="letter"><h1>Briefvorlage {{title}}</h1>{{date}}{{address}}{{content}}{{signatures}}</main>');
   await fs.writeFile(signaturePng, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
   await fs.writeFile(signatureSvg, '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><path d="M1 15 Q20 0 39 15" fill="none" stroke="black"/></svg>');
   await fs.mkdir(data);
+  await fs.mkdir(secondData);
   app.setPath('userData', path.join(root, 'settings'));
   await fs.mkdir(app.getPath('userData'));
   let cancelCssDialog = false;
@@ -31,7 +34,7 @@ async function main() {
       : options.title === 'HTML-Vorlage für Briefe auswählen' ? { canceled: false, filePaths: [letterTemplateFile] }
       : options.filters?.[0]?.extensions.includes('html') ? { canceled: false, filePaths: [templateFile] }
       : cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
-    : { canceled: false, filePaths: [data] };
+    : { canceled: false, filePaths: [selectedDataFolder] };
   const pdfColors = [];
   const pdfPointHeadings = [];
   const pdfVoteResults = [];
@@ -298,7 +301,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: null, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [], activeFolder: null, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
@@ -677,7 +680,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data' }], activeFolder: data, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1476,7 +1479,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          folder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data' }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
@@ -1833,7 +1836,145 @@ async function main() {
         const finalSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
         assert.equal(finalSettings.letterTemplate, null);
         assert.equal(finalSettings.signatures.length, 2);
-        console.log('Electron smoke test passed: task table filtering, sorting, completion, conflict recovery, and PDF export.');
+        selectedDataFolder = secondData;
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = await test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for data-folder UI');
+          };
+          const waitForActiveFolder = folderPath => waitFor(async () =>
+            await window.club.getFolder() === folderPath &&
+            document.querySelector('[data-folder-switcher]')?.value === folderPath &&
+            !document.querySelector('.folder-switch-dialog'));
+          const click = async selector => {
+            const element = await waitFor(() => !document.body.inert && document.querySelector(selector));
+            element.click();
+          };
+          await click('[data-view="settings"]');
+          await click('[data-action="choose-folder"]');
+          const secondPath = ${JSON.stringify(secondData)};
+          await waitFor(() => document.querySelector('[data-folder-switcher]')?.value === secondPath);
+          const switcher = document.querySelector('[data-folder-switcher]');
+          const folders = await window.club.getFolders();
+          if (folders.dataFolders.length !== 2 || folders.activeFolder !== secondPath) {
+            throw new Error('The second folder was not registered and activated');
+          }
+          const option = [...switcher.options].find(item => item.value === secondPath);
+          if (!option || option.textContent !== 'second-club' || option.title !== secondPath) {
+            throw new Error('The switcher should show the folder name and full path');
+          }
+          const nameInput = await waitFor(() => document.querySelector('[data-folder-name]'));
+          nameInput.value = 'Verein B';
+          nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+          await click('[data-action="rename-folder"]');
+          await waitFor(() => [...document.querySelector('[data-folder-switcher]').options]
+            .some(item => item.value === secondPath && item.textContent === 'Verein B'));
+          if ((await window.club.listMeetings()).length || (await window.club.listLetters()).length) {
+            throw new Error('The new data folder should not show another folder\\'s records');
+          }
+          const firstPath = ${JSON.stringify(data)};
+          const currentSwitcher = document.querySelector('[data-folder-switcher]');
+          currentSwitcher.value = firstPath;
+          currentSwitcher.dispatchEvent(new Event('change', { bubbles: true }));
+          for (let i = 0; i < 200; i++) {
+            if (await window.club.getFolder() === firstPath && !document.body.inert) break;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (await window.club.getFolder() !== firstPath ||
+              !(await window.club.listMeetings()).length || !(await window.club.listLetters()).length) {
+            throw new Error('Switching back should restore the first folder and its records');
+          }
+          const firstOption = [...document.querySelector('[data-folder-switcher]').options]
+            .find(item => item.value === firstPath);
+          if (firstOption.textContent !== 'data') throw new Error('The first folder display name changed unexpectedly');
+          await click('[data-view="meetings"]');
+          const firstMeeting = (await window.club.listMeetings())[0]?.meeting;
+          if (!firstMeeting) throw new Error('The first folder should contain a saved meeting for switch confirmation tests');
+          const selectMeeting = async () => {
+            const button = await waitFor(() => [...document.querySelectorAll('[data-action="select"]')]
+              .find(item => item.dataset.id === firstMeeting.id));
+            button.click();
+            return waitFor(() => document.querySelector('[data-field="title"]'));
+          };
+          const chooseFolder = async (folderPath, choice) => {
+            const selector = document.querySelector('[data-folder-switcher]');
+            selector.value = folderPath;
+            selector.dispatchEvent(new Event('change', { bubbles: true }));
+            const dialog = await waitFor(() => document.querySelector('.folder-switch-dialog'));
+            dialog.querySelector('[value="' + choice + '"]').click();
+          };
+          const titleInput = await selectMeeting();
+          const originalTitle = titleInput.value;
+          const unsavedTitle = originalTitle + ' – ungespeichert';
+          titleInput.value = unsavedTitle;
+          titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+          await chooseFolder(secondPath, 'cancel');
+          await waitFor(() => !document.querySelector('.folder-switch-dialog') &&
+            document.querySelector('[data-folder-switcher]')?.value === firstPath);
+          if (await window.club.getFolder() !== firstPath ||
+              document.querySelector('[data-field="title"]')?.value !== unsavedTitle) {
+            throw new Error('Canceling a folder switch must preserve the current folder and draft');
+          }
+          document.querySelector('[data-field="title"]').value = '';
+          document.querySelector('[data-field="title"]').dispatchEvent(new Event('input', { bubbles: true }));
+          await chooseFolder(secondPath, 'save');
+          await waitFor(() => !document.querySelector('.folder-switch-dialog') && document.querySelector('.notice.error'));
+          if (await window.club.getFolder() !== firstPath ||
+              document.querySelector('[data-field="title"]')?.value !== '' ||
+              !document.querySelector('.status')?.textContent.includes('Ungespeicherte Änderungen')) {
+            throw new Error('A failed save must leave the active folder and draft unchanged');
+          }
+          const discardedTitle = originalTitle + ' – verworfen';
+          const invalidTitle = document.querySelector('[data-field="title"]');
+          invalidTitle.value = discardedTitle;
+          invalidTitle.dispatchEvent(new Event('input', { bubbles: true }));
+          await chooseFolder(secondPath, 'discard');
+          await waitForActiveFolder(secondPath);
+          const secondSwitcher = document.querySelector('[data-folder-switcher]');
+          secondSwitcher.value = firstPath;
+          secondSwitcher.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitForActiveFolder(firstPath);
+          const unchangedMeeting = (await window.club.listMeetings()).find(item => item.meeting.id === firstMeeting.id);
+          if (unchangedMeeting.meeting.title !== originalTitle) throw new Error('Discarding a draft must not save it');
+          const editableMeeting = await selectMeeting();
+          const savedTitle = originalTitle + ' – gespeichert';
+          editableMeeting.value = savedTitle;
+          editableMeeting.dispatchEvent(new Event('input', { bubbles: true }));
+          await chooseFolder(secondPath, 'save');
+          await waitForActiveFolder(secondPath);
+          const returnSwitcher = document.querySelector('[data-folder-switcher]');
+          returnSwitcher.value = firstPath;
+          returnSwitcher.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitForActiveFolder(firstPath);
+          const savedMeeting = (await window.club.listMeetings()).find(item => item.meeting.id === firstMeeting.id);
+          if (savedMeeting.meeting.title !== savedTitle) throw new Error('Saving a draft must complete before switching folders');
+        })()`);
+        const folderReloadFinished = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+        window.webContents.reload();
+        await folderReloadFinished;
+        await window.webContents.executeJavaScript(`(async () => {
+          for (let i = 0; i < 200 && document.querySelector('#app')?.dataset.modulesLoaded !== 'true'; i++) {
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          const folders = await window.club.getFolders();
+          if (await window.club.getFolder() !== ${JSON.stringify(data)} ||
+              document.querySelector('[data-folder-switcher]')?.value !== ${JSON.stringify(data)} ||
+              folders.dataFolders.length !== 2 ||
+              !folders.dataFolders.some(item => item.path === ${JSON.stringify(secondData)} && item.name === 'Verein B')) {
+            throw new Error('The active folder and folder names must survive app reload');
+          }
+        })()`);
+        const folderSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
+        assert.deepEqual(folderSettings.dataFolders, [
+          { path: data, name: 'data' },
+          { path: secondData, name: 'Verein B' }
+        ]);
+        assert.equal(folderSettings.activeFolder, data);
+        console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();
         app.exit(0);
