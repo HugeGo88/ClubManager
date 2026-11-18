@@ -39,7 +39,8 @@ An example exported protocol using the default PDF stylesheet:
 
 ## Run
 
-Install Node.js 22.12 or newer and npm, then:
+Use Node.js 22.12.0 from the repository's `.nvmrc` (for nvm, run `nvm use`)
+and npm, then:
 
 ```sh
 npm install

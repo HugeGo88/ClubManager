@@ -267,14 +267,16 @@ verification remain separate operational steps.
 | [src/shared/](src/shared/) | Shared labels, dates and default document CSS |
 | [test/](test/) | Node tests for dates, settings, storage, protocols and updates |
 | [scripts/electron-smoke.cjs](scripts/electron-smoke.cjs) | Graphical end-to-end Electron smoke test |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | Pull-request tests and Electron smoke check |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | Version-triggered or manually dispatched build and release |
 | [.vscode/](.vscode/) | Electron main-process launch and debug tasks |
 | [docs/screenshots/](docs/screenshots/) | README screenshots using fictional data |
 
 ## Development and verification
 
-Use the Node.js version requirement and installation instructions in the
-[README](README.md). Common commands:
+Use Node.js 22.12.0 from `.nvmrc` and the installation instructions in the
+[README](README.md). The CI and release workflows select the same version from
+that file. Common commands:
 
 ```sh
 npm install
@@ -287,9 +289,10 @@ npm run dist:win
 npm run dist:linux
 ```
 
-`npm test` runs Node's test runner. The Electron smoke test requires a graphical
-desktop and exercises the application through Electron, including meeting
-editing, navigation, settings, lists, conflicts and PDF export; it also checks
-expected failure paths. The `start`, Electron smoke test and distribution scripts
-build the editor and versioned manual through npm lifecycle scripts. VS Code's
-debug configurations also build these assets first.
+`npm test` runs Node's test runner. The Electron smoke test exercises the
+application through Electron, including meeting editing, navigation, settings,
+lists, conflicts and PDF export; it also checks expected failure paths. The
+pull-request workflow runs both suites and checks the smoke-test script's
+syntax, providing a virtual display for Electron. The `start`, Electron smoke
+test and distribution scripts build the editor and versioned manual through npm
+lifecycle scripts. VS Code's debug configurations also build these assets first.
