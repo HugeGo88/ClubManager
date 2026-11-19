@@ -9,6 +9,16 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
 
+## Datenordner und Zugriff
+
+Registrierte Datenordner werden in **Einstellungen → Allgemein** aufgelistet. Für jeden Ordner können Sie die Bezeichnung ändern, ihn erneut verknüpfen oder seine Registrierung entfernen.
+
+**Nicht verfügbare Ordner:** Falls ein registrierter Datenordner verschoben, gelöscht oder das Speichergerät entfernt wurde, zeigt ClubManager ihn als „Nicht verfügbar" an. Der Ordner bleibt registriert und die Daten bleiben erhalten. Sie können einen nicht verfügbaren Ordner weder aktivieren noch verwenden, bis er wieder verfügbar ist oder Sie ihn erneut verknüpfen.
+
+**Erneut verknüpfen:** Mit **Erneut verknüpfen** können Sie einen nicht verfügbaren Ordner mit einem neuen Speicherort verbinden. Dies ist nützlich, wenn der Ordner auf ein anderes Laufwerk verschoben wurde. Die Bezeichnung bleibt erhalten. Wählen Sie den neuen Speicherort aus, und ClubManager verbindet ihn wieder.
+
+**Registrierung entfernen:** Mit **Registrierung entfernen** nehmen Sie einen Ordner aus der ClubManager-Liste auf. Dieser Schritt löscht die Daten **nicht** – der Ordner und alle Dateien bleiben an ihrem Speicherort erhalten und können später manuell wieder hinzugefügt werden. Wenn Sie den aktiven Ordner entfernen, müssen Sie einen anderen Ordner auswählen.
+
 ## Sitzungen
 
 Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf Protokollführer/in und Teilnahme. Datumsfelder zeigen das deutsche Format (TT.MM.JJJJ); die Kalenderwoche beginnt am Montag. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.

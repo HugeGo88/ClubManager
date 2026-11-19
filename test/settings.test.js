@@ -15,13 +15,13 @@ test('loads legacy settings and persists PDF CSS independently of the data folde
   const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
   assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await fs.writeFile(file, JSON.stringify({ folder }));
-  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { dataFolders: [], activeFolder: null, protocolCss });
   assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
-  await saveSettings(file, { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss });
-  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
-  await saveSettings(file, { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss: null });
-  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data' }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  await saveSettings(file, { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  await saveSettings(file, { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
 });
 
 test('migrates the legacy folder and persists a registered folder list with an active folder', async t => {
@@ -30,17 +30,17 @@ test('migrates the legacy folder and persists a registered folder list with an a
   const file = path.join(root, 'settings.json');
   const firstPath = path.join(root, 'verein-a');
   const secondPath = path.join(root, 'verein-b');
-  const firstFolder = { path: firstPath, name: 'Verein A' };
-  const secondFolder = { path: secondPath, name: 'Verein B' };
+  const firstFolder = { path: firstPath, name: 'Verein A', available: true };
+  const secondFolder = { path: secondPath, name: 'Verein B', available: true };
   await fs.writeFile(file, JSON.stringify({ folder: firstPath }));
 
   const legacy = await loadSettings(file);
-  assert.deepEqual(legacy.dataFolders, [{ path: firstPath, name: 'verein-a' }]);
+  assert.deepEqual(legacy.dataFolders, [{ path: firstPath, name: 'verein-a', available: true }]);
   assert.equal(legacy.activeFolder, firstPath);
 
   const rootFolder = path.parse(firstPath).root;
   await fs.writeFile(file, JSON.stringify({ folder: rootFolder }));
-  assert.deepEqual((await loadSettings(file)).dataFolders, [{ path: rootFolder, name: rootFolder }]);
+  assert.deepEqual((await loadSettings(file)).dataFolders, [{ path: rootFolder, name: rootFolder, available: true }]);
 
   await saveSettings(file, {
     ...legacy,
@@ -133,4 +133,31 @@ test('rejects invalid saved settings', async t => {
     await fs.writeFile(file, content);
     await assert.rejects(loadSettings(file), error);
   }
+});
+
+test('tracks and validates folder availability, with defaults for legacy migrations', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'settings.json');
+  const folderA = path.join(root, 'verein-a');
+  const folderB = path.join(root, 'verein-b');
+
+  // Legacy folder defaults to available: true when migrated
+  await fs.writeFile(file, JSON.stringify({ folder: folderA }));
+  assert.equal((await loadSettings(file)).dataFolders[0].available, true);
+
+  // Explicit available states are preserved
+  const folders = [
+    { path: folderA, name: 'Verein A', available: true },
+    { path: folderB, name: 'Verein B', available: false }
+  ];
+  await saveSettings(file, { dataFolders: folders, activeFolder: folderA });
+  const saved = await loadSettings(file);
+  assert.deepEqual(saved.dataFolders, folders);
+
+  // Invalid availability values reject
+  await fs.writeFile(file, JSON.stringify({
+    dataFolders: [{ ...folders[0], available: 'yes' }]
+  }));
+  await assert.rejects(loadSettings(file), /Datenordner-Liste/);
 });

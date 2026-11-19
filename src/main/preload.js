@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('club', {
   getFolders: () => invoke('folders:get'),
   activateFolder: folder => invoke('folder:activate', folder),
   renameFolder: (folder, name) => invoke('folder:rename', folder, name),
+  relinkFolder: folder => invoke('folder:relink', folder),
+  unregisterFolder: folder => invoke('folder:unregister', folder),
   getModules: () => invoke('modules:get'),
   setModules: modules => invoke('modules:set', modules),
   getSidebarCollapsed: () => invoke('sidebar:get'),

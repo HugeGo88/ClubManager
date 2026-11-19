@@ -205,3 +205,11 @@ button:disabled { opacity: .45; cursor: default; }
 .markdown-bullet { display: inline-block; min-width: 1ch; text-align: center; color: #4a586b; }
 .markdown-list-number { color: #4a586b; font-weight: 600; }
 .markdown-field .markdown-task { vertical-align: middle; margin: 0 2px; cursor: pointer; }
+.folders-list { display: flex; flex-direction: column; gap: 10px; margin: 15px 0; }
+.folder-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px; background: white; border: 1px solid #e1e6ed; border-radius: 6px; }
+.folder-item.unavailable { opacity: 0.7; background: #faf5f0; }
+.folder-name { flex: 1; min-width: 0; }
+.folder-name strong { display: block; color: #242d3b; }
+.folder-name .path { display: block; color: #667487; font-size: 12px; word-break: break-all; }
+.folder-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.folder-actions .action { padding: 6px 12px; font-size: 13px; }

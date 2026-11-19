@@ -680,7 +680,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data' }], activeFolder: data, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1479,7 +1479,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data' }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
@@ -1970,8 +1970,8 @@ async function main() {
         })()`);
         const folderSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
         assert.deepEqual(folderSettings.dataFolders, [
-          { path: data, name: 'data' },
-          { path: secondData, name: 'Verein B' }
+          { path: data, name: 'data', available: true },
+          { path: secondData, name: 'Verein B', available: true }
         ]);
         assert.equal(folderSettings.activeFolder, data);
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');

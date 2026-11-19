@@ -43,6 +43,22 @@ function requireFolder() {
   return folder;
 }
 
+async function checkFolderAvailability(folderPath) {
+  try {
+    const info = await fs.stat(folderPath);
+    return info.isDirectory();
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function updateFolderAvailability() {
+  for (const item of dataFolders) {
+    item.available = await checkFolderAvailability(item.path);
+  }
+}
+
 async function loadFolder() {
   const config = await settings.loadSettings(settingsFile());
   dataFolders = config.dataFolders;
@@ -55,16 +71,21 @@ async function loadFolder() {
   sidebarCollapsed = config.sidebarCollapsed;
   lastSeenVersion = config.lastSeenVersion;
   settingsLoaded = true;
+
+  // Refresh availability status from filesystem
+  await updateFolderAvailability();
+
   if (!config.activeFolder) return;
-  // Do not recreate a missing location automatically, e.g. an unmounted drive.
-  let info;
-  try {
-    info = await fs.stat(config.activeFolder);
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    throw new Error('Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie ihn in den Einstellungen erneut aus.');
+
+  // If the active folder is unavailable, clear it and report
+  const activeAvailable = await checkFolderAvailability(config.activeFolder);
+  if (!activeAvailable) {
+    configuredFolder = null;
+    folder = null;
+    startupError = 'Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie einen verfügbaren Ordner in den Einstellungen aus oder verknüpfen Sie ihn erneut.';
+    return;
   }
-  if (!info.isDirectory()) throw new Error('Der gespeicherte Speicherort ist kein Ordner.');
+
   await storage.initializeFolder(config.activeFolder);
   folder = config.activeFolder;
 }
@@ -199,8 +220,12 @@ function registerHandlers() {
   ipcMain.handle('folder:get', () => folder || null);
   ipcMain.handle('folders:get', () => ({ dataFolders: folderRegistry(), activeFolder: configuredFolder }));
   ipcMain.handle('folder:activate', (event, selected) => serializeWrite(async () => {
-    if (typeof selected !== 'string' || !dataFolders.some(item => item.path === selected)) {
+    const folderToActivate = dataFolders.find(item => item.path === selected);
+    if (!folderToActivate) {
       throw new Error('Der ausgewählte Datenordner ist nicht registriert.');
+    }
+    if (!folderToActivate.available) {
+      throw new Error('Der ausgewählte Datenordner ist nicht verfügbar. Verknüpfen Sie ihn erneut oder wählen Sie einen verfügbaren Ordner aus.');
     }
     await initializeFolder(selected);
     await persistSettings({ activeFolder: selected });
@@ -219,6 +244,58 @@ function registerHandlers() {
     await persistSettings({ dataFolders: nextFolders });
     dataFolders = nextFolders;
     return folderRegistry();
+  }));
+  ipcMain.handle('folder:relink', async (event, oldPath) => {
+    const folderIndex = dataFolders.findIndex(item => item.path === oldPath);
+    if (folderIndex === -1) throw new Error('Der Datenordner wurde nicht gefunden.');
+    const folder = dataFolders[folderIndex];
+    if (folder.available) throw new Error('Der Datenordner ist verfügbar und kann nicht erneut verknüpft werden.');
+    
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: `Datenordner erneut verknüpfen: "${folder.name}"`,
+      buttonLabel: 'Ordner auswählen',
+      properties: ['openDirectory']
+    });
+    if (result.canceled) return null;
+
+    return serializeWrite(async () => {
+      const newPath = result.filePaths[0];
+      if (typeof newPath !== 'string' || !path.isAbsolute(newPath)) {
+        throw new Error('Wählen Sie einen gültigen Datenordner aus.');
+      }
+      const isNewPath = !dataFolders.some((item, idx) => idx !== folderIndex && item.path === newPath);
+      if (!isNewPath) {
+        throw new Error('Der ausgewählte Ordner ist bereits als ein anderer Datenordner registriert.');
+      }
+      await initializeFolder(newPath);
+      const nextFolders = dataFolders.map((item, idx) =>
+        idx === folderIndex ? { ...item, path: newPath, available: true } : item);
+      const nextActiveFolder = configuredFolder === oldPath ? newPath : configuredFolder;
+      await persistSettings({ dataFolders: nextFolders, activeFolder: nextActiveFolder });
+      dataFolders = nextFolders;
+      if (configuredFolder === oldPath) {
+        configuredFolder = newPath;
+        folder = newPath;
+      }
+      return folderRegistry();
+    });
+  });
+  ipcMain.handle('folder:unregister', (event, folderPath) => serializeWrite(async () => {
+    if (typeof folderPath !== 'string') throw new Error('Der Datenordner-Pfad ist ungültig.');
+    const folderIndex = dataFolders.findIndex(item => item.path === folderPath);
+    if (folderIndex === -1) throw new Error('Der Datenordner wurde nicht gefunden.');
+
+    const isActive = configuredFolder === folderPath;
+    const nextFolders = dataFolders.filter((item, idx) => idx !== folderIndex);
+    const nextActiveFolder = isActive ? null : configuredFolder;
+
+    await persistSettings({ dataFolders: nextFolders, activeFolder: nextActiveFolder });
+    dataFolders = nextFolders;
+    if (isActive) {
+      configuredFolder = null;
+      folder = null;
+    }
+    return { dataFolders: folderRegistry(), activeFolder: nextActiveFolder };
   }));
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
@@ -338,7 +415,7 @@ function registerHandlers() {
       }
       await initializeFolder(selected);
       const current = dataFolders.find(item => item.path === selected);
-      const nextFolders = current ? dataFolders : [...dataFolders, { path: selected, name: path.basename(selected) || selected }];
+      const nextFolders = current ? dataFolders : [...dataFolders, { path: selected, name: path.basename(selected) || selected, available: true }];
       await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
       dataFolders = nextFolders;
       configuredFolder = selected;

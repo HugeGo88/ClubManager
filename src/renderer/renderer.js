@@ -496,7 +496,22 @@ function settingsView() {
         ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
         ${activeFolder ? `<label>Bezeichnung dieses Datenordners<input data-folder-name value="${escape(activeFolder.name)}"></label>
           ${button('rename-folder', 'Bezeichnung speichern')}` : ''}
-        <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p></div>
+        <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p>
+        ${state.dataFolders.length > 1 ? `<h3>Registrierte Datenordner</h3>
+          <ul class="folders-list">
+            ${state.dataFolders.map(folder => `<li class="folder-item ${folder.available ? '' : 'unavailable'}">
+              <div>
+                <strong>${escape(folder.name)}</strong>
+                <span class="path">${escape(folder.path)}</span>
+                ${!folder.available ? '<span class="status">Nicht verfügbar</span>' : ''}
+              </div>
+              <div class="folder-actions">
+                ${!folder.available ? `<button class="action" data-action="relink-folder" data-path="${escape(folder.path)}" aria-label="Zielordner für ${escape(folder.name)} erneut verbinden">Erneut verlinken</button>` : ''}
+                <button class="action" data-action="unregister-folder" data-path="${escape(folder.path)}" aria-label="Registrierung für ${escape(folder.name)} entfernen">Registrierung entfernen</button>
+              </div>
+            </li>`).join('')}
+          </ul>` : ''}
+      </div>
       <div class="card"><h2>Gemeinsame CSS-Datei für PDF-Dokumente</h2>
         <p>Diese CSS-Datei gilt für PDF-Dokumente aller Module und ersetzt das Standardlayout beim PDF-Export.</p>
         <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
@@ -556,7 +571,7 @@ function render() {
     state.hasProtocol && state.previewOpen && state.protocolPreviewUrl;
   const showPreviewToggle = state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol;
   const folderOptions = state.dataFolders.length
-    ? state.dataFolders.map(item => `<option value="${escape(item.path)}" title="${escape(item.path)}" ${item.path === state.folder ? 'selected' : ''}>${escape(item.name)}</option>`).join('')
+    ? state.dataFolders.map(item => `<option value="${escape(item.path)}" title="${escape(item.path)}" ${!item.available ? 'disabled' : ''} ${item.path === state.folder ? 'selected' : ''}>${escape(item.name)}${!item.available ? ' (nicht verfügbar)' : ''}</option>`).join('')
     : '<option value="" selected>Kein Datenordner</option>';
   app.innerHTML = `<header class="app-header"><label>Datenordner<select data-folder-switcher aria-label="Datenordner wechseln" ${state.dataFolders.length ? '' : 'disabled'}>${folderOptions}</select></label>
     ${button('choose-folder', 'Datenordner hinzufügen', 'primary')}</header>
@@ -717,6 +732,39 @@ async function run(action, target) {
       const input = app.querySelector('[data-folder-name]');
       state.dataFolders = await window.club.renameFolder(state.folder, input.value);
       setMessage('Bezeichnung des Datenordners gespeichert.');
+      break;
+    }
+    case 'relink-folder': {
+      const folderPath = target.dataset.path;
+      const folder = state.dataFolders.find(item => item.path === folderPath);
+      if (!folder) return;
+      if (!confirm(`Zielordner erneut verbinden: "${folder.name}"?\n\nSuchen Sie den Ordner an seinem neuen Speicherort.`)) return;
+      const result = await window.club.relinkFolder(folderPath);
+      if (result) {
+        state.dataFolders = result.dataFolders;
+        setMessage(`Ordner "${folder.name}" wurde mit "${result.path}" verlinkt.`);
+      }
+      break;
+    }
+    case 'unregister-folder': {
+      const folderPath = target.dataset.path;
+      const folder = state.dataFolders.find(item => item.path === folderPath);
+      if (!folder) return;
+      const isActive = folderPath === state.folder;
+      const message = isActive
+        ? `Registrierung entfernen: "${folder.name}"?\n\nDie Registrierung wird entfernt, die Daten bleiben erhalten. Sie müssen einen anderen Ordner auswählen.`
+        : `Registrierung entfernen: "${folder.name}"?\n\nDie Registrierung wird entfernt, die Daten bleiben erhalten.`;
+      if (!confirm(message)) return;
+      const result = await window.club.unregisterFolder(folderPath);
+      state.dataFolders = result.dataFolders;
+      if (isActive) {
+        state.folder = null;
+        await changeView('settings');
+        settingsTab = 'general';
+        setMessage('Datenordner entfernt. Wählen Sie einen verfügbaren Ordner aus.');
+      } else {
+        setMessage('Datenordner entfernt.');
+      }
       break;
     }
     case 'choose-protocol-css': {

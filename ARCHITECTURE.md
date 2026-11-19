@@ -109,13 +109,23 @@ settings.json in userData    user-selected data folder
   Markdown through restricted IPC; missing, invalid or mismatched manuals
   produce an error. Each build generates the current version's manual, not an
   archive or automatically authored content.
-- Choosing a data folder registers it and creates `meetings/`, `members/`,
-  `invoices/` and `letters/` under it. The header selector activates only
-  registered folders; the Settings page can rename their display labels.
-  Changing folders opens the new location without moving existing data. When
-  there are unsaved edits, the renderer offers save, discard or cancel; a failed
-  save prevents switching and preserves the current draft. An unavailable
-  saved folder is reported; it is not silently recreated.
+- Registered data folders are stored in `settings.json` with a path, display name,
+  and availability flag. Availability is rechecked from the filesystem at startup
+  and when displayed; it is not cached as permanent state. Choosing a data folder
+  registers it and creates `meetings/`, `members/`, `invoices/` and `letters/` under it.
+  The header selector shows available registered folders; unavailable folders are marked
+  and disabled in the selector. The Settings page lists all registered folders with
+  their status, allowing users to rename, relink (reconnect to a new path while preserving
+  the display name and registration), or unregister (remove the registration without deleting
+  folder contents) any folder. Changing folders opens the new location without moving
+  existing data. When there are unsaved edits, the renderer offers save, discard or cancel;
+  a failed save prevents switching and preserves the current draft. If the active folder
+  becomes unavailable at startup, it is cleared, no folder-backed data loads, the app does
+  not silently recreate it, and the user is guided to choose or relink a folder. An
+  unavailable folder cannot be activated until it is successfully relinked to an available
+  path. Unregistering a folder removes only its registration and never deletes or modifies
+  folder contents. Unregistering the active folder clears the active selection and guides
+  the user to select another folder without implicitly switching.
 - [src/main/storage.js](src/main/storage.js) stores each meeting in
   `meetings/<UUID>.json` as `{ "version": 1, "meeting": { ... } }` and its last
   exported PDF in `meetings/protocols/<UUID>.pdf`. The meeting ID must match the
@@ -145,8 +155,6 @@ settings.json in userData    user-selected data folder
   conflict rather than overwrite external edits. This is not a synchronization
   service, cross-process locking mechanism or replacement for backups. Club
   data is not encrypted.
-
-## PDF protocols
 
 [src/main/protocol.js](src/main/protocol.js) builds protocol HTML from saved
 meeting data, escapes text and converts Markdown using `marked` followed by

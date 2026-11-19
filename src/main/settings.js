@@ -32,11 +32,12 @@ function validateSidebarCollapsed(value) {
 function validateDataFolders(dataFolders) {
   if (!Array.isArray(dataFolders) || dataFolders.some(item => !item ||
       typeof item.path !== 'string' || !path.isAbsolute(item.path) ||
-      typeof item.name !== 'string' || !item.name.trim()) ||
+      typeof item.name !== 'string' || !item.name.trim() ||
+      typeof item.available !== 'boolean') ||
       new Set(dataFolders.map(item => item.path)).size !== dataFolders.length) {
     throw new Error('Die Datenordner-Liste ist ungültig.');
   }
-  return dataFolders.map(({ path: folderPath, name }) => ({ path: folderPath, name: name.trim() }));
+  return dataFolders.map(({ path: folderPath, name, available }) => ({ path: folderPath, name: name.trim(), available }));
 }
 
 function validateActiveFolder(activeFolder, dataFolders) {
@@ -71,9 +72,15 @@ async function loadSettings(file) {
     }
   }
   const legacyFolder = config.folder ?? null;
-  const dataFolders = config.dataFolders === undefined
+  const legacyDataFolders = config.dataFolders === undefined
     ? legacyFolder ? [{ path: legacyFolder, name: path.basename(legacyFolder) || legacyFolder }] : []
-    : validateDataFolders(config.dataFolders);
+    : config.dataFolders;
+  const dataFolders = validateDataFolders(
+    legacyDataFolders.map(item => ({
+      ...item,
+      available: item.available !== undefined ? item.available : true
+    }))
+  );
   const activeFolder = validateActiveFolder(
     config.dataFolders === undefined ? legacyFolder : config.activeFolder,
     dataFolders
