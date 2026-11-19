@@ -69,17 +69,23 @@ add an entry for each release, grouping changes into module sections and an
 **Allgemein** section for general changes. Older flat entries remain supported.
 
 Selecting another folder opens that folder's data; it does not migrate it.
-In **Einstellungen → Allgemein**, optionally select a shared CSS file for PDF
-documents. Meetings and Letters use the shared setting; it is intended for
-other modules as they add PDF export. It replaces the module's default
-stylesheet, is stored as a path in the app settings, and
-is reread for each export. Use **Standardlayout verwenden** to reset it.
-If the selected file is missing or unreadable, export reports an error instead
-of falling back silently. Use self-contained CSS; external resources are
+Existing app-wide document customizations are copied into the active folder,
+or into the first folder selected if no folder is active. Existing destination
+files are preserved and conflicts are reported. This migration does not move
+meeting or letter records.
+
+Select the data folder before importing its customizations. In **Einstellungen
+→ Allgemein**, import one shared CSS file for meeting protocol and letter PDFs
+in that folder. It replaces both packaged stylesheets, is copied to
+`customizations/pdf.css`, and is reread for each export. It does not affect the
+app's UI. Missing custom files use their corresponding packaged defaults;
+unreadable or invalid files are reported. Use **CSS zurücksetzen** and confirm
+to remove the customization. Use self-contained CSS; external resources are
 blocked during PDF generation. Existing PDFs need to be exported again.
 
-In **Einstellungen → Sitzungen**, optionally select an HTML file as the meeting
-protocol template. Without one, the built-in layout is used. See the
+In **Einstellungen → Sitzungen**, optionally import an HTML file as the meeting
+protocol template. It is copied to `customizations/meeting.html`. Without one,
+the built-in layout is used. See the
 [example template](docs/meeting-template-example.html). Templates are HTML body
 fragments, not complete documents; the app supplies the document, page headers,
 and shared CSS. Use these placeholders in text content, not tag attributes:
@@ -97,10 +103,10 @@ Placeholders may be reordered or omitted, so include all sections needed in the
 finished protocol. Unknown placeholders and placeholders in attributes are
 rejected. HTML is sanitized: scripts, event handlers, inline styles and external
 resources are not supported. Use classes and the shared CSS for styling; data
-images may be embedded. The template is checked when selected and reread and
-checked for every export. Missing or invalid templates cause an error rather
-than silently falling back. Reset the template in the meeting settings to use
-the default again.
+images may be embedded. The template is checked when imported and reread and
+checked for every export. Invalid templates cause an error rather than silently
+falling back. Missing templates use the built-in layout. Reset
+the template in the meeting settings and confirm to use the default again.
 
 ### Letters
 
@@ -115,19 +121,22 @@ The saved PDF can be opened from the letter editor and is a snapshot of the
 last export. Letter records are stored in `letters/<id>.json` and PDFs in
 `letters/pdf/<id>.pdf`; conflicting external edits are reported.
 
-Add signature image files in the Letters settings. PNG, JPEG, SVG, WebP and GIF
-are supported, up to 10 MB per image. The original files are linked, not copied,
-and must remain accessible at export; removing an entry or moving a file
-requires updating affected letters. The image's filename is its displayed name.
+Import signature image files in the Letters settings. PNG, JPEG, SVG, WebP and
+GIF are supported, up to 10 MB per image. Images are copied into the active
+folder's customization directory, so exports do not depend on the source path.
+Removing a signature entry still requires updating letters that use it. The
+image's filename is its displayed name.
 SVGs are rendered as images with external resources blocked.
 
-An optional letter HTML body template can be selected in the same settings;
-otherwise a built-in template is used. See the [example](docs/letter-template-example.html).
+An optional letter HTML body template can be imported in the same settings; it
+is copied to `customizations/letter.html`. Otherwise a built-in template is
+used. See the [example](docs/letter-template-example.html).
 Templates use the same sanitization rules as meeting templates. Placeholders
 are `{{title}}`, `{{date}}`, `{{address}}`, `{{content}}`, and `{{signatures}}`.
 The last three insert generated HTML; address and signatures are empty when
 not selected. Include all needed placeholders: omitted fields do not appear in
-the PDF. Templates and linked signature images are reread on export.
+the PDF. Imported templates and signatures are read from the data folder on
+export. Use **Anpassungsordner öffnen** to manage these files directly.
 Member-based recipients and mail merge are not implemented yet.
 
 The default PDF heading combines the meeting title and date. PDF protocols repeat the

@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('club', {
   getLetterSettings: () => invoke('letter-settings:get'),
   chooseLetterTemplate: () => invoke('letter-template:choose'),
   resetLetterTemplate: () => invoke('letter-template:reset'),
+  openCustomizationDirectory: () => invoke('customizations:open'),
   chooseSignature: () => invoke('signatures:choose'),
   removeSignature: id => invoke('signatures:remove', id),
   listLetters: () => invoke('letters:list'),

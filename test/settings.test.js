@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { loadSettings, saveSettings } = require('../src/main/settings');
+const { migrateLegacyCustomizations, pathsForFolder, importCustomization } = require('../src/main/document-customizations');
 
 test('loads legacy settings and persists PDF CSS independently of the data folder', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
@@ -160,4 +161,56 @@ test('tracks and validates folder availability, with defaults for legacy migrati
     dataFolders: [{ ...folders[0], available: 'yes' }]
   }));
   await assert.rejects(loadSettings(file), /Datenordner-Liste/);
+});
+
+test('migrates legacy document customizations into a folder without overwriting existing files', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-customizations-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, 'verein');
+  const legacy = {
+    protocolCss: path.join(root, 'shared.css'),
+    meetingTemplate: path.join(root, 'meeting.html'),
+    letterTemplate: path.join(root, 'letter.html'),
+    signatures: [{ id: randomUUID(), name: 'Alex', path: path.join(root, 'signature.svg') }]
+  };
+  await fs.mkdir(folder);
+  await Promise.all([
+    fs.writeFile(legacy.protocolCss, 'body { color: red; }'),
+    fs.writeFile(legacy.meetingTemplate, '<main>{{title}}</main>'),
+    fs.writeFile(legacy.letterTemplate, '<main>{{title}}</main>'),
+    fs.writeFile(legacy.signatures[0].path, '<svg/>')
+  ]);
+  const paths = pathsForFolder(folder);
+  await fs.mkdir(paths.directory, { recursive: true });
+  await fs.writeFile(paths.meetingTemplate, '<main>Lokale Vorlage</main>');
+  const signatureFile = path.join(paths.signaturesDirectory, `${legacy.signatures[0].id}.svg`);
+  await fs.mkdir(paths.signaturesDirectory, { recursive: true });
+  await fs.writeFile(signatureFile, '<svg>Lokale Unterschrift</svg>');
+
+  const result = await migrateLegacyCustomizations(folder, legacy);
+
+  assert.deepEqual(result.conflicts, ['meetingTemplate', `signature:${legacy.signatures[0].id}`]);
+  assert.equal(await fs.readFile(paths.meetingTemplate, 'utf8'), '<main>Lokale Vorlage</main>');
+  assert.equal(await fs.readFile(paths.protocolCss, 'utf8'), 'body { color: red; }');
+  assert.equal(await fs.readFile(paths.letterTemplate, 'utf8'), '<main>{{title}}</main>');
+  assert.equal(await fs.readFile(signatureFile, 'utf8'), '<svg>Lokale Unterschrift</svg>');
+  assert.deepEqual(JSON.parse(await fs.readFile(paths.signaturesManifest, 'utf8')), {
+    version: 1,
+    signatures: [{ id: legacy.signatures[0].id, name: 'Alex', file: `${legacy.signatures[0].id}.svg` }]
+  });
+});
+
+test('rejects malformed CSS imports without replacing the existing customization', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-customizations-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const folder = path.join(root, 'verein');
+  const source = path.join(root, 'invalid.css');
+  const paths = pathsForFolder(folder);
+  await fs.mkdir(paths.directory, { recursive: true });
+  await fs.writeFile(source, 'body { color: red;');
+  await fs.writeFile(paths.protocolCss, 'body { color: blue; }');
+
+  await assert.rejects(importCustomization(folder, 'protocolCss', source), /CSS-Datei enthält ungültige Syntax/);
+
+  assert.equal(await fs.readFile(paths.protocolCss, 'utf8'), 'body { color: blue; }');
 });

@@ -70,7 +70,8 @@ settings.json in userData    user-selected data folder
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.
   IPC covers application version, folder selection, registry, activation and
-  renaming, module settings, PDF CSS,
+  renaming, module settings, folder-local document customization import, reset
+  and directory opening, PDF CSS,
   meeting list/save/export, opening exported PDFs, reading an existing meeting
   PDF for its resizable in-app preview and update installation.
   Add new privileged operations through an explicit preload method and
@@ -86,10 +87,23 @@ settings.json in userData    user-selected data folder
 
 - Electron's `userData/settings.json`, outside the club data folders, stores the
   registered folder paths and display names plus the active folder path,
-  optional shared PDF CSS and meeting/letter HTML template paths,
-  linked signature metadata, four Boolean module settings, sidebar width preference and the
+  legacy app-wide customization paths until they are migrated, four Boolean
+  module settings, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
+  Current document customizations live inside each data folder:
+  `customizations/pdf.css`, `customizations/meeting.html`,
+  `customizations/letter.html` and `customizations/signatures/`. The signatures
+  directory includes a versioned manifest and copied image files. Missing
+  customization files are independent; each uses its packaged default.
+  Imports copy validated files into these standard locations, so exports do
+  not depend on the source path. CSS syntax and HTML template placeholders are
+  validated before import. Users can open the customization directory
+  and reset each template or stylesheet after confirmation.
+  Legacy app-wide templates, CSS and signatures migrate into the active folder,
+  or the first selected folder when there is no active folder. Existing
+  destination files are preserved and reported as conflicts. Unreadable legacy
+  files and filesystem failures are surfaced and do not silently fall back.
   A legacy single `folder` setting loads as one registered folder named after
   its final path component. Existing settings without module selections use the
   Meetings-only defaults. Module visibility and the sidebar preference remain
@@ -147,8 +161,9 @@ settings.json in userData    user-selected data folder
   street, postal code and city) and signature IDs. Legacy multiline address
   strings load into the name field without guessing their components and are
   stored in structured form on the next save.
-  Settings contain linked image paths, not copies; missing images or removed
-  signature entries cause an export error. SVG and raster images are decoded
+  Each data folder's signature manifest contains local image filenames; imports
+  copy images into that folder. Missing images or removed signature entries
+  cause an export error. SVG and raster images are decoded
   in an isolated window and rasterized before embedding.
 - Writes use a temporary file followed by rename. SHA-256 revisions detect
   changes on disk before saves and exports; the caller must reload after a
@@ -160,16 +175,18 @@ settings.json in userData    user-selected data folder
 meeting data, escapes text and converts Markdown using `marked` followed by
 `sanitize-html`. The main process loads it in a hidden isolated Electron window
 and uses `printToPDF`; the result replaces the meeting's previous export.
-Document CSP blocks external resources. The default stylesheet is
-[src/shared/document.css](src/shared/document.css); a user-selected CSS file
-replaces it and is reread on each export. The CSS setting is shared for future
-PDF-exporting modules; Meetings and Letters both use it.
+Document CSP blocks external resources. The packaged default stylesheets are
+[src/shared/document.css](src/shared/document.css) for Meetings and
+[src/shared/letter.css](src/shared/letter.css) for Letters. A data folder's
+optional `customizations/pdf.css` replaces the stylesheet for both PDF types
+and is reread on each export; it does not affect the app UI. Missing local CSS
+or templates independently use their corresponding packaged defaults. Present
+but unreadable or invalid custom files are errors rather than fallbacks.
 The optional meeting-specific HTML body template places escaped title/date and
 recorder name and generated attendance, TOP and open-task sections using
 documented placeholders, including `{{recorder}}`;
-template HTML is sanitized and validated both on selection and export. Without
-a template the existing built-in layout is used. Missing or invalid custom
-stylesheets or templates are errors, not implicit fallbacks.
+template HTML is sanitized and validated both on import and export. Without a
+local template the existing built-in layout is used.
 
 The PDF contains attendance grouped by status, TOPs, decision results and
 tasks, plus the optional recorder name. Its final open-task section groups by responsible person; comma- and
@@ -227,8 +244,9 @@ verification remain separate operational steps.
   control; toggles and editor task changes follow the normal save workflow.
 - The letter editor similarly tracks unsaved changes and revisions, uses the
   shared Markdown editor, and exports saved content with optional address and
-  selected linked signatures. Letter templates use sanitized body fragments
-  with documented placeholders; the shared PDF CSS overrides the default.
+  selected signatures from the active data folder. Letter templates use
+  sanitized body fragments with documented placeholders; the folder's shared
+  PDF CSS overrides the packaged default.
 - Meeting and letter lists filter saved records by title or displayed/ISO date
   as the user types. Each search remains in renderer memory independently and
   updating results leaves the open editor and its unsaved changes untouched.
@@ -298,10 +316,11 @@ npm run dist:linux
 ```
 
 `npm test` runs Node's test runner. The test scripts check that Node meets the
-minimum version in `.nvmrc` before running. The Electron smoke tests exercise
-the application through Electron, including meeting editing, navigation,
-settings, lists, conflicts and PDF export; a separate process also verifies
-unavailable-folder startup recovery, relinking and non-destructive unregister.
+minimum version in `.nvmrc` before running. The Electron smoke tests exercise the application through Electron, including
+meeting editing, navigation, settings, lists, conflicts and PDF export. They
+also verify copied customizations, reset/default behavior, and PDF output when
+switching between two folders; a separate process verifies unavailable-folder
+startup recovery, relinking and non-destructive unregister.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
 syntax, providing a virtual display for Electron. The `start`, Electron smoke
 test and distribution scripts build the editor and versioned manual through npm

@@ -13,28 +13,37 @@ async function main() {
   process.on('exit', () => fsSync.rmSync(root, { recursive: true, force: true }));
   const data = path.join(root, 'data');
   const secondData = path.join(root, 'second-club');
+  const secondCssFile = path.join(root, 'second.css');
+  const customizationDirectory = path.join(data, 'customizations');
+  const customizationCss = path.join(customizationDirectory, 'pdf.css');
+  const customizationMeetingTemplate = path.join(customizationDirectory, 'meeting.html');
+  const customizationLetterTemplate = path.join(customizationDirectory, 'letter.html');
   const cssFile = path.join(root, 'custom.css');
   const templateFile = path.join(root, 'meeting.html');
   const letterTemplateFile = path.join(root, 'letter.html');
   const signaturePng = path.join(root, 'signature.png');
   const signatureSvg = path.join(root, 'signature.svg');
   let selectedSignature = signaturePng;
+  let selectedCssFile = cssFile;
   let selectedDataFolder = data;
-  await fs.writeFile(cssFile, 'body { color: rgb(12, 34, 56); }');
+  await fs.writeFile(cssFile, 'body { color: rgb(65, 43, 21); }');
   await fs.writeFile(templateFile, '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
   await fs.writeFile(letterTemplateFile, '<main class="letter"><h1>Briefvorlage {{title}}</h1>{{date}}{{address}}{{content}}{{signatures}}</main>');
   await fs.writeFile(signaturePng, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
   await fs.writeFile(signatureSvg, '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><path d="M1 15 Q20 0 39 15" fill="none" stroke="black"/></svg>');
   await fs.mkdir(data);
   await fs.mkdir(secondData);
+  await fs.mkdir(customizationDirectory, { recursive: true });
+  await fs.writeFile(customizationCss, 'body { color: rgb(9, 8, 7); }');
   app.setPath('userData', path.join(root, 'settings'));
   await fs.mkdir(app.getPath('userData'));
+  await fs.writeFile(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify({ protocolCss: cssFile }));
   let cancelCssDialog = false;
   dialog.showOpenDialog = async (window, options) => options.properties.includes('openFile')
     ? (options.title === 'Unterschrift auswählen' ? { canceled: false, filePaths: [selectedSignature] }
       : options.title === 'HTML-Vorlage für Briefe auswählen' ? { canceled: false, filePaths: [letterTemplateFile] }
       : options.filters?.[0]?.extensions.includes('html') ? { canceled: false, filePaths: [templateFile] }
-      : cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [cssFile] })
+      : cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [selectedCssFile] })
     : { canceled: false, filePaths: [selectedDataFolder] };
   const pdfColors = [];
   const pdfPointHeadings = [];
@@ -309,19 +318,39 @@ async function main() {
           if (JSON.stringify(await window.club.getModules()) !== JSON.stringify({ meetings: true, members: true, invoices: true, letters: true })) {
             throw new Error('Enabled modules were not persisted');
           }
-          document.querySelector('[data-settings-tab="general"]').click();
-          await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
-          document.querySelector('[data-action="choose-protocol-css"]').click();
+          document.querySelector('[data-action="choose-folder"]').click();
           for (let i = 0; i < 200; i++) {
-            if (document.querySelector('[data-action="reset-protocol-css"]')) return;
+            if (await window.club.getFolder() === ${JSON.stringify(data)}) break;
             await new Promise(resolve => setTimeout(resolve, 25));
           }
-          throw new Error('CSS selection timed out');
+          if (await window.club.getFolder() !== ${JSON.stringify(data)}) throw new Error('First data folder was not selected');
+          await waitFor(() => document.querySelector('.notice')?.textContent);
+          const migrationNotice = document.querySelector('.notice');
+          if (!migrationNotice.classList.contains('error') || !migrationNotice.textContent.includes('PDF-CSS')) {
+            throw new Error('Legacy migration conflict was not reported: ' + migrationNotice.textContent);
+          }
+          document.querySelector('[data-settings-tab="general"]').click();
+          await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
+          await waitFor(() => document.querySelector('[data-action="reset-protocol-css"]'));
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [], activeFolder: null, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
+        assert.equal(await window.webContents.executeJavaScript('window.club.getProtocolCss()'), customizationCss);
+        assert.equal(await fs.readFile(customizationCss, 'utf8'), 'body { color: rgb(9, 8, 7); }');
+        const appUiColor = await window.webContents.executeJavaScript('getComputedStyle(document.body).color');
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="open-customizations"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (!document.body.inert && document.querySelector('.notice')?.textContent.includes('geöffnet')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Opening the customization directory timed out');
+        })()`);
+        assert.equal(openedPaths.at(-1), customizationDirectory);
+        openedPaths.length = 0;
+        assert.equal(await window.webContents.executeJavaScript('getComputedStyle(document.body).color'), appUiColor);
         cancelCssDialog = true;
         await window.webContents.executeJavaScript(`(async () => {
           const button = document.querySelector('[data-action="choose-protocol-css"]');
@@ -332,9 +361,10 @@ async function main() {
           }
           throw new Error('CSS dialog cancellation timed out');
         })()`);
-        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).protocolCss, cssFile);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).protocolCss, null);
+        assert.equal(await window.webContents.executeJavaScript('window.club.getProtocolCss()'), customizationCss);
         cancelCssDialog = false;
-        await fs.writeFile(cssFile, 'body { color: rgb(65, 43, 21); }');
+        await fs.writeFile(cssFile, 'body { color: rgb(99, 99, 99); }');
         const result = await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async (test) => {
             for (let i = 0; i < 200; i++) {
@@ -349,8 +379,7 @@ async function main() {
             element.click();
           };
           await click('[data-view="settings"]');
-          await click('[data-action="choose-folder"]');
-          await waitFor(() => document.querySelector('.path')?.textContent.includes('data'));
+          await waitFor(() => document.querySelector('[data-folder-switcher]')?.value === ${JSON.stringify(data)});
           if (document.querySelector('[data-app-version]')?.textContent !== 'Version: ${app.getVersion()}') {
             throw new Error('Settings must display the running app version with a data folder');
           }
@@ -695,11 +724,11 @@ async function main() {
         assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n<u>Unterstrichen</u> und ~~Durchgestrichen~~\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
-        assert.deepEqual(pdfColors, ['rgb(65, 43, 21)']);
+        assert.deepEqual(pdfColors, ['rgb(9, 8, 7)']);
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: cssFile, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1466,16 +1495,7 @@ async function main() {
         })()`);
         assert.match(missing, /nicht gefunden/);
         await fs.unlink(cssFile);
-        const cssError = await window.webContents.executeJavaScript(`(async () => {
-          document.querySelector('[data-action="export"]').click();
-          for (let i = 0; i < 200; i++) {
-            const text = document.querySelector('.notice.error')?.textContent;
-            if (text?.includes('CSS-Datei')) return text;
-            await new Promise(resolve => setTimeout(resolve, 25));
-          }
-          throw new Error('Missing CSS error timed out');
-        })()`);
-        assert.match(cssError, /CSS-Datei.*nicht gelesen/);
+        await fs.unlink(customizationCss);
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
@@ -1487,6 +1507,11 @@ async function main() {
           };
           document.querySelector('[data-view="settings"]').click();
           await waitFor(() => document.querySelector('[data-action="reset-protocol-css"]'));
+          window.confirm = () => false;
+          document.querySelector('[data-action="reset-protocol-css"]').click();
+          await new Promise(resolve => setTimeout(resolve, 50));
+          if (!await window.club.getProtocolCss()) throw new Error('Canceling CSS reset must preserve the customization');
+          window.confirm = () => true;
           document.querySelector('[data-action="reset-protocol-css"]').click();
           await waitFor(() => document.querySelector('[data-protocol-css]')?.textContent.includes('Standardlayout'));
           document.querySelector('[data-view="meetings"]').click();
@@ -1496,7 +1521,7 @@ async function main() {
           document.querySelector('[data-action="export"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);
-        assert.deepEqual(pdfColors, ['rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(65, 43, 21)', 'rgb(36, 41, 47)']);
+        assert.deepEqual(pdfColors, ['rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
           dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
@@ -1516,7 +1541,32 @@ async function main() {
           document.querySelector('[data-action="choose-meeting-template"]').click();
           await waitFor(() => document.querySelector('[data-action="reset-meeting-template"]'));
         })()`);
-        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, templateFile);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, null);
+        assert.equal(await window.webContents.executeJavaScript('window.club.getMeetingTemplate()'), customizationMeetingTemplate);
+        assert.equal(await fs.readFile(customizationMeetingTemplate, 'utf8'),
+          '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
+        await fs.writeFile(templateFile, '<main><p>Ungültige Vorlage</p></main>');
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="choose-meeting-template"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (document.querySelector('.notice.error')?.textContent.includes('Platzhalter')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Invalid template import was not reported');
+        })()`);
+        assert.equal(await fs.readFile(customizationMeetingTemplate, 'utf8'),
+          '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
+        await fs.writeFile(templateFile, '<main><h1>Aktualisiert {{title}}</h1>{{points}}</main>');
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="choose-meeting-template"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (!document.body.inert && document.querySelector('.notice')?.textContent.includes('importiert')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Updated template import timed out');
+        })()`);
+        assert.equal(await fs.readFile(customizationMeetingTemplate, 'utf8'),
+          '<main><h1>Aktualisiert {{title}}</h1>{{points}}</main>');
         await fs.writeFile(cssFile, 'body { color: rgb(10, 20, 30); }');
         await window.webContents.executeJavaScript(`(async () => {
           document.querySelector('[data-settings-tab="general"]').click();
@@ -1530,7 +1580,7 @@ async function main() {
           }
           throw new Error('Shared CSS selection timed out');
         })()`);
-        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, templateFile);
+        assert.equal(JSON.parse(await fs.readFile(settingsFile, 'utf8')).meetingTemplate, null);
         const reloadTemplate = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
         await reloadTemplate;
@@ -1551,27 +1601,18 @@ async function main() {
           document.querySelector('[data-action="export"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);
-        assert.match(pdfTitles.at(-1), /^Vorlage Beispiel:/);
+        assert.match(pdfTitles.at(-1), /^Aktualisiert Beispiel:/);
         assert.equal(pdfColors.at(-1), 'rgb(10, 20, 30)');
-        await fs.writeFile(templateFile, '<main><h1>Aktualisiert {{title}}</h1>{{points}}</main>');
+        await fs.unlink(templateFile);
         await window.webContents.executeJavaScript(`(async () => {
           document.querySelector('[data-action="export"]').click();
           for (let i = 0; i < 200; i++) {
             if (!document.body.inert && document.querySelector('.notice')?.textContent.includes('PDF gespeichert')) return;
             await new Promise(resolve => setTimeout(resolve, 25));
           }
-          throw new Error('Updated template export timed out');
+          throw new Error('Export should not depend on the imported source file');
         })()`);
         assert.match(pdfTitles.at(-1), /^Aktualisiert Beispiel:/);
-        await fs.unlink(templateFile);
-        await window.webContents.executeJavaScript(`(async () => {
-          document.querySelector('[data-action="export"]').click();
-          for (let i = 0; i < 200; i++) {
-            if (document.querySelector('.notice.error')?.textContent.includes('HTML-Vorlage')) return;
-            await new Promise(resolve => setTimeout(resolve, 25));
-          }
-          throw new Error('Missing template error was not shown');
-        })()`);
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
@@ -1585,6 +1626,7 @@ async function main() {
           await waitFor(() => document.querySelector('[data-settings-tab="meetings"]'));
           document.querySelector('[data-settings-tab="meetings"]').click();
           await waitFor(() => document.querySelector('[data-action="reset-meeting-template"]'));
+          window.confirm = () => true;
           document.querySelector('[data-action="reset-meeting-template"]').click();
           await waitFor(() => document.querySelector('[data-meeting-template]')?.textContent.includes('Standardvorlage'));
           document.querySelector('[data-view="meetings"]').click();
@@ -1803,7 +1845,24 @@ async function main() {
         assert.deepEqual(savedLetter.address, { company: 'Beispielfirma', name: 'Alex Beispiel', street: 'Hauptstraße 1', postalCode: '01234', city: 'Musterstadt' });
         assert.equal(savedLetter.signatures.length, 2);
         assert.equal((await fs.readFile(path.join(data, 'letters', 'pdf', `${savedLetter.id}.pdf`))).subarray(0, 5).toString(), '%PDF-');
+        const localLetterSettings = await window.webContents.executeJavaScript('window.club.getLetterSettings()');
+        assert.equal(localLetterSettings.template, customizationLetterTemplate);
+        assert.equal(await fs.readFile(customizationLetterTemplate, 'utf8'),
+          '<main class="letter"><h1>Briefvorlage {{title}}</h1>{{date}}{{address}}{{content}}{{signatures}}</main>');
+        assert.equal(localLetterSettings.signatures.length, 2);
+        assert.ok(localLetterSettings.signatures.every(item => item.path.startsWith(path.join(data, 'customizations', 'signatures'))));
+        const localSvgSignature = localLetterSettings.signatures.find(item => item.path.endsWith('.svg'));
+        assert.ok(localSvgSignature);
         await fs.unlink(signatureSvg);
+        await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector('[data-action="export-letter"]').click();
+          for (let i = 0; i < 200; i++) {
+            if (!document.body.inert && document.querySelector('.notice')?.textContent.includes('PDF gespeichert')) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Imported signature must not depend on its source path');
+        })()`);
+        await fs.unlink(localSvgSignature.path);
         await window.webContents.executeJavaScript(`(async () => {
           document.querySelector('[data-action="export-letter"]').click();
           for (let i = 0; i < 200; i++) {
@@ -1831,6 +1890,7 @@ async function main() {
           await waitFor(() => document.querySelector('[data-settings-tab="letters"]'));
           document.querySelector('[data-settings-tab="letters"]').click();
           await waitFor(() => document.querySelector('[data-action="reset-letter-template"]'));
+          window.confirm = () => true;
           document.querySelector('[data-action="reset-letter-template"]').click();
           await waitFor(() => document.querySelector('[data-letter-template]')?.textContent.includes('Standardvorlage'));
           document.querySelector('[data-settings-tab="general"]').click();
@@ -1854,8 +1914,15 @@ async function main() {
         assert.equal(pdfColors.at(-1), 'rgb(10, 20, 30)');
         const finalSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
         assert.equal(finalSettings.letterTemplate, null);
-        assert.equal(finalSettings.signatures.length, 2);
+        assert.deepEqual(finalSettings.signatures, []);
+        const signatureManifest = JSON.parse(await fs.readFile(path.join(customizationDirectory, 'signatures', 'manifest.json'), 'utf8'));
+        assert.equal(signatureManifest.signatures.length, 2);
         selectedDataFolder = secondData;
+        selectedCssFile = secondCssFile;
+        await fs.writeFile(secondCssFile, 'body { color: rgb(1, 2, 3); }');
+        const secondFolderMeeting = {
+          id: randomUUID(), title: 'Verein B', date: '', attendance: [], points: []
+        };
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
@@ -1895,6 +1962,16 @@ async function main() {
           if ((await window.club.listMeetings()).length || (await window.club.listLetters()).length) {
             throw new Error('The new data folder should not show another folder\\'s records');
           }
+          document.querySelector('[data-settings-tab="general"]').click();
+          await click('[data-action="choose-protocol-css"]');
+          await waitFor(async () => await window.club.getProtocolCss() === ${JSON.stringify(path.join(secondData, 'customizations', 'pdf.css'))});
+          if (await window.club.getMeetingTemplate() !== null ||
+              (await window.club.getLetterSettings()).template !== null) {
+            throw new Error('The second folder must keep its own missing-template defaults');
+          }
+          const secondMeeting = ${JSON.stringify(secondFolderMeeting)};
+          const secondRevision = await window.club.saveMeeting(secondMeeting, null);
+          await window.club.exportMeeting(secondMeeting, secondRevision, false);
           const firstPath = ${JSON.stringify(data)};
           const currentSwitcher = document.querySelector('[data-folder-switcher]');
           currentSwitcher.value = firstPath;
@@ -1907,6 +1984,11 @@ async function main() {
               !(await window.club.listMeetings()).length || !(await window.club.listLetters()).length) {
             throw new Error('Switching back should restore the first folder and its records');
           }
+          if (await window.club.getProtocolCss() !== ${JSON.stringify(customizationCss)}) {
+            throw new Error('Switching folders should restore the first folder\\'s PDF stylesheet');
+          }
+          const firstRecord = (await window.club.listMeetings())[0];
+          await window.club.exportMeeting(firstRecord.meeting, firstRecord.revision, false);
           const firstOption = [...document.querySelector('[data-folder-switcher]').options]
             .find(item => item.value === firstPath);
           if (firstOption.textContent !== 'data') throw new Error('The first folder display name changed unexpectedly');
@@ -1972,6 +2054,10 @@ async function main() {
           const savedMeeting = (await window.club.listMeetings()).find(item => item.meeting.id === firstMeeting.id);
           if (savedMeeting.meeting.title !== savedTitle) throw new Error('Saving a draft must complete before switching folders');
         })()`);
+        assert.match(pdfDocuments.at(-2), /<h1>Verein B<\/h1>/);
+        assert.equal(pdfColors.at(-2), 'rgb(1, 2, 3)');
+        assert.match(pdfDocuments.at(-1), /<h1>Beispiel:/);
+        assert.equal(pdfColors.at(-1), 'rgb(10, 20, 30)');
         const folderReloadFinished = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
         await folderReloadFinished;

@@ -1,7 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
 
 app.commandLine.appendSwitch('lang', 'de-DE');
 
@@ -13,6 +12,7 @@ let isDate;
 let startUpdates;
 let letters;
 let loadManual;
+let documentCustomizations;
 let mainWindow;
 let splashWindow;
 let folder;
@@ -25,6 +25,7 @@ let signatures = [];
 let enabledModules = {};
 let sidebarCollapsed = false;
 let lastSeenVersion = null;
+let legacyDocumentCustomizations = { protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [] };
 let settingsLoaded = false;
 let startupError;
 let startupComplete = false;
@@ -63,10 +64,12 @@ async function loadFolder() {
   const config = await settings.loadSettings(settingsFile());
   dataFolders = config.dataFolders;
   configuredFolder = config.activeFolder;
-  protocolCss = config.protocolCss;
-  meetingTemplate = config.meetingTemplate;
-  letterTemplate = config.letterTemplate;
-  signatures = config.signatures;
+  legacyDocumentCustomizations = {
+    protocolCss: config.protocolCss,
+    meetingTemplate: config.meetingTemplate,
+    letterTemplate: config.letterTemplate,
+    signatures: config.signatures
+  };
   enabledModules = config.modules;
   sidebarCollapsed = config.sidebarCollapsed;
   lastSeenVersion = config.lastSeenVersion;
@@ -87,7 +90,15 @@ async function loadFolder() {
   }
 
   await storage.initializeFolder(config.activeFolder);
+  const hadLegacyCustomizations = hasLegacyDocumentCustomizations();
+  const conflicts = await migrateLegacyDocumentCustomizations(config.activeFolder);
+  if (hadLegacyCustomizations) await persistSettings();
+  ({ protocolCss, meetingTemplate, letterTemplate, signatures } =
+    await loadFolderCustomizations(config.activeFolder));
   folder = config.activeFolder;
+  if (conflicts.length) {
+    startupError = `Bestehende Anpassungen im Datenordner wurden nicht überschrieben: ${formatCustomizationConflicts(conflicts)}`;
+  }
 }
 
 function settingsFile() {
@@ -95,7 +106,60 @@ function settingsFile() {
 }
 
 async function persistSettings(overrides = {}) {
-  await settings.saveSettings(settingsFile(), { dataFolders, activeFolder: configuredFolder, protocolCss, meetingTemplate, letterTemplate, signatures, modules: enabledModules, sidebarCollapsed, lastSeenVersion, ...overrides });
+  await settings.saveSettings(settingsFile(), {
+    dataFolders, activeFolder: configuredFolder,
+    ...legacyDocumentCustomizations,
+    modules: enabledModules, sidebarCollapsed, lastSeenVersion, ...overrides
+  });
+}
+
+function hasLegacyDocumentCustomizations() {
+  return legacyDocumentCustomizations.protocolCss !== null ||
+    legacyDocumentCustomizations.meetingTemplate !== null ||
+    legacyDocumentCustomizations.letterTemplate !== null ||
+    legacyDocumentCustomizations.signatures.length > 0;
+}
+
+function formatCustomizationConflicts(conflicts) {
+  return formatCustomizationConflictList(conflicts).join(', ');
+}
+
+function formatCustomizationConflictList(conflicts) {
+  const labels = conflicts.map(conflict => {
+    if (conflict === 'protocolCss') return 'PDF-CSS';
+    if (conflict === 'meetingTemplate') return 'Sitzungsvorlage';
+    if (conflict === 'letterTemplate') return 'Briefvorlage';
+    if (conflict === 'signatures') return 'Unterschriftenbibliothek';
+    if (conflict.startsWith('signature:')) return 'Unterschrift';
+    return conflict;
+  });
+  return [...new Set(labels)];
+}
+
+async function migrateLegacyDocumentCustomizations(folderPath) {
+  if (!hasLegacyDocumentCustomizations()) return [];
+  if (legacyDocumentCustomizations.protocolCss) await readProtocolCss(legacyDocumentCustomizations.protocolCss);
+  if (legacyDocumentCustomizations.meetingTemplate) await readMeetingTemplate(legacyDocumentCustomizations.meetingTemplate);
+  if (legacyDocumentCustomizations.letterTemplate) await readLetterTemplate(legacyDocumentCustomizations.letterTemplate);
+  for (const signature of legacyDocumentCustomizations.signatures) await readSignature(signature);
+  const { conflicts } = await documentCustomizations.migrateLegacyCustomizations(folderPath, legacyDocumentCustomizations);
+  legacyDocumentCustomizations = { protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [] };
+  return conflicts;
+}
+
+async function loadFolderCustomizations(folderPath) {
+  const [customProtocolCss, customMeetingTemplate, customLetterTemplate, folderSignatures] = await Promise.all([
+    documentCustomizations.customizationPath(folderPath, 'protocolCss'),
+    documentCustomizations.customizationPath(folderPath, 'meetingTemplate'),
+    documentCustomizations.customizationPath(folderPath, 'letterTemplate'),
+    documentCustomizations.loadSignatures(folderPath)
+  ]);
+  return {
+    protocolCss: customProtocolCss,
+    meetingTemplate: customMeetingTemplate,
+    letterTemplate: customLetterTemplate,
+    signatures: folderSignatures
+  };
 }
 
 async function initializeFolder(folderPath) {
@@ -177,9 +241,12 @@ function registerHandlers() {
       if (!mainWindow.isDestroyed()) mainWindow.show();
       if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
       if (startupError) {
+        const customizationConflict = startupError.startsWith('Bestehende Anpassungen');
         void dialog.showMessageBox(mainWindow, {
-          type: 'error',
-          message: 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden',
+          type: customizationConflict ? 'warning' : 'error',
+          message: customizationConflict
+            ? 'Bestehende Dokumentanpassungen wurden nicht überschrieben'
+            : 'Die gespeicherten Einstellungen konnten nicht vollständig geladen werden',
           detail: startupError,
           buttons: ['OK']
         }).catch(error => console.error('Fehlerdialog konnte nicht angezeigt werden:', error));
@@ -228,10 +295,13 @@ function registerHandlers() {
       throw new Error('Der ausgewählte Datenordner ist nicht verfügbar. Verknüpfen Sie ihn erneut oder wählen Sie einen verfügbaren Ordner aus.');
     }
     await initializeFolder(selected);
+    const conflicts = !configuredFolder ? await migrateLegacyDocumentCustomizations(selected) : [];
+    const customizations = await loadFolderCustomizations(selected);
     await persistSettings({ activeFolder: selected });
     configuredFolder = selected;
     folder = selected;
-    return selected;
+    ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
+    return { folder: selected, conflicts: formatCustomizationConflictList(conflicts) };
   }));
   ipcMain.handle('folder:rename', (event, selected, name) => serializeWrite(async () => {
     if (typeof selected !== 'string' || typeof name !== 'string' || !name.trim()) {
@@ -268,6 +338,7 @@ function registerHandlers() {
         throw new Error('Der ausgewählte Ordner ist bereits als ein anderer Datenordner registriert.');
       }
       await initializeFolder(newPath);
+      const customizations = configuredFolder === oldPath ? await loadFolderCustomizations(newPath) : null;
       const nextFolders = dataFolders.map((item, idx) =>
         idx === folderIndex ? { ...item, path: newPath, available: true } : item);
       const nextActiveFolder = configuredFolder === oldPath ? newPath : configuredFolder;
@@ -276,6 +347,7 @@ function registerHandlers() {
       if (configuredFolder === oldPath) {
         configuredFolder = newPath;
         folder = newPath;
+        ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
       }
       return { dataFolders: folderRegistry(), activeFolder: configuredFolder, path: newPath };
     });
@@ -294,6 +366,10 @@ function registerHandlers() {
     if (isActive) {
       configuredFolder = null;
       folder = null;
+      protocolCss = null;
+      meetingTemplate = null;
+      letterTemplate = null;
+      signatures = [];
     }
     return { dataFolders: folderRegistry(), activeFolder: nextActiveFolder };
   }));
@@ -317,87 +393,84 @@ function registerHandlers() {
   }));
   ipcMain.handle('protocol-css:get', () => protocolCss);
   ipcMain.handle('protocol-css:choose', async () => {
+    const currentFolder = requireFolder();
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Gemeinsame CSS-Datei für PDF-Dokumente auswählen',
-      buttonLabel: 'CSS-Datei auswählen',
+      buttonLabel: 'CSS-Datei importieren',
       properties: ['openFile'],
       filters: [{ name: 'CSS-Dateien', extensions: ['css'] }]
     });
     if (result.canceled) return null;
     return serializeWrite(async () => {
       const selected = result.filePaths[0];
-      if (typeof selected !== 'string' || !path.isAbsolute(selected) || path.extname(selected).toLowerCase() !== '.css') {
-        throw new Error('Wählen Sie eine gültige CSS-Datei aus.');
-      }
-      await readProtocolCss(selected);
-      await persistSettings({ protocolCss: selected });
-      protocolCss = selected;
-      return selected;
+      const imported = await documentCustomizations.importCustomization(currentFolder, 'protocolCss', selected);
+      protocolCss = imported;
+      return imported;
     });
   });
   ipcMain.handle('protocol-css:reset', () => serializeWrite(async () => {
-    await persistSettings({ protocolCss: null });
+    await documentCustomizations.resetCustomization(requireFolder(), 'protocolCss');
     protocolCss = null;
   }));
   ipcMain.handle('meeting-template:get', () => meetingTemplate);
   ipcMain.handle('meeting-template:choose', async () => {
+    const currentFolder = requireFolder();
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'HTML-Vorlage für Sitzungsprotokolle auswählen',
-      buttonLabel: 'HTML-Vorlage auswählen',
+      buttonLabel: 'HTML-Vorlage importieren',
       properties: ['openFile'],
       filters: [{ name: 'HTML-Dateien', extensions: ['html', 'htm'] }]
     });
     if (result.canceled) return null;
     return serializeWrite(async () => {
       const selected = result.filePaths[0];
-      if (typeof selected !== 'string' || !path.isAbsolute(selected) || !['.html', '.htm'].includes(path.extname(selected).toLowerCase())) {
-        throw new Error('Wählen Sie eine gültige HTML-Datei aus.');
-      }
-      await readMeetingTemplate(selected);
-      await persistSettings({ meetingTemplate: selected });
-      meetingTemplate = selected;
-      return selected;
+      const imported = await documentCustomizations.importCustomization(
+        currentFolder, 'meetingTemplate', selected, validateProtocolTemplate);
+      meetingTemplate = imported;
+      return imported;
     });
   });
   ipcMain.handle('meeting-template:reset', () => serializeWrite(async () => {
-    await persistSettings({ meetingTemplate: null });
+    await documentCustomizations.resetCustomization(requireFolder(), 'meetingTemplate');
     meetingTemplate = null;
   }));
   ipcMain.handle('letter-settings:get', () => ({ template: letterTemplate, signatures: signatures.map(item => ({ ...item })) }));
   ipcMain.handle('letter-template:choose', async () => {
+    const currentFolder = requireFolder();
     const result = await dialog.showOpenDialog(mainWindow, { title: 'HTML-Vorlage für Briefe auswählen', properties: ['openFile'], filters: [{ name: 'HTML-Dateien', extensions: ['html', 'htm'] }] });
     if (result.canceled) return null;
     return serializeWrite(async () => {
       const file = result.filePaths[0];
-      if (typeof file !== 'string' || !path.isAbsolute(file) || !['.html', '.htm'].includes(path.extname(file).toLowerCase())) throw new Error('Wählen Sie eine gültige HTML-Datei aus.');
-      await readLetterTemplate(file);
-      await persistSettings({ letterTemplate: file });
-      letterTemplate = file;
-      return file;
+      const imported = await documentCustomizations.importCustomization(
+        currentFolder, 'letterTemplate', file, letters.validateLetterTemplate);
+      letterTemplate = imported;
+      return imported;
     });
   });
   ipcMain.handle('letter-template:reset', () => serializeWrite(async () => {
-    await persistSettings({ letterTemplate: null });
+    await documentCustomizations.resetCustomization(requireFolder(), 'letterTemplate');
     letterTemplate = null;
   }));
+  ipcMain.handle('customizations:open', async () => {
+    const directory = documentCustomizations.pathsForFolder(requireFolder()).directory;
+    await fs.mkdir(directory, { recursive: true });
+    const error = await shell.openPath(directory);
+    if (error) throw new Error(`Der Anpassungsordner konnte nicht geöffnet werden: ${error}`);
+  });
   ipcMain.handle('signatures:choose', async () => {
+    const currentFolder = requireFolder();
     const result = await dialog.showOpenDialog(mainWindow, { title: 'Unterschrift auswählen', properties: ['openFile'], filters: [{ name: 'Bilddateien', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'] }] });
     if (result.canceled) return null;
     return serializeWrite(async () => {
       const file = result.filePaths[0];
-      if (typeof file !== 'string' || !path.isAbsolute(file)) throw new Error('Wählen Sie eine gültige Bilddatei aus.');
-      const signature = { id: randomUUID(), name: path.basename(file, path.extname(file)), path: file };
-      await readSignature(signature);
+      const signature = await documentCustomizations.importSignature(currentFolder, file, readSignature);
       const next = [...signatures, signature];
-      await persistSettings({ signatures: next });
       signatures = next;
       return signature;
     });
   });
   ipcMain.handle('signatures:remove', (event, id) => serializeWrite(async () => {
-    if (!signatures.some(item => item.id === id)) throw new Error('Die Unterschrift wurde nicht gefunden.');
-    const next = signatures.filter(item => item.id !== id);
-    await persistSettings({ signatures: next });
+    const next = await documentCustomizations.removeSignature(requireFolder(), id);
     signatures = next;
     return signatures;
   }));
@@ -416,11 +489,14 @@ function registerHandlers() {
       await initializeFolder(selected);
       const current = dataFolders.find(item => item.path === selected);
       const nextFolders = current ? dataFolders : [...dataFolders, { path: selected, name: path.basename(selected) || selected, available: true }];
+      const conflicts = !configuredFolder ? await migrateLegacyDocumentCustomizations(selected) : [];
+      const customizations = await loadFolderCustomizations(selected);
       await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
       dataFolders = nextFolders;
       configuredFolder = selected;
       folder = selected;
-      return folder;
+      ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
+      return { folder, conflicts: formatCustomizationConflictList(conflicts) };
     });
   });
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));
@@ -444,8 +520,10 @@ function registerHandlers() {
       if (!signature) throw new Error('Eine ausgewählte Unterschrift ist nicht mehr in den Einstellungen vorhanden.');
       images.push(await readSignature(signature));
     }
-    const css = await readProtocolCss(protocolCss || path.join(__dirname, '../shared/letter.css'));
-    const template = letterTemplate ? await readLetterTemplate(letterTemplate) : null;
+    const cssFile = await documentCustomizations.customizationPath(currentFolder, 'protocolCss');
+    const templateFile = await documentCustomizations.customizationPath(currentFolder, 'letterTemplate');
+    const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/letter.css'));
+    const template = templateFile ? await readLetterTemplate(templateFile) : null;
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
     try {
       await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(letters.letterHtml(current.letter, css, images, template))}`);
@@ -488,8 +566,10 @@ function registerHandlers() {
     }
     const earlierMeetings = includeEarlierTasks ? records.map(record => record.meeting)
       .filter(other => other.id !== current.meeting.id && isDate(other.date) && other.date < current.meeting.date) : [];
-    const css = await readProtocolCss(protocolCss || path.join(__dirname, '../shared/document.css'));
-    const template = meetingTemplate ? await readMeetingTemplate(meetingTemplate) : null;
+    const cssFile = await documentCustomizations.customizationPath(currentFolder, 'protocolCss');
+    const templateFile = await documentCustomizations.customizationPath(currentFolder, 'meetingTemplate');
+    const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/document.css'));
+    const template = templateFile ? await readMeetingTemplate(templateFile) : null;
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
     try {
       await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(protocolHtml(current.meeting, css, earlierMeetings, template))}`);
@@ -524,6 +604,7 @@ app.whenReady().then(async () => {
   ({ isDate } = require('../shared/dates'));
   ({ startUpdates } = require('./updates'));
   letters = require('./letters');
+  documentCustomizations = require('./document-customizations');
   ({ loadManual } = require('./manual'));
   enabledModules = { ...settings.DEFAULT_MODULES };
 

@@ -127,7 +127,15 @@ async function saveCurrentDraft() {
 
 async function adoptActiveFolder(folder) {
   state.folder = folder;
-  state.dataFolders = (await window.club.getFolders()).dataFolders;
+  const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
+    window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
+    window.club.getLetterSettings()
+  ]);
+  state.dataFolders = folders.dataFolders;
+  state.protocolCss = protocolCss;
+  state.meetingTemplate = meetingTemplate;
+  letterState.template = letterSettings.template;
+  letterState.signatures = letterSettings.signatures;
   closeProtocolPreview();
   state.meeting = null;
   letterState.letter = null;
@@ -477,18 +485,18 @@ function settingsView() {
       <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''}> Modul aktivieren</label>
       <p class="muted">${state.modules[selected[0]] ? 'Das Modul wird in der Seitenleiste angezeigt.' : 'Das Modul ist deaktiviert und wird aus der Seitenleiste ausgeblendet.'}</p>
       ${selected[0] === 'meetings' ? `<h2>HTML-Vorlage für Sitzungsprotokolle</h2>
-        <p>Optional: Eine HTML-Datei bestimmt den Aufbau des Protokolls. Die gemeinsame CSS-Datei gilt weiterhin.</p>
+        <p>Optional: Importieren Sie eine HTML-Datei in den Anpassungsordner dieses Datenordners. Die gemeinsame CSS-Datei gilt weiterhin.</p>
         <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{recorder}}</code>, <code>{{attendance}}</code>, <code>{{points}}</code>, <code>{{open_tasks}}</code>.</p>
         <p class="path" data-meeting-template>${escape(state.meetingTemplate || 'Standardvorlage wird verwendet')}</p>
-        <div class="row">${button('choose-meeting-template', state.meetingTemplate ? 'HTML-Vorlage ändern' : 'HTML-Vorlage auswählen')}${state.meetingTemplate ? button('reset-meeting-template', 'Standardvorlage verwenden') : ''}</div>
-        <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>` : ''}
+        <div class="row"><button class="action" data-action="choose-meeting-template" ${state.folder ? '' : 'disabled'}>HTML-Vorlage importieren</button>${state.meetingTemplate ? button('reset-meeting-template', 'Vorlage zurücksetzen') : ''}</div>
+        <p>Die importierte Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>` : ''}
       ${selected[0] === 'letters' ? `<h2>HTML-Vorlage für Briefe</h2>
         <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{address}}</code>, <code>{{content}}</code>, <code>{{signatures}}</code>.</p>
         <p class="path" data-letter-template>${escape(letterState.template || 'Standardvorlage wird verwendet')}</p>
-        <div class="row">${button('choose-letter-template', 'HTML-Vorlage auswählen')}${letterState.template ? button('reset-letter-template', 'Standardvorlage verwenden') : ''}</div>
-        <h2>Unterschriften</h2><p>Die Originaldateien bleiben an ihrem Speicherort und werden beim Export gelesen.</p>
+        <div class="row"><button class="action" data-action="choose-letter-template" ${state.folder ? '' : 'disabled'}>HTML-Vorlage importieren</button>${letterState.template ? button('reset-letter-template', 'Vorlage zurücksetzen') : ''}</div>
+        <h2>Unterschriften</h2><p>Importierte Unterschriften werden im Anpassungsordner dieses Datenordners gespeichert.</p>
         ${letterState.signatures.map(item => `<div class="row"><span>${escape(item.name)} — <span class="path">${escape(item.path)}</span></span><button class="action" data-action="remove-signature" data-id="${escape(item.id)}" aria-label="Unterschrift ${escape(item.name)} entfernen">Entfernen</button></div>`).join('')}
-        ${button('choose-signature', 'Unterschrift hinzufügen')}` : ''}
+        <button class="action" data-action="choose-signature" ${state.folder ? '' : 'disabled'}>Unterschrift hinzufügen</button>` : ''}
     </section>` : `<section role="tabpanel" aria-labelledby="settings-tab-general">
       <div class="card"><h2>Datenordner</h2>
         <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
@@ -513,10 +521,11 @@ function settingsView() {
           </ul>` : ''}
       </div>
       <div class="card"><h2>Gemeinsame CSS-Datei für PDF-Dokumente</h2>
-        <p>Diese CSS-Datei gilt für PDF-Dokumente aller Module und ersetzt das Standardlayout beim PDF-Export.</p>
+        <p>Diese CSS-Datei gilt für Sitzungsprotokolle und Briefe in diesem Datenordner. Die Gestaltung der App bleibt unverändert.</p>
         <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
-        <div class="row">${button('choose-protocol-css', state.protocolCss ? 'CSS-Datei ändern' : 'CSS-Datei auswählen')}${state.protocolCss ? button('reset-protocol-css', 'Standardlayout verwenden') : ''}</div>
-        <p>Die Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p></div>
+        <div class="row"><button class="action" data-action="choose-protocol-css" ${state.folder ? '' : 'disabled'}>CSS-Datei importieren</button>${state.protocolCss ? button('reset-protocol-css', 'CSS zurücksetzen') : ''}</div>
+        <p>Die importierte Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>
+        ${state.folder ? button('open-customizations', 'Anpassungsordner öffnen') : '<p>Wählen Sie zuerst einen Datenordner aus.</p>'}</div>
       <div class="card"><h2>Über ClubManager</h2><p data-app-version>Version: ${escape(state.version ?? 'Nicht verfügbar')}</p></div>
     </section>`;
   return `<h1>Einstellungen</h1>
@@ -721,10 +730,12 @@ async function run(action, target) {
       const choice = await confirmFolderSwitch();
       if (choice === 'cancel') break;
       if (choice === 'save') await saveCurrentDraft();
-      const selected = await window.club.chooseFolder();
-      if (selected) {
-        await adoptActiveFolder(selected);
-        setMessage('Datenordner ausgewählt. Die Modulordner sind bereit.');
+      const result = await window.club.chooseFolder();
+      if (result) {
+        await adoptActiveFolder(result.folder);
+        setMessage(result.conflicts.length
+          ? `Datenordner ausgewählt. Bestehende Anpassungen wurden nicht überschrieben: ${result.conflicts.join(', ')}.`
+          : 'Datenordner ausgewählt. Die Modulordner sind bereit.', result.conflicts.length > 0);
       }
       break;
     }
@@ -759,6 +770,10 @@ async function run(action, target) {
       state.dataFolders = result.dataFolders;
       if (isActive) {
         state.folder = null;
+        state.protocolCss = null;
+        state.meetingTemplate = null;
+        letterState.template = null;
+        letterState.signatures = [];
         await changeView('settings');
         settingsTab = 'general';
         setMessage('Datenordner entfernt. Wählen Sie einen verfügbaren Ordner aus.');
@@ -771,24 +786,26 @@ async function run(action, target) {
       const selected = await window.club.chooseProtocolCss();
       if (selected) {
         state.protocolCss = selected;
-        setMessage('CSS-Datei für PDF-Protokolle ausgewählt.');
+        setMessage('CSS-Datei in den Anpassungsordner importiert.');
       }
       break;
     }
     case 'reset-protocol-css':
+      if (!window.confirm('Die gemeinsame CSS-Datei dieses Datenordners zurücksetzen und künftig das Standardlayout verwenden?')) break;
       await window.club.resetProtocolCss();
       state.protocolCss = null;
-      setMessage('Das Standardlayout für PDF-Protokolle wird verwendet.');
+      setMessage('Die gemeinsame CSS-Datei wurde zurückgesetzt. Das Standardlayout wird verwendet.');
       break;
     case 'choose-meeting-template': {
       const selected = await window.club.chooseMeetingTemplate();
       if (selected) {
         state.meetingTemplate = selected;
-        setMessage('HTML-Vorlage für Sitzungsprotokolle ausgewählt.');
+        setMessage('HTML-Vorlage in den Anpassungsordner importiert.');
       }
       break;
     }
     case 'reset-meeting-template':
+      if (!window.confirm('Die HTML-Vorlage für Sitzungsprotokolle dieses Datenordners zurücksetzen?')) break;
       await window.club.resetMeetingTemplate();
       state.meetingTemplate = null;
       setMessage('Die Standardvorlage für Sitzungsprotokolle wird verwendet.');
@@ -799,9 +816,14 @@ async function run(action, target) {
       break;
     }
     case 'reset-letter-template':
+      if (!window.confirm('Die HTML-Vorlage für Briefe dieses Datenordners zurücksetzen?')) break;
       await window.club.resetLetterTemplate();
       letterState.template = null;
       setMessage('Die Standardvorlage für Briefe wird verwendet.');
+      break;
+    case 'open-customizations':
+      await window.club.openCustomizationDirectory();
+      setMessage('Anpassungsordner geöffnet.');
       break;
     case 'choose-signature': {
       const selected = await window.club.chooseSignature();
@@ -1233,9 +1255,11 @@ app.addEventListener('change', event => {
       const choice = await confirmFolderSwitch();
       if (choice === 'cancel') return;
       if (choice === 'save') await saveCurrentDraft();
-      await window.club.activateFolder(selected);
-      await adoptActiveFolder(selected);
-      setMessage('Datenordner gewechselt.');
+      const result = await window.club.activateFolder(selected);
+      await adoptActiveFolder(result.folder);
+      setMessage(result.conflicts.length
+        ? `Datenordner gewechselt. Bestehende Anpassungen wurden nicht überschrieben: ${result.conflicts.join(', ')}.`
+        : 'Datenordner gewechselt.', result.conflicts.length > 0);
     })().catch(error => setMessage(error.message, true)).finally(render);
     return;
   }

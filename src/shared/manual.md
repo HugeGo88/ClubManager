@@ -44,15 +44,19 @@ Aktivieren Sie **Briefe** unter **Einstellungen → Briefe**. Mit **Neuer Brief*
 
 Mit **Adressfeld einfügen** blenden Sie die Felder für Firma, Name, Straße, PLZ und Ort ein. Wenn kein Adressfeld benötigt wird, lassen Sie die Option ausgeschaltet. Bereits eingegebene Werte bleiben beim Ausblenden erhalten.
 
-Unter **Einstellungen → Briefe** können Sie Unterschriftsbilder hinzufügen. Wählen Sie im Brief die gewünschten Unterschriften per Checkbox. Die Originaldateien bleiben an ihrem Speicherort und müssen beim Export verfügbar sein.
+Unter **Einstellungen → Briefe** können Sie Unterschriftsbilder hinzufügen. Wählen Sie im Brief die gewünschten Unterschriften per Checkbox. Die Bilder werden in den Anpassungsordner des aktiven Datenordners kopiert.
 
 Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
 
 ## PDF-Gestaltung
 
-Unter **Einstellungen → Allgemein** können Sie eine gemeinsame CSS-Datei für PDF-Dokumente auswählen. Sie ersetzt das Standardlayout und wird bei jedem Export neu gelesen. Unter **Einstellungen → Sitzungen** und **Einstellungen → Briefe** können Sie jeweils eine eigene HTML-Vorlage auswählen; ohne Vorlage wird das Standardlayout verwendet. Sitzungsprotokolle können die optionale Protokollführung mit `{{recorder}}` ausgeben.
+Wählen Sie zuerst den Datenordner, dessen Dokumente Sie anpassen möchten. Unter **Einstellungen → Allgemein** können Sie eine gemeinsame CSS-Datei importieren. Sie gilt für Sitzungsprotokolle und Briefe dieses Datenordners, wird bei jedem Export neu gelesen und ändert nicht die Gestaltung der App. Unter **Einstellungen → Sitzungen** und **Einstellungen → Briefe** können Sie jeweils eine HTML-Vorlage importieren.
 
-Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. Fehlende oder ungültige Dateien werden beim Export als Fehler angezeigt. Bereits exportierte PDFs ändern sich nicht automatisch.
+Importierte CSS- und HTML-Dateien werden in den Anpassungsordner des Datenordners kopiert; die Quelldateien können danach verschoben oder gelöscht werden. CSS-Syntax und HTML-Platzhalter werden vor dem Import geprüft. Über **Anpassungsordner öffnen** können Sie die Dateien direkt verwalten. Jede Vorlage und das gemeinsame CSS lassen sich einzeln zurücksetzen; ClubManager fragt vorher nach einer Bestätigung. Für jede fehlende Datei wird unabhängig die passende Standardvorlage oder das passende Standardlayout verwendet. Ungültige oder nicht lesbare Dateien werden als Fehler angezeigt. Bereits exportierte PDFs ändern sich nicht automatisch.
+
+Bestehende app-weite Vorlagen, CSS-Dateien und Unterschriften werden in den aktiven Datenordner kopiert. Gibt es keinen aktiven Ordner, erfolgt die Migration beim ersten Auswählen eines Ordners. Bereits vorhandene Dateien am Ziel bleiben erhalten; ClubManager meldet den Konflikt, statt sie zu überschreiben.
+
+Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. Wenn Sie mehrere Datenordner verwenden, bleiben Vorlagen, CSS und Unterschriften jeweils beim zugehörigen Ordner.
 
 ## Daten und Aktualisierungen
 
