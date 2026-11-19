@@ -32,7 +32,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Keep meeting and letter PDF templates, shared PDF CSS, and letter
   signatures with their data folder; use packaged defaults independently for
   missing custom document files.
-- [x] Allow folder display names to be customized.
+- [x] Store customizable display names with their data folders so they survive
+  moves, backups, and re-registration.
 - [ ] Remove folders from the app's list without deleting their files.
 - [x] Keep module visibility and sidebar preference app-wide rather than
   changing them with the active folder.

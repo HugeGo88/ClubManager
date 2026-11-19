@@ -16,6 +16,10 @@ _Avoid_: current folder
 A data folder available to choose in ClubManager.
 _Avoid_: saved folder
 
+**Data folder display name**:
+The editable name ClubManager shows for a data folder, independent of the directory's name.
+_Avoid_: directory name
+
 **Document customization**:
 A user-provided HTML template or stylesheet for generated meeting protocols and letters, distinct from the app's interface.
 _Avoid_: app stylesheet

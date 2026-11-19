@@ -13,10 +13,13 @@ let startUpdates;
 let letters;
 let loadManual;
 let documentCustomizations;
+let folderName;
 let mainWindow;
 let splashWindow;
 let folder;
 let dataFolders = [];
+let folderNamesNeedCaching = false;
+let folderNameCacheWarning = null;
 let configuredFolder = null;
 let protocolCss = null;
 let meetingTemplate = null;
@@ -49,15 +52,50 @@ async function checkFolderAvailability(folderPath) {
     const info = await fs.stat(folderPath);
     return info.isDirectory();
   } catch (error) {
-    if (error.code === 'ENOENT') return false;
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
     throw error;
   }
 }
 
-async function updateFolderAvailability() {
-  for (const item of dataFolders) {
-    item.available = await checkFolderAvailability(item.path);
+async function resolveFolderName(item) {
+  try {
+    return { ...item, name: await folderName.loadOrSaveName(item.path, item.name), nameWarning: null };
+  } catch (error) {
+    return { ...item, nameWarning: `Die Bezeichnung des Datenordners „${item.name}“ konnte nicht gelesen oder gespeichert werden: ${error.message}` };
   }
+}
+
+async function cacheFolderNames() {
+  if (!folderNamesNeedCaching || hasLegacyDocumentCustomizations()) return;
+  try {
+    await persistSettings();
+  } catch (error) {
+    folderNameCacheWarning = `Die zuletzt bekannten Datenordner-Bezeichnungen konnten nicht in den Einstellungen gespeichert werden: ${error.message}`;
+  }
+}
+
+async function refreshFolderRegistry() {
+  const nextFolders = await Promise.all(dataFolders.map(async item => {
+    const available = await checkFolderAvailability(item.path);
+    return available
+      ? resolveFolderName({ ...item, available })
+      : { ...item, available, nameWarning: null };
+  }));
+  folderNamesNeedCaching ||= nextFolders.some((item, index) => item.name !== dataFolders[index].name);
+  dataFolders = nextFolders;
+  await cacheFolderNames();
+}
+
+function resolveRegisteredFolderName(selected) {
+  const item = dataFolders.find(current => current.path === selected);
+  const name = item?.name ?? (path.basename(selected).trim() || selected.trim());
+  return resolveFolderName({ path: selected, name, available: true });
+}
+
+function withRegisteredFolder(item) {
+  return dataFolders.some(current => current.path === item.path)
+    ? dataFolders.map(current => current.path === item.path ? item : current)
+    : [...dataFolders, item];
 }
 
 async function loadFolder() {
@@ -75,19 +113,15 @@ async function loadFolder() {
   lastSeenVersion = config.lastSeenVersion;
   settingsLoaded = true;
 
-  // Refresh availability status from filesystem
-  await updateFolderAvailability();
-
-  if (!config.activeFolder) return;
-
   // If the active folder is unavailable, clear it and report
-  const activeAvailable = await checkFolderAvailability(config.activeFolder);
-  if (!activeAvailable) {
+  if (config.activeFolder && !await checkFolderAvailability(config.activeFolder)) {
     configuredFolder = null;
     folder = null;
     startupError = 'Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie einen verfügbaren Ordner in den Einstellungen aus oder verknüpfen Sie ihn erneut.';
-    return;
   }
+
+  await refreshFolderRegistry();
+  if (!configuredFolder) return;
 
   await storage.initializeFolder(config.activeFolder);
   const hadLegacyCustomizations = hasLegacyDocumentCustomizations();
@@ -111,6 +145,8 @@ async function persistSettings(overrides = {}) {
     ...legacyDocumentCustomizations,
     modules: enabledModules, sidebarCollapsed, lastSeenVersion, ...overrides
   });
+  folderNamesNeedCaching = false;
+  folderNameCacheWarning = null;
 }
 
 function hasLegacyDocumentCustomizations() {
@@ -170,7 +206,11 @@ async function initializeFolder(folderPath) {
 }
 
 function folderRegistry() {
-  return dataFolders.map(item => ({ ...item }));
+  return {
+    dataFolders: dataFolders.map(item => ({ ...item })),
+    activeFolder: configuredFolder,
+    nameCacheWarning: folderNameCacheWarning
+  };
 }
 
 async function readProtocolCss(file) {
@@ -285,19 +325,24 @@ function registerHandlers() {
     require('electron-updater').autoUpdater.quitAndInstall(false, true);
   });
   ipcMain.handle('folder:get', () => folder || null);
-  ipcMain.handle('folders:get', () => ({ dataFolders: folderRegistry(), activeFolder: configuredFolder }));
+  ipcMain.handle('folders:get', () => serializeWrite(async () => {
+    await refreshFolderRegistry();
+    return folderRegistry();
+  }));
   ipcMain.handle('folder:activate', (event, selected) => serializeWrite(async () => {
     const folderToActivate = dataFolders.find(item => item.path === selected);
     if (!folderToActivate) {
       throw new Error('Der ausgewählte Datenordner ist nicht registriert.');
     }
-    if (!folderToActivate.available) {
+    if (!await checkFolderAvailability(selected)) {
       throw new Error('Der ausgewählte Datenordner ist nicht verfügbar. Verknüpfen Sie ihn erneut oder wählen Sie einen verfügbaren Ordner aus.');
     }
     await initializeFolder(selected);
+    const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
     const conflicts = !configuredFolder ? await migrateLegacyDocumentCustomizations(selected) : [];
     const customizations = await loadFolderCustomizations(selected);
-    await persistSettings({ activeFolder: selected });
+    await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
+    dataFolders = nextFolders;
     configuredFolder = selected;
     folder = selected;
     ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
@@ -307,19 +352,25 @@ function registerHandlers() {
     if (typeof selected !== 'string' || typeof name !== 'string' || !name.trim()) {
       throw new Error('Geben Sie einen gültigen Namen für den Datenordner ein.');
     }
-    const index = dataFolders.findIndex(item => item.path === selected);
-    if (index === -1) throw new Error('Der Datenordner wurde nicht gefunden.');
-    const nextFolders = dataFolders.map((item, itemIndex) =>
-      itemIndex === index ? { ...item, name: name.trim() } : item);
-    await persistSettings({ dataFolders: nextFolders });
-    dataFolders = nextFolders;
+    const item = dataFolders.find(item => item.path === selected);
+    if (!item) throw new Error('Der Datenordner wurde nicht gefunden.');
+    if (!await checkFolderAvailability(selected)) {
+      throw new Error('Der Datenordner ist nicht verfügbar und kann nicht umbenannt werden.');
+    }
+    try {
+      await folderName.saveName(selected, name.trim());
+    } catch (error) {
+      throw new Error(`Die Bezeichnung des Datenordners konnte nicht gespeichert werden: ${error.message}`);
+    }
+    dataFolders = withRegisteredFolder({ ...item, available: true, name: name.trim(), nameWarning: null });
+    folderNamesNeedCaching = true;
+    await cacheFolderNames();
     return folderRegistry();
   }));
   ipcMain.handle('folder:relink', async (event, oldPath) => {
-    const folderIndex = dataFolders.findIndex(item => item.path === oldPath);
-    if (folderIndex === -1) throw new Error('Der Datenordner wurde nicht gefunden.');
-    const folder = dataFolders[folderIndex];
-    if (folder.available) throw new Error('Der Datenordner ist verfügbar und kann nicht erneut verknüpft werden.');
+    const folder = dataFolders.find(item => item.path === oldPath);
+    if (!folder) throw new Error('Der Datenordner wurde nicht gefunden.');
+    if (await checkFolderAvailability(oldPath)) throw new Error('Der Datenordner ist verfügbar und kann nicht erneut verknüpft werden.');
     
     const result = await dialog.showOpenDialog(mainWindow, {
       title: `Datenordner erneut verknüpfen: "${folder.name}"`,
@@ -329,18 +380,22 @@ function registerHandlers() {
     if (result.canceled) return null;
 
     return serializeWrite(async () => {
+      const current = dataFolders.find(item => item.path === oldPath);
+      if (!current) throw new Error('Der Datenordner wurde nicht gefunden.');
+      if (await checkFolderAvailability(oldPath)) {
+        throw new Error('Der Datenordner ist verfügbar und kann nicht erneut verknüpft werden.');
+      }
       const newPath = result.filePaths[0];
       if (typeof newPath !== 'string' || !path.isAbsolute(newPath)) {
         throw new Error('Wählen Sie einen gültigen Datenordner aus.');
       }
-      const isNewPath = !dataFolders.some((item, idx) => idx !== folderIndex && item.path === newPath);
-      if (!isNewPath) {
+      if (dataFolders.some(item => item.path !== oldPath && item.path === newPath)) {
         throw new Error('Der ausgewählte Ordner ist bereits als ein anderer Datenordner registriert.');
       }
       await initializeFolder(newPath);
       const customizations = configuredFolder === oldPath ? await loadFolderCustomizations(newPath) : null;
-      const nextFolders = dataFolders.map((item, idx) =>
-        idx === folderIndex ? { ...item, path: newPath, available: true } : item);
+      const renamedFolder = await resolveFolderName({ ...current, path: newPath, available: true });
+      const nextFolders = dataFolders.map(item => item.path === oldPath ? renamedFolder : item);
       const nextActiveFolder = configuredFolder === oldPath ? newPath : configuredFolder;
       await persistSettings({ dataFolders: nextFolders, activeFolder: nextActiveFolder });
       dataFolders = nextFolders;
@@ -349,7 +404,7 @@ function registerHandlers() {
         folder = newPath;
         ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
       }
-      return { dataFolders: folderRegistry(), activeFolder: configuredFolder, path: newPath };
+      return { ...folderRegistry(), path: newPath };
     });
   });
   ipcMain.handle('folder:unregister', (event, folderPath) => serializeWrite(async () => {
@@ -371,7 +426,7 @@ function registerHandlers() {
       letterTemplate = null;
       signatures = [];
     }
-    return { dataFolders: folderRegistry(), activeFolder: nextActiveFolder };
+    return folderRegistry();
   }));
   ipcMain.handle('modules:get', () => ({ ...enabledModules }));
   ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
@@ -487,8 +542,7 @@ function registerHandlers() {
         throw new Error('Wählen Sie einen gültigen Datenordner aus.');
       }
       await initializeFolder(selected);
-      const current = dataFolders.find(item => item.path === selected);
-      const nextFolders = current ? dataFolders : [...dataFolders, { path: selected, name: path.basename(selected) || selected, available: true }];
+      const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
       const conflicts = !configuredFolder ? await migrateLegacyDocumentCustomizations(selected) : [];
       const customizations = await loadFolderCustomizations(selected);
       await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
@@ -605,6 +659,7 @@ app.whenReady().then(async () => {
   ({ startUpdates } = require('./updates'));
   letters = require('./letters');
   documentCustomizations = require('./document-customizations');
+  folderName = require('./folder-name');
   ({ loadManual } = require('./manual'));
   enabledModules = { ...settings.DEFAULT_MODULES };
 

@@ -130,13 +130,20 @@ async function saveCurrentDraft() {
   state.dirty = false;
 }
 
+let folderNameCacheWarning = null;
+
+function adoptFolderRegistry(registry) {
+  state.dataFolders = registry.dataFolders;
+  folderNameCacheWarning = registry.nameCacheWarning;
+}
+
 async function adoptActiveFolder(folder) {
   state.folder = folder;
   const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
     window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
     window.club.getLetterSettings()
   ]);
-  state.dataFolders = folders.dataFolders;
+  adoptFolderRegistry(folders);
   state.protocolCss = protocolCss;
   state.meetingTemplate = meetingTemplate;
   letterState.template = letterSettings.template;
@@ -153,7 +160,11 @@ async function adoptActiveFolder(folder) {
 }
 
 function notice() {
-  return state.message ? `<p role="status" class="notice ${state.error ? 'error' : ''}">${escape(state.message)}</p>` : '';
+  const messages = state.message ? `<p role="status" class="notice ${state.error ? 'error' : ''}">${escape(state.message)}</p>` : '';
+  const warnings = state.dataFolders.filter(item => item.path === state.folder || state.view === 'settings')
+    .map(item => item.nameWarning);
+  return messages + [folderNameCacheWarning, ...warnings].filter(Boolean)
+    .map(warning => `<p role="status" class="notice error" data-folder-name-warning>${escape(warning)}</p>`).join('');
 }
 
 function setMessage(message, error = false) {
@@ -508,8 +519,8 @@ function settingsView() {
         <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
         <p class="path">${escape(state.folder || 'Kein Ordner ausgewählt')}</p>
         ${button('choose-folder', state.folder ? 'Ordner ändern' : 'Ordner auswählen', 'primary')}
-        ${activeFolder ? `<label>Bezeichnung dieses Datenordners<input data-folder-name value="${escape(activeFolder.name)}"></label>
-          ${button('rename-folder', 'Bezeichnung speichern')}` : ''}
+        ${activeFolder ? `<label>Bezeichnung dieses Datenordners<input data-folder-name value="${escape(activeFolder.name)}" ${activeFolder.available ? '' : 'disabled'}></label>
+          <button type="button" class="action" data-action="rename-folder" ${activeFolder.available ? '' : 'disabled'}>Bezeichnung speichern</button>` : ''}
         <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p>
         ${state.dataFolders.length ? `<h3>Registrierte Datenordner</h3>
           <ul class="folders-list">
@@ -720,6 +731,7 @@ async function changeView(view) {
   state.dirty = false;
   state.view = view;
   setMessage('');
+  if (view === 'settings') adoptFolderRegistry(await window.club.getFolders());
   if (!['changelog', 'manual'].includes(view)) await refresh();
 }
 
@@ -747,7 +759,7 @@ async function run(action, target) {
     }
     case 'rename-folder': {
       const input = app.querySelector('[data-folder-name]');
-      state.dataFolders = await window.club.renameFolder(state.folder, input.value);
+      adoptFolderRegistry(await window.club.renameFolder(state.folder, input.value));
       setMessage('Bezeichnung des Datenordners gespeichert.');
       break;
     }
@@ -758,8 +770,9 @@ async function run(action, target) {
       if (!confirm(`Zielordner erneut verbinden: "${folder.name}"?\n\nSuchen Sie den Ordner an seinem neuen Speicherort.`)) return;
       const result = await window.club.relinkFolder(folderPath);
       if (result) {
-        state.dataFolders = result.dataFolders;
-        setMessage(`Ordner "${folder.name}" wurde mit "${result.path}" verlinkt.`);
+        adoptFolderRegistry(result);
+        const name = state.dataFolders.find(item => item.path === result.path).name;
+        setMessage(`Ordner "${name}" wurde mit "${result.path}" verlinkt.`);
       }
       break;
     }
@@ -773,7 +786,7 @@ async function run(action, target) {
         : `Registrierung entfernen: "${folder.name}"?\n\nDie Registrierung wird entfernt, die Daten bleiben erhalten.`;
       if (!confirm(message)) return;
       const result = await window.club.unregisterFolder(folderPath);
-      state.dataFolders = result.dataFolders;
+      adoptFolderRegistry(result);
       if (isActive) {
         state.folder = null;
         state.protocolCss = null;
@@ -1326,7 +1339,7 @@ window.club.onPrepareUpdate(async () => {
       window.club.getLetterSettings()
     ]);
     state.folder = folder;
-    state.dataFolders = folders.dataFolders;
+    adoptFolderRegistry(folders);
     state.protocolCss = protocolCss;
     state.meetingTemplate = meetingTemplate;
     state.modules = modules;

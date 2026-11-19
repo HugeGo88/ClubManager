@@ -27,6 +27,7 @@ async function main() {
   const userData = path.join(fixture, 'settings');
   const unavailableFolder = path.join(fixture, 'missing-club');
   const restoredFolder = path.join(fixture, 'restored-club');
+  const movedFolder = path.join(fixture, 'moved-club');
   const markerFile = path.join(restoredFolder, 'keep.txt');
   await fs.mkdir(userData, { recursive: true });
   await fs.mkdir(restoredFolder, { recursive: true });
@@ -50,11 +51,12 @@ async function main() {
     startupDialogs.push(options);
     return { response: 0 };
   };
+  let selectedFolder = restoredFolder;
   dialog.showOpenDialog = async (window, options) => {
     if (!options.properties.includes('openDirectory')) {
       throw new Error(`Unexpected folder-recovery dialog: ${options.title}`);
     }
-    return { canceled: false, filePaths: [restoredFolder] };
+    return { canceled: false, filePaths: [selectedFolder] };
   };
 
   const timeout = setTimeout(() => {
@@ -178,7 +180,36 @@ async function main() {
     const savedSettings = JSON.parse(await fs.readFile(path.join(userData, 'settings.json'), 'utf8'));
     assert.deepEqual(savedSettings.dataFolders, []);
     assert.equal(savedSettings.activeFolder, null);
-    console.log('Electron folder recovery smoke test passed: startup recovery, relinking, and non-destructive unregister.');
+    await fs.rename(restoredFolder, movedFolder);
+    selectedFolder = movedFolder;
+    const reregisteredName = await window.webContents.executeJavaScript(`(async () => {
+      await window.club.chooseFolder();
+      const { dataFolders } = await window.club.getFolders();
+      return dataFolders.find(item => item.path === ${JSON.stringify(movedFolder)})?.name;
+    })()`);
+    assert.equal(reregisteredName, 'Mein Verein', 'The name must survive unregistering, moving, and adding the folder again');
+
+    const nameFile = path.join(movedFolder, 'clubmanager-folder.json');
+    await fs.writeFile(nameFile, JSON.stringify({ version: 1, name: 'Anderer Name' }));
+    const refreshedName = await window.webContents.executeJavaScript(`window.club.getFolders().then(
+      ({ dataFolders }) => dataFolders.find(item => item.path === ${JSON.stringify(movedFolder)})?.name
+    )`);
+    assert.equal(refreshedName, 'Anderer Name', 'A saved name must take precedence over a stale registry name');
+
+    await fs.writeFile(nameFile, 'invalid JSON');
+    await window.webContents.executeJavaScript(`(async () => {
+      const { dataFolders } = await window.club.getFolders();
+      const item = dataFolders.find(item => item.path === ${JSON.stringify(movedFolder)});
+      if (item?.name !== 'Anderer Name' || !item.nameWarning) {
+        throw new Error('Invalid name metadata must be reported with the last known name still usable');
+      }
+      if (await window.club.getFolder() !== ${JSON.stringify(movedFolder)} ||
+          !Array.isArray(await window.club.listMeetings())) {
+        throw new Error('Invalid name metadata must not prevent access to club records');
+      }
+    })()`);
+    assert.equal(await fs.readFile(nameFile, 'utf8'), 'invalid JSON', 'Invalid metadata must not be overwritten during refresh');
+    console.log('Electron folder recovery smoke test passed: startup recovery, relinking, unregister, and portable display names.');
     clearTimeout(timeout);
     app.exit(0);
   } catch (error) {

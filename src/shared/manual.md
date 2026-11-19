@@ -11,7 +11,9 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 
 ## Datenordner und Zugriff
 
-Registrierte Datenordner werden in **Einstellungen → Allgemein** aufgelistet. Für jeden Ordner können Sie die Bezeichnung ändern, ihn erneut verknüpfen oder seine Registrierung entfernen.
+Registrierte Datenordner werden in **Einstellungen → Allgemein** aufgelistet. Dort können Sie die Bezeichnung des aktiven Ordners ändern, einen nicht verfügbaren Ordner erneut verknüpfen oder seine Registrierung entfernen.
+
+**Bezeichnung:** ClubManager speichert die Bezeichnung im Datenordner. Sie bleibt beim Verschieben, Kopieren oder erneuten Hinzufügen erhalten. Fehlt bei einem registrierten Ordner die gespeicherte Bezeichnung, übernimmt ClubManager den zuletzt bekannten Namen. Bei einem neuen Ordner ohne gespeicherte Bezeichnung verwendet ClubManager den Verzeichnisnamen. Wenn die Bezeichnung nicht gelesen oder gespeichert werden kann, meldet ClubManager das Problem, ohne den Zugriff auf ansonsten lesbare Daten zu sperren.
 
 **Nicht verfügbare Ordner:** Falls ein registrierter Datenordner verschoben, gelöscht oder das Speichergerät entfernt wurde, zeigt ClubManager ihn als „Nicht verfügbar" an. Der Ordner bleibt registriert und die Daten bleiben erhalten. Sie können einen nicht verfügbaren Ordner weder aktivieren noch verwenden, bis er wieder verfügbar ist oder Sie ihn erneut verknüpfen.
 

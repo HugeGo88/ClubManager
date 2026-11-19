@@ -2100,6 +2100,8 @@ async function main() {
           }
         })()`);
         const folderSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
+        const secondFolderName = JSON.parse(await fs.readFile(path.join(secondData, 'clubmanager-folder.json'), 'utf8'));
+        assert.equal(secondFolderName.name, 'Verein B', 'Renaming must update the name stored in the data folder');
         assert.deepEqual(folderSettings.dataFolders, [
           { path: data, name: 'data', available: true },
           { path: secondData, name: 'Verein B', available: true }

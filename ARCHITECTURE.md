@@ -125,15 +125,23 @@ settings.json in userData    user-selected data folder
   Markdown through restricted IPC; missing, invalid or mismatched manuals
   produce an error. Each build generates the current version's manual, not an
   archive or automatically authored content.
-- Registered data folders are stored in `settings.json` with a path, display name,
-  and availability flag. Availability is rechecked from the filesystem at startup
-  and when displayed; it is not cached as permanent state. Choosing a data folder
-  registers it and creates `meetings/`, `members/`, `invoices/` and `letters/` under it.
+- Registered data folders are stored in `settings.json` with a path, last known
+  display name, and availability flag. Each folder owns its display name in
+  `clubmanager-folder.json` (`{ "version": 1, "name": "…" }`). ClubManager reads
+  it at startup and when listing, activating, registering, or relinking folders.
+  If the file is absent, ClubManager saves the last known name for a registered
+  or relinked folder, or uses the directory name for a new registration. A name
+  file error is reported without blocking access to otherwise readable records:
+  the last known name or directory name is displayed, and invalid metadata is
+  not automatically overwritten. Renaming requires a successful write to the
+  data folder. Availability is rechecked from the filesystem. Choosing a data
+  folder registers it and creates `meetings/`, `members/`, `invoices/` and `letters/`.
   The header selector shows available registered folders; unavailable folders are marked
   and disabled in the selector. The Settings page lists all registered folders with
-  their status, allowing users to rename, relink (reconnect to a new path while preserving
-  the display name and registration), or unregister (remove the registration without deleting
-  folder contents) any folder. Changing folders opens the new location without moving
+  their status, allowing users to rename the active folder when available,
+  relink an unavailable folder (reconnect to a new path while preserving the
+  registration), or unregister a folder (remove the registration without changing
+  folder contents). Changing folders opens the new location without moving
   existing data. When there are unsaved edits, the renderer offers save, discard or cancel;
   a failed save prevents switching and preserves the current draft. If the active folder
   becomes unavailable at startup, it is cleared, no folder-backed data loads, the app does
