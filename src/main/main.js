@@ -277,7 +277,7 @@ function registerHandlers() {
         configuredFolder = newPath;
         folder = newPath;
       }
-      return folderRegistry();
+      return { dataFolders: folderRegistry(), activeFolder: configuredFolder, path: newPath };
     });
   });
   ipcMain.handle('folder:unregister', (event, folderPath) => serializeWrite(async () => {

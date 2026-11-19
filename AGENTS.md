@@ -11,3 +11,7 @@ Use the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, 
 ### Domain docs
 
 Use the single-context layout. See `docs/agents/domain.md`.
+
+### Verification and review
+
+Follow `docs/agents/verification.md` for test-runtime checks, acceptance evidence, diff reviews and safe edits.

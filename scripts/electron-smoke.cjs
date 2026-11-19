@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, Menu, shell } = require('electron');
 const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -66,6 +67,24 @@ async function main() {
     console.error('Electron smoke test timed out.');
     app.exit(1);
   }, 30000);
+  async function runFolderRecoverySmoke() {
+    const output = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [path.join(__dirname, 'electron-folder-recovery-smoke.cjs')], {
+        env: { ...process.env, CLUBMANAGER_SMOKE_ROOT: root },
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+      child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+      child.once('error', reject);
+      child.once('close', code => {
+        if (code === 0) resolve(stdout + stderr);
+        else reject(new Error(`Folder recovery smoke test failed (${code}):\n${stdout}${stderr}`));
+      });
+    });
+    process.stdout.write(output);
+  }
   let splash;
   let splashWasFirstWindow;
   let appWindowCreatedAfterSplashShown;
@@ -1974,6 +1993,7 @@ async function main() {
           { path: secondData, name: 'Verein B', available: true }
         ]);
         assert.equal(folderSettings.activeFolder, data);
+        await runFolderRecoverySmoke();
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();

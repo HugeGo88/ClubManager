@@ -297,10 +297,12 @@ npm run dist:win
 npm run dist:linux
 ```
 
-`npm test` runs Node's test runner. The Electron smoke test exercises the
-application through Electron, including meeting editing, navigation, settings,
-lists, conflicts and PDF export; it also checks expected failure paths. The
-pull-request workflow runs both suites and checks the smoke-test script's
+`npm test` runs Node's test runner. The test scripts check that Node meets the
+minimum version in `.nvmrc` before running. The Electron smoke tests exercise
+the application through Electron, including meeting editing, navigation,
+settings, lists, conflicts and PDF export; a separate process also verifies
+unavailable-folder startup recovery, relinking and non-destructive unregister.
+The pull-request workflow runs both suites and checks the smoke-test scripts'
 syntax, providing a virtual display for Electron. The `start`, Electron smoke
 test and distribution scripts build the editor and versioned manual through npm
 lifecycle scripts. VS Code's debug configurations also build these assets first.

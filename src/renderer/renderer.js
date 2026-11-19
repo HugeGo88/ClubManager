@@ -497,7 +497,7 @@ function settingsView() {
         ${activeFolder ? `<label>Bezeichnung dieses Datenordners<input data-folder-name value="${escape(activeFolder.name)}"></label>
           ${button('rename-folder', 'Bezeichnung speichern')}` : ''}
         <p>Beim Wechsel werden die Daten am neuen Speicherort geöffnet; vorhandene Daten werden nicht verschoben.</p>
-        ${state.dataFolders.length > 1 ? `<h3>Registrierte Datenordner</h3>
+        ${state.dataFolders.length ? `<h3>Registrierte Datenordner</h3>
           <ul class="folders-list">
             ${state.dataFolders.map(folder => `<li class="folder-item ${folder.available ? '' : 'unavailable'}">
               <div>
