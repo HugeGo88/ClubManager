@@ -335,7 +335,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.equal(await window.webContents.executeJavaScript('window.club.getProtocolCss()'), customizationCss);
         assert.equal(await fs.readFile(customizationCss, 'utf8'), 'body { color: rgb(9, 8, 7); }');
@@ -601,6 +601,27 @@ async function main() {
           editor.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
           await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('Sitzung gespeichert'));
           const savedScroll = document.querySelector('.content').scrollTop;
+          const savedMeetingRow = () => document.querySelector('[data-list-results] [data-action="select"]');
+          if (savedMeetingRow().querySelector('.meeting-lock-icon')) throw new Error('Legacy meetings without a read-only flag must not show a lock');
+          const readOnlyToggle = document.querySelector('[data-meeting-read-only]');
+          readOnlyToggle.checked = true;
+          readOnlyToggle.dispatchEvent(new Event('change', { bubbles: true }));
+          if (savedMeetingRow().querySelector('.meeting-lock-icon')) throw new Error('Unsaved read-only changes must not affect the meeting list');
+          await click('[data-action="save"]');
+          const lockIcon = await waitFor(() => savedMeetingRow()?.querySelector('.meeting-lock-icon'));
+          if (lockIcon.title !== 'Protokoll schreibgeschützt' ||
+              !savedMeetingRow().getAttribute('aria-label')?.endsWith(', Protokoll schreibgeschützt')) {
+            throw new Error('Saved read-only meetings need a labeled lock icon');
+          }
+          const lockConfirm = window.confirm;
+          window.confirm = () => true;
+          const unlockToggle = document.querySelector('[data-meeting-read-only]');
+          unlockToggle.checked = false;
+          unlockToggle.dispatchEvent(new Event('change', { bubbles: true }));
+          window.confirm = lockConfirm;
+          if (!savedMeetingRow().querySelector('.meeting-lock-icon')) throw new Error('Unsaved unlock changes must not affect the meeting list');
+          await click('[data-action="save"]');
+          await waitFor(() => !savedMeetingRow()?.querySelector('.meeting-lock-icon'));
           await click('[data-action="move-down"][data-index="0"]');
           const persistedChecks = [...document.querySelectorAll('[data-markdown-editor="1"] .markdown-task')].map(element => element.checked);
           const title = document.querySelector('[data-field="title"]');
@@ -728,7 +749,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1523,7 +1544,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
@@ -1914,7 +1935,7 @@ async function main() {
         assert.equal(pdfColors.at(-1), 'rgb(10, 20, 30)');
         const finalSettings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
         assert.equal(finalSettings.letterTemplate, null);
-        assert.deepEqual(finalSettings.signatures, []);
+        assert.equal(finalSettings.signatures, undefined);
         const signatureManifest = JSON.parse(await fs.readFile(path.join(customizationDirectory, 'signatures', 'manifest.json'), 'utf8'));
         assert.equal(signatureManifest.signatures.length, 2);
         selectedDataFolder = secondData;

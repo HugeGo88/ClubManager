@@ -66,6 +66,7 @@ main { flex: 1; min-width: 0; }
 .list .list-item { display: block; text-align: left; width: 100%; background: none; border: 0; border-radius: 6px; padding: 12px; color: inherit; }
 .list .list-item:hover, .list .list-item.selected { background: #eaf2fe; }
 .list-item small { display: block; color: #6c7889; margin-top: 4px; }
+.meeting-lock-icon { margin-left: 6px; color: #667487; font-size: 15px; vertical-align: middle; }
 .content { flex: 1; overflow: auto; padding: 34px 42px; }
 .meeting-stage.preview-open .content { min-width: 0; }
 .preview-splitter { position: relative; z-index: 1; cursor: col-resize; touch-action: none; background: #e1e6ed; }

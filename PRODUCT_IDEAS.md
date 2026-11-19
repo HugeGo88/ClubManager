@@ -92,6 +92,7 @@ items are still open, partially implemented, or ongoing design goals.
   task is reopened. Show task checkboxes and completion dates in the PDF.
 - [x] Protect individual protocols from accidental editing, with confirmation
   before unlocking and task completion still available.
+- [x] Show a lock icon in the saved-meetings list for protocols marked read-only.
 - [x] Include an Open Tasks submodule for checking outstanding meeting tasks and
   expanding their associated TOP details.
 - [x] Show current task totals and an estimated open-task trend in a Statistics

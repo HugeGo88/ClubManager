@@ -23,3 +23,9 @@ _Avoid_: app stylesheet
 **Signature library**:
 The named signatures available for use in letters for a data folder.
 _Avoid_: global signatures
+
+## Sitzungen
+
+**Protokoll-Schreibschutz**:
+Status eines Sitzungsprotokolls, in dem Protokollinhalte nicht bearbeitet werden können; Aufgaben bleiben davon ausgenommen.
+_Avoid_: Sitzung gesperrt

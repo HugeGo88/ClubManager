@@ -156,7 +156,10 @@ settings.json in userData    user-selected data folder
   responsible names, done state and optional due/completion dates. Decision
   TOPs may contain an outcome and optional vote counts. The editor disallows
   adding new tasks to a decision but preserves legacy decision tasks.
-  Storage validation is the source of truth for accepted fields and dates.
+  Storage validation is the source of truth for accepted fields and dates. The
+  saved-meetings list shows a lock icon and accessible read-only label for
+  records whose saved `readOnly` value is `true`; an absent legacy value is
+  treated as editable.
 - [src/main/letters.js](src/main/letters.js) stores individual letters as
   versioned `letters/<UUID>.json` files and their PDFs in `letters/pdf/`.
   Letters have optional manually entered structured addresses (company, name,

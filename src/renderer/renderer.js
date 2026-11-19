@@ -48,9 +48,14 @@ function savedListResults(module) {
       .join(' ').toLocaleLowerCase('de').includes(search));
   if (!records.length) return `<p>Noch keine ${plural} gespeichert.</p>`;
   if (!matches.length) return `<p>Keine ${plural} entsprechen der Suche.</p>`;
-  return matches.map(record =>
-    `<button class="list-item ${selected?.id === record.id ? 'selected' : ''}" data-action="${isMeeting ? 'select' : 'select-letter'}" data-id="${escape(record.id)}">
-      <strong>${escape(record.title || `${singular} ohne Titel`)}</strong><small>${escape(record.date ? formatDate(record.date) : 'Kein Datum')}</small></button>`).join('');
+  return matches.map(record => {
+    const title = record.title || `${singular} ohne Titel`;
+    const date = record.date ? formatDate(record.date) : 'Kein Datum';
+    const readOnly = isMeeting && record.readOnly === true;
+    const status = 'Protokoll schreibgeschützt';
+    return `<button class="list-item ${selected?.id === record.id ? 'selected' : ''}" data-action="${isMeeting ? 'select' : 'select-letter'}" data-id="${escape(record.id)}"${readOnly ? ` aria-label="${escape(`${title}, ${date}, ${status}`)}"` : ''}>
+      <strong>${escape(title)}${readOnly ? `<span class="material-icons meeting-lock-icon" aria-hidden="true" title="${status}">lock</span>` : ''}</strong><small>${escape(date)}</small></button>`;
+  }).join('');
 }
 
 function savedList(module, heading, action, label) {
