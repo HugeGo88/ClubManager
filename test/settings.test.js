@@ -14,15 +14,15 @@ test('loads legacy settings and persists PDF CSS independently of the data folde
   const folder = path.join(root, 'data');
   const protocolCss = path.join(root, 'protocol.css');
   const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
-  assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, legacySignatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await fs.writeFile(file, JSON.stringify({ folder }));
-  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, legacySignatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { dataFolders: [], activeFolder: null, protocolCss });
-  assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [], activeFolder: null, protocolCss, meetingTemplate: null, letterTemplate: null, legacySignatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss });
-  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss, meetingTemplate: null, letterTemplate: null, legacySignatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
   await saveSettings(file, { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null });
-  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
+  assert.deepEqual(await loadSettings(file), { dataFolders: [{ path: folder, name: 'data', available: true }], activeFolder: folder, protocolCss: null, meetingTemplate: null, letterTemplate: null, legacySignatures: [], modules: defaultModules, sidebarCollapsed: false, lastSeenVersion: null });
 });
 
 test('migrates the legacy folder and persists a registered folder list with an active folder', async t => {
@@ -82,19 +82,24 @@ test('persists and validates the meeting template path independently of shared C
   await assert.rejects(loadSettings(file), /HTML-Vorlage/);
 });
 
-test('persists letter templates and linked signatures', async t => {
+test('does not persist signatures to settings (kept per-folder instead)', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-settings-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const file = path.join(root, 'settings.json');
   const letterTemplate = path.join(root, 'letter.html');
-  const signatures = [{ id: randomUUID(), name: 'Alex', path: path.join(root, 'alex.svg') }];
-  await saveSettings(file, { letterTemplate, signatures });
+  const folder = path.join(root, 'data');
+  
+  // Signatures are not saved to settings.json
+  await saveSettings(file, { letterTemplate, dataFolders: [{ path: folder, name: 'data', available: true }] });
   assert.equal((await loadSettings(file)).letterTemplate, letterTemplate);
-  assert.deepEqual((await loadSettings(file)).signatures, signatures);
-  await assert.rejects(saveSettings(file, { signatures: [{ ...signatures[0], path: 'relative.svg' }] }), /Unterschriften/);
-  await assert.rejects(saveSettings(file, { signatures: [signatures[0], signatures[0]] }), /Unterschriften/);
-  await fs.writeFile(file, JSON.stringify({ letterTemplate: 'relative.html' }));
-  await assert.rejects(loadSettings(file), /Briefvorlage/);
+  assert.deepEqual((await loadSettings(file)).legacySignatures, []);
+  
+  // Legacy signatures in settings.json are read for migration
+  const legacySignatures = [{ id: randomUUID(), name: 'Alex', path: path.join(root, 'alex.svg') }];
+  await fs.writeFile(file, JSON.stringify({ letterTemplate, signatures: legacySignatures }));
+  const loaded = await loadSettings(file);
+  assert.deepEqual(loaded.legacySignatures, legacySignatures);
+  assert.deepEqual(loaded.letterTemplate, letterTemplate);
 });
 
 test('loads, validates and persists module enablement', async t => {

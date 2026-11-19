@@ -91,6 +91,8 @@ settings.json in userData    user-selected data folder
   module settings, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
+  Signatures are stored only within each folder's customization directory (never
+  app-wide), so each folder maintains an independent signature library.
   Current document customizations live inside each data folder:
   `customizations/pdf.css`, `customizations/meeting.html`,
   `customizations/letter.html` and `customizations/signatures/`. The signatures

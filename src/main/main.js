@@ -68,7 +68,7 @@ async function loadFolder() {
     protocolCss: config.protocolCss,
     meetingTemplate: config.meetingTemplate,
     letterTemplate: config.letterTemplate,
-    signatures: config.signatures
+    signatures: config.legacySignatures
   };
   enabledModules = config.modules;
   sidebarCollapsed = config.sidebarCollapsed;

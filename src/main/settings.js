@@ -5,7 +5,7 @@ const { atomicWrite } = require('./storage');
 const DEFAULT_MODULES = Object.freeze({ meetings: true, members: false, invoices: false, letters: false });
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function validateSignatures(signatures) {
+function validateLegacySignatures(signatures) {
   if (!Array.isArray(signatures) || signatures.some(item => !item || typeof item.id !== 'string' ||
       !ID.test(item.id) || typeof item.name !== 'string' || !item.name.trim() ||
       typeof item.path !== 'string' || !path.isAbsolute(item.path)) ||
@@ -54,7 +54,7 @@ async function loadSettings(file) {
     content = await fs.readFile(file, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [], modules: { ...DEFAULT_MODULES }, sidebarCollapsed: false, lastSeenVersion: null };
+    return { dataFolders: [], activeFolder: null, protocolCss: null, meetingTemplate: null, letterTemplate: null, legacySignatures: [], modules: { ...DEFAULT_MODULES }, sidebarCollapsed: false, lastSeenVersion: null };
   }
   let config;
   try {
@@ -87,11 +87,11 @@ async function loadSettings(file) {
   );
   const modules = config.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(config.modules);
   const sidebarCollapsed = config.sidebarCollapsed === undefined ? false : validateSidebarCollapsed(config.sidebarCollapsed);
-  const signatures = config.signatures === undefined ? [] : validateSignatures(config.signatures);
+  const legacySignatures = config.signatures === undefined ? [] : validateLegacySignatures(config.signatures);
   if (config.lastSeenVersion != null && (typeof config.lastSeenVersion !== 'string' || !config.lastSeenVersion.trim())) {
     throw new Error('Die gespeicherte App-Version ist ungültig.');
   }
-  return { dataFolders, activeFolder, protocolCss: config.protocolCss ?? null, meetingTemplate: config.meetingTemplate ?? null, letterTemplate: config.letterTemplate ?? null, signatures, modules, sidebarCollapsed, lastSeenVersion: config.lastSeenVersion ?? null };
+  return { dataFolders, activeFolder, protocolCss: config.protocolCss ?? null, meetingTemplate: config.meetingTemplate ?? null, letterTemplate: config.letterTemplate ?? null, legacySignatures, modules, sidebarCollapsed, lastSeenVersion: config.lastSeenVersion ?? null };
 }
 
 async function saveSettings(file, settings) {
@@ -99,7 +99,6 @@ async function saveSettings(file, settings) {
   const activeFolder = validateActiveFolder(settings.activeFolder, dataFolders);
   const modules = settings.modules === undefined ? { ...DEFAULT_MODULES } : validateModules(settings.modules);
   const sidebarCollapsed = settings.sidebarCollapsed === undefined ? false : validateSidebarCollapsed(settings.sidebarCollapsed);
-  const signatures = settings.signatures === undefined ? [] : validateSignatures(settings.signatures);
   if (settings.meetingTemplate != null && (typeof settings.meetingTemplate !== 'string' || !path.isAbsolute(settings.meetingTemplate))) {
     throw new Error('Der gespeicherte Pfad für HTML-Vorlage ist ungültig.');
   }
@@ -110,7 +109,7 @@ async function saveSettings(file, settings) {
     throw new Error('Die gespeicherte App-Version ist ungültig.');
   }
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await atomicWrite(file, JSON.stringify({ dataFolders, activeFolder, protocolCss: settings.protocolCss ?? null, meetingTemplate: settings.meetingTemplate ?? null, letterTemplate: settings.letterTemplate ?? null, signatures, modules, sidebarCollapsed, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
+  await atomicWrite(file, JSON.stringify({ dataFolders, activeFolder, protocolCss: settings.protocolCss ?? null, meetingTemplate: settings.meetingTemplate ?? null, letterTemplate: settings.letterTemplate ?? null, modules, sidebarCollapsed, lastSeenVersion: settings.lastSeenVersion ?? null }, null, 2) + '\n');
 }
 
-module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules, validateSidebarCollapsed, validateDataFolders, validateActiveFolder };
+module.exports = { loadSettings, saveSettings, DEFAULT_MODULES, validateModules, validateSidebarCollapsed, validateDataFolders, validateActiveFolder, validateLegacySignatures };
