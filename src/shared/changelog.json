@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.1.8",
+    "date": "2026-11-19",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Mehrere Datenspeicher können verwendet werden; die App verfolgt ihre Verfügbarkeit und bietet Wiederherstellungsmöglichkeiten.",
+          "Signaturen und PDF-Anpassungen werden im Datenordner gespeichert und sind auf mehrere Ordner verteilt."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.7",
     "date": "2026-11-16",
     "sections": [
