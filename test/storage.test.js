@@ -71,6 +71,23 @@ test('persists the optional meeting recorder and accepts legacy records without 
   assert.equal((await storage.listMeetings(folder))[0].meeting.recorder, '');
 });
 
+test('persists and validates an optional chair while accepting legacy meetings', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  let revision = await storage.saveMeeting(folder, data, null);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.chair, undefined);
+  data.chair = 'Alex & Sam';
+  revision = await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.chair, 'Alex & Sam');
+  for (const invalid of [null, 123, {}, []]) {
+    data.chair = invalid;
+    await assert.rejects(storage.saveMeeting(folder, data, revision), /Ungültige Sitzungsleitung/);
+  }
+  data.chair = '';
+  await storage.saveMeeting(folder, data, revision);
+  assert.equal((await storage.listMeetings(folder))[0].meeting.chair, '');
+});
+
 test('loads meetings across read batches and sorts them by date', async t => {
   const folder = await fixture(t);
   const records = [];

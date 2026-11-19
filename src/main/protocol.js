@@ -80,7 +80,7 @@ function renderTemplate(template, values) {
 }
 
 function validateProtocolTemplate(template) {
-  renderTemplate(template, { title: '', date: '', recorder: '', attendance: '', points: '', open_tasks: '' });
+  renderTemplate(template, { title: '', date: '', chair: '', recorder: '', attendance: '', points: '', open_tasks: '' });
 }
 
 function protocolHtml(meeting, css, earlierMeetings = [], template = null) {
@@ -103,18 +103,20 @@ function protocolHtml(meeting, css, earlierMeetings = [], template = null) {
     ).join('')}</ul>` : ''}</section>`;
   }).join('');
   const date = formatDate(meeting.date);
+  const chair = meeting.chair?.trim() ? escapeHtml(meeting.chair.trim()) : '';
   const recorder = meeting.recorder?.trim() ? escapeHtml(meeting.recorder.trim()) : '';
   const attendanceContent = attendance || '<p>Keine Anwesenheit erfasst.</p>';
   const pointsContent = points || '<p>Keine TOPs vorhanden.</p>';
   const openTasks = openTasksHtml([meeting, ...earlierMeetings]);
   const body = template === null
     ? `<main><h1>${escapeHtml(meeting.title)}${date ? ` — ${escapeHtml(date)}` : ''}</h1>
+    ${chair ? `<p class="chair">Sitzungsleitung: ${chair}</p>` : ''}
     ${recorder ? `<p class="recorder">Protokollführer/in: ${recorder}</p>` : ''}
     <h2>Anwesenheit</h2>${attendanceContent}
     <h2>TOPs</h2>${pointsContent}
     ${openTasks}</main>`
     : renderTemplate(template, {
-      title: escapeHtml(meeting.title), date: escapeHtml(date), recorder,
+      title: escapeHtml(meeting.title), date: escapeHtml(date), chair, recorder,
       attendance: attendanceContent, points: pointsContent, open_tasks: openTasks
     });
   const pageLayout = `@page {

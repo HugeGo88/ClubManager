@@ -28,7 +28,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
 const button = (action, text, extra = '') => `<button class="action ${extra}" data-action="${action}">${text}</button>`;
 
 function blankMeeting() {
-  return { id: crypto.randomUUID(), title: '', date: '', recorder: '', attendance: [], points: [] };
+  return { id: crypto.randomUUID(), title: '', date: '', chair: '', recorder: '', attendance: [], points: [] };
 }
 
 function blankLetter() {
@@ -212,6 +212,7 @@ function meetingEditor(meeting) {
     <div class="card"><div class="fields">
       <label>Titel der Sitzung<input data-field="title" value="${escape(meeting.title)}" placeholder="Titel der Sitzung"></label>
       <label>Datum<input type="date" data-field="date" value="${escape(meeting.date)}"></label>
+      <label>Sitzungsleitung (optional)<input data-field="chair" value="${escape(meeting.chair ?? '')}" placeholder="Name der Person"></label>
       <label>Protokollführer/in (optional)<input data-field="recorder" value="${escape(meeting.recorder ?? '')}" placeholder="Name der Person"></label>
     </div></div>
     <div class="card"><div class="card-header"><h2>Anwesenheit</h2>${button('add-person', '+ Person hinzufügen')}</div>
@@ -491,7 +492,7 @@ function settingsView() {
       <p class="muted">${state.modules[selected[0]] ? 'Das Modul wird in der Seitenleiste angezeigt.' : 'Das Modul ist deaktiviert und wird aus der Seitenleiste ausgeblendet.'}</p>
       ${selected[0] === 'meetings' ? `<h2>HTML-Vorlage für Sitzungsprotokolle</h2>
         <p>Optional: Importieren Sie eine HTML-Datei in den Anpassungsordner dieses Datenordners. Die gemeinsame CSS-Datei gilt weiterhin.</p>
-        <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{recorder}}</code>, <code>{{attendance}}</code>, <code>{{points}}</code>, <code>{{open_tasks}}</code>.</p>
+        <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{chair}}</code>, <code>{{recorder}}</code>, <code>{{attendance}}</code>, <code>{{points}}</code>, <code>{{open_tasks}}</code>.</p>
         <p class="path" data-meeting-template>${escape(state.meetingTemplate || 'Standardvorlage wird verwendet')}</p>
         <div class="row"><button class="action" data-action="choose-meeting-template" ${state.folder ? '' : 'disabled'}>HTML-Vorlage importieren</button>${state.meetingTemplate ? button('reset-meeting-template', 'Vorlage zurücksetzen') : ''}</div>
         <p>Die importierte Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>` : ''}

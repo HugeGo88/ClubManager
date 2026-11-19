@@ -101,6 +101,7 @@ items are still open, partially implemented, or ongoing design goals.
   TOP type and protocol.
 - [x] Record attendance for each meeting, distinguishing attendees, people absent
   with an excuse, and people absent without an excuse.
+- [x] Record an optional meeting chair and recorder and include them in the protocol.
 - [x] Generate a meeting protocol PDF and store it in `meetings/protocols`.
 - [x] Build the meeting protocol PDF using HTML and CSS, with an optional custom
   stylesheet.

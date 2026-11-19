@@ -54,6 +54,9 @@ function validateMeeting(meeting) {
   if (meeting.recorder !== undefined && !string(meeting.recorder)) {
     throw new Error('Ungültige Protokollführung.');
   }
+  if (meeting.chair !== undefined && !string(meeting.chair)) {
+    throw new Error('Ungültige Sitzungsleitung.');
+  }
   if (meeting.readOnly !== undefined && typeof meeting.readOnly !== 'boolean') {
     throw new Error('Ungültiger Schreibschutz für die Sitzung.');
   }

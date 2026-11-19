@@ -420,6 +420,7 @@ async function main() {
             element.dispatchEvent(new Event('input', { bubbles: true }));
           };
           setInput('[data-field="title"]', 'Beispiel: Vorstandssitzung');
+          setInput('[data-field="chair"]', 'Alex & Sam');
           const dirtyEditor = document.querySelector('[data-markdown-editor="0"] .cm-editor');
           const sidebarToggle = document.querySelector('[data-action="toggle-sidebar"]');
           sidebarToggle.click();
@@ -600,6 +601,7 @@ async function main() {
           editor.focus({ preventScroll: true });
           editor.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
           await waitFor(() => document.querySelector('[role="status"]')?.textContent.includes('Sitzung gespeichert'));
+          if (document.querySelector('[data-field="chair"]').value !== 'Alex & Sam') throw new Error('Meeting chair must persist after saving');
           const savedScroll = document.querySelector('.content').scrollTop;
           const savedMeetingRow = () => document.querySelector('[data-list-results] [data-action="select"]');
           if (savedMeetingRow().querySelector('.meeting-lock-icon')) throw new Error('Legacy meetings without a read-only flag must not show a lock');
@@ -735,6 +737,7 @@ async function main() {
         assert.ok(jsonFile);
         const saved = JSON.parse(await fs.readFile(path.join(meetingsDir, jsonFile), 'utf8'));
         assert.equal(saved.meeting.title, 'Beispiel: Vorstandssitzung aktualisiert');
+        assert.equal(saved.meeting.chair, 'Alex & Sam');
         assert.equal(saved.meeting.points[0].headline, 'Budget');
         assert.deepEqual(saved.meeting.points[0].vote, { result: 'accepted', yes: 5, no: 1, abstain: 0 });
         assert.equal(saved.meeting.points[1].headline, 'Kommende Veranstaltung');
@@ -745,6 +748,7 @@ async function main() {
         assert.equal(saved.meeting.points[1].details, '   # Planung\n**Fett** und *kursiv* [Web](https://example.com)\n<u>Unterstrichen</u> und ~~Durchgestrichen~~\n[x](https://a "mehr\nZeilen")\n\n- Apfel\n  - Birne\n\n1. Eins\n2. Zwei\n\n- [x] Offen\n- [x] Fertig');
         const pdf = await fs.readFile(path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`));
         assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+        assert.match(pdfDocuments[0], /<p class="chair">Sitzungsleitung: Alex &amp; Sam<\/p>/);
         assert.deepEqual(pdfColors, ['rgb(9, 8, 7)']);
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
@@ -1444,6 +1448,7 @@ async function main() {
           };
           document.querySelector('[data-meeting-read-only]').click();
           if (!document.querySelector('[data-field="title"]').disabled ||
+              !document.querySelector('[data-field="chair"]').disabled ||
               !document.querySelector('[data-person="0"][data-field="name"]').disabled ||
               !document.querySelector('[data-point="0"][data-vote-result]').disabled ||
               !document.querySelector('[data-action="add-point"]').disabled ||

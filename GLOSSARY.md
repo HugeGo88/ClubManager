@@ -26,6 +26,9 @@ _Avoid_: global signatures
 
 ## Sitzungen
 
+**Sitzungsleitung**:
+Die Person, die eine Sitzung leitet; sie kann zugleich die Protokollführung übernehmen.
+
 **Protokoll-Schreibschutz**:
 Status eines Sitzungsprotokolls, in dem Protokollinhalte nicht bearbeitet werden können; Aufgaben bleiben davon ausgenommen.
 _Avoid_: Sitzung gesperrt

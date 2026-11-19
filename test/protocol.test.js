@@ -87,6 +87,18 @@ test('renders optional recorder in the default protocol and supports it in custo
   assert.doesNotThrow(() => validateProtocolTemplate('<main>{{recorder}}</main>'));
 });
 
+test('renders optional chair safely in the default protocol and custom templates', () => {
+  const meeting = { title: 'Sitzung', date: '', chair: ' Alex & <Sam> ', attendance: [], points: [] };
+  assert.match(protocolHtml(meeting, ''), /<p class="chair">Sitzungsleitung: Alex &amp; &lt;Sam&gt;<\/p>/);
+  for (const chair of [undefined, '', '  ']) {
+    assert.doesNotMatch(protocolHtml({ ...meeting, chair }, ''), /class="chair"/);
+    assert.match(protocolHtml({ ...meeting, chair }, '', [], '<main>{{chair}}</main>'), /<main><\/main>/);
+  }
+  assert.match(protocolHtml(meeting, '', [], '<main>{{chair}}</main>'), /<main>Alex &amp; &lt;Sam&gt;<\/main>/);
+  assert.doesNotMatch(protocolHtml(meeting, '', [], '<main>{{title}}</main>'), /Sitzungsleitung|Alex/);
+  assert.doesNotThrow(() => validateProtocolTemplate('<main>{{chair}}</main>'));
+});
+
 test('includes escaped TOP responsibility only when provided', () => {
   const html = protocolHtml({ title: 'Sitzung', date: '', attendance: [], points: [
     { headline: 'Eins', type: 'info', details: '', tasks: [], responsible: 'Alex & <Sam>' },

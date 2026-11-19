@@ -21,7 +21,7 @@ Registrierte Datenordner werden in **Einstellungen → Allgemein** aufgelistet. 
 
 ## Sitzungen
 
-Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf Protokollführer/in und Teilnahme. Datumsfelder zeigen das deutsche Format (TT.MM.JJJJ); die Kalenderwoche beginnt am Montag. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.
+Wählen Sie **Sitzungen → Neue Sitzung**, geben Sie Titel und Datum ein und erfassen Sie bei Bedarf Sitzungsleitung, Protokollführer/in und Teilnahme. Sitzungsleitung und Protokollführung können dieselbe Person sein. Datumsfelder zeigen das deutsche Format (TT.MM.JJJJ); die Kalenderwoche beginnt am Montag. Fügen Sie Tagesordnungspunkte (TOPs) hinzu und wählen Sie deren Typ: Information, Diskussion oder Entscheidung.
 
 Details können in Markdown geschrieben und mit den Formatierungsschaltflächen bearbeitet werden. Aufgaben unter einem TOP haben eine Beschreibung, Verantwortliche und optional ein Fälligkeitsdatum. Bei Entscheidungen können Sie ein Abstimmungsergebnis und gegebenenfalls Stimmenzahlen erfassen. Neue Aufgaben können nur bei Informations- und Diskussionsthemen hinzugefügt werden.
 
@@ -56,7 +56,7 @@ Importierte CSS- und HTML-Dateien werden in den Anpassungsordner des Datenordner
 
 Bestehende app-weite Vorlagen, CSS-Dateien und Unterschriften werden in den aktiven Datenordner kopiert. Gibt es keinen aktiven Ordner, erfolgt die Migration beim ersten Auswählen eines Ordners. Bereits vorhandene Dateien am Ziel bleiben erhalten; ClubManager meldet den Konflikt, statt sie zu überschreiben.
 
-Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. Wenn Sie mehrere Datenordner verwenden, bleiben Vorlagen, CSS und Unterschriften jeweils beim zugehörigen Ordner.
+Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. In eigenen Sitzungsvorlagen fügt `{{chair}}` den Namen der Sitzungsleitung ein; bestehende Vorlagen müssen dafür ergänzt werden. Wenn Sie mehrere Datenordner verwenden, bleiben Vorlagen, CSS und Unterschriften jeweils beim zugehörigen Ordner.
 
 ## Daten und Aktualisierungen
 

@@ -149,7 +149,7 @@ settings.json in userData    user-selected data folder
   reported rather than silently skipped; startup reads meeting records in
   batches of at most eight files to reduce serial I/O without unbounded
   concurrency. There is no version migration for unsupported meeting formats.
-- Meeting data contains a title, optional date, an optional recorder name, an
+- Meeting data contains a title, optional date, optional chair and recorder names, an
   optional Boolean `readOnly` flag (absent in legacy records), attendance entries and ordered
   TOPs. A TOP has a headline, `discussion`/`decision`/`info` type, Markdown
   details, optional responsible person and tasks. Tasks include description,
@@ -187,14 +187,14 @@ optional `customizations/pdf.css` replaces the stylesheet for both PDF types
 and is reread on each export; it does not affect the app UI. Missing local CSS
 or templates independently use their corresponding packaged defaults. Present
 but unreadable or invalid custom files are errors rather than fallbacks.
-The optional meeting-specific HTML body template places escaped title/date and
-recorder name and generated attendance, TOP and open-task sections using
-documented placeholders, including `{{recorder}}`;
+The optional meeting-specific HTML body template places escaped title/date,
+chair and recorder names and generated attendance, TOP and open-task sections using
+documented placeholders, including `{{chair}}` and `{{recorder}}`;
 template HTML is sanitized and validated both on import and export. Without a
 local template the existing built-in layout is used.
 
 The PDF contains attendance grouped by status, TOPs, decision results and
-tasks, plus the optional recorder name. Its final open-task section groups by responsible person; comma- and
+tasks, plus the optional chair and recorder names. Its final open-task section groups by responsible person; comma- and
 semicolon-separated names place a task under each person. An optional export
 checkbox includes open tasks from saved meetings with valid dates strictly
 before the current meeting; the current meeting must have a valid date. The
