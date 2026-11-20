@@ -1,7 +1,10 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: {}, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
-const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
+const letterState = {
+  letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [],
+  placeholders: [], placeholdersRevision: null, placeholdersDirty: false
+};
 const listSearch = { meetings: '', letters: '' };
 let manual = null;
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '', showCompleted: false };
@@ -19,6 +22,7 @@ const MODULES = [
   ['invoices', 'Rechnungen', 'Rechnungen erstellen und verwalten'],
   ['letters', 'Briefe', 'Serienbriefe und persönliche Briefe']
 ];
+const LETTER_PLACEHOLDER_RESERVED = new Set(['title', 'date', 'address', 'content', 'signatures']);
 let markdownEditors = [];
 let taskDateRefresh;
 let displayedTaskDate;
@@ -101,10 +105,14 @@ function confirmDiscard() {
 }
 
 function confirmFolderSwitch(reason = 'Ordnerwechsel') {
-  if (!state.dirty) return Promise.resolve('discard');
+  if (!state.dirty && !letterState.placeholdersDirty) return Promise.resolve('discard');
+  const changes = [
+    state.dirty ? 'Sitzungs- oder Briefentwurf' : '',
+    letterState.placeholdersDirty ? 'benutzerdefinierte Briefplatzhalter' : ''
+  ].filter(Boolean).join(' und ');
   const dialog = document.createElement('dialog');
   dialog.className = 'folder-switch-dialog';
-  dialog.innerHTML = `<form method="dialog"><p>Es gibt ungespeicherte Änderungen. Möchten Sie sie vor dem ${reason} speichern?</p>
+  dialog.innerHTML = `<form method="dialog"><p>Es gibt ungespeicherte Änderungen (${changes}). Möchten Sie sie vor dem ${reason} speichern?</p>
     <div class="row"><button class="action primary" value="save">Speichern</button>
     <button class="action" value="discard">Verwerfen</button>
     <button class="action" value="cancel">Abbrechen</button></div></form>`;
@@ -132,6 +140,16 @@ async function saveCurrentDraft() {
   state.dirty = false;
 }
 
+async function saveCurrentLetterPlaceholders() {
+  const saved = await window.club.saveLetterPlaceholders(letterState.placeholders, {
+    folder: state.folder,
+    revision: letterState.placeholdersRevision
+  });
+  letterState.placeholders = saved.placeholders;
+  letterState.placeholdersRevision = saved.revision;
+  letterState.placeholdersDirty = false;
+}
+
 function editedModule() {
   return state.meeting ? 'meetings' : letterState.letter ? 'letters' : null;
 }
@@ -139,7 +157,10 @@ function editedModule() {
 async function guardDraft(reason) {
   const choice = await confirmFolderSwitch(reason);
   if (choice === 'cancel') return false;
-  if (choice === 'save') await saveCurrentDraft();
+  if (choice === 'save') {
+    if (state.dirty) await saveCurrentDraft();
+    if (letterState.placeholdersDirty) await saveCurrentLetterPlaceholders();
+  }
   return true;
 }
 
@@ -209,6 +230,9 @@ async function adoptActiveFolder(result) {
   state.meetingTemplate = meetingTemplate;
   letterState.template = letterSettings.template;
   letterState.signatures = letterSettings.signatures;
+  letterState.placeholders = letterSettings.placeholders;
+  letterState.placeholdersRevision = letterSettings.placeholdersRevision;
+  letterState.placeholdersDirty = false;
   clearEditor();
   await refresh();
 }
@@ -546,6 +570,26 @@ function updateOverdueBadge() {
   if (state.sidebarCollapsed) nav.title = nav.getAttribute('aria-label');
 }
 
+function validLetterPlaceholderKey(key) {
+  return /^[a-z][a-z0-9_]*$/.test(key) && !LETTER_PLACEHOLDER_RESERVED.has(key);
+}
+
+function letterPlaceholderRows() {
+  if (!letterState.placeholders.length) return '<p>Es sind noch keine benutzerdefinierten Briefplatzhalter angelegt.</p>';
+  return letterState.placeholders.map(({ key, value }, index) => {
+    const token = validLetterPlaceholderKey(key) ? `{{${key}}}` : null;
+    return `<div class="letter-placeholder-row">
+      <label>Schlüssel<input data-letter-placeholder-key="${index}" value="${escape(key)}" autocomplete="off"></label>
+      <label>Wert<input data-letter-placeholder-value="${index}" value="${escape(value)}"></label>
+      <div class="row">
+        <code data-letter-placeholder-token="${index}">${escape(token || '—')}</code>
+        <button type="button" class="action" data-action="copy-letter-placeholder" data-token="${escape(token || '')}" ${token ? '' : 'disabled'}>Token kopieren</button>
+        <button type="button" class="action" data-action="remove-letter-placeholder" data-index="${index}" aria-label="Briefplatzhalter ${escape(key || 'ohne Schlüssel')} entfernen">Entfernen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function settingsView() {
   const selected = settingsTab === 'general' ? null : MODULES.find(([id]) => id === settingsTab);
   const tabs = [['general', 'Allgemein'], ...MODULES.map(([id, name]) => [id, name])];
@@ -566,6 +610,14 @@ function settingsView() {
         <p>Platzhalter: <code>{{title}}</code>, <code>{{date}}</code>, <code>{{address}}</code>, <code>{{content}}</code>, <code>{{signatures}}</code>.</p>
         <p class="path" data-letter-template>${escape(letterState.template || 'Standardvorlage wird verwendet')}</p>
         <div class="row"><button class="action" data-action="choose-letter-template" ${state.folder ? '' : 'disabled'}>HTML-Vorlage importieren</button>${letterState.template ? button('reset-letter-template', 'Vorlage zurücksetzen') : ''}</div>
+        <h2>Benutzerdefinierte Briefplatzhalter</h2>
+        <p>Diese einzeiligen Textwerte gelten für alle Briefe dieses Datenordners. Schlüssel beginnen mit einem Kleinbuchstaben; danach sind Kleinbuchstaben, Zahlen und Unterstriche erlaubt. Die eingebauten Schlüssel sind reserviert. Verwenden Sie die Tokens in Textbereichen Ihrer HTML-Vorlage oder im Briefinhalt (Markdown), nicht in HTML-Attributen. Speichern Sie Änderungen vor dem Import einer Vorlage.</p>
+        ${letterPlaceholderRows()}
+        <div class="row letter-placeholder-actions">
+          <button type="button" class="action" data-action="add-letter-placeholder" ${state.folder ? '' : 'disabled'}>Platzhalter hinzufügen</button>
+          <button type="button" class="action primary" data-action="save-letter-placeholders" ${state.folder && letterState.placeholdersDirty ? '' : 'disabled'}>Platzhalter speichern</button>
+          <button type="button" class="action" data-action="reload-letter-placeholders" ${state.folder ? '' : 'disabled'}>Platzhalter neu laden</button>
+        </div>
         <h2>Unterschriften</h2><p>Importierte Unterschriften werden im Anpassungsordner dieses Datenordners gespeichert.</p>
         ${letterState.signatures.map(item => `<div class="row"><span>${escape(item.name)} — <span class="path">${escape(item.path)}</span></span><button class="action" data-action="remove-signature" data-id="${escape(item.id)}" aria-label="Unterschrift ${escape(item.name)} entfernen">Entfernen</button></div>`).join('')}
         <button class="action" data-action="choose-signature" ${state.folder ? '' : 'disabled'}>Unterschrift hinzufügen</button>` : ''}
@@ -852,6 +904,9 @@ async function run(action, target) {
         state.meetingTemplate = null;
         letterState.template = null;
         letterState.signatures = [];
+        letterState.placeholders = [];
+        letterState.placeholdersRevision = null;
+        letterState.placeholdersDirty = false;
         await changeView('settings');
         settingsTab = 'general';
         setMessage('Datenordner entfernt. Wählen Sie einen verfügbaren Ordner aus.');
@@ -898,6 +953,33 @@ async function run(action, target) {
       await window.club.resetLetterTemplate();
       letterState.template = null;
       setMessage('Die Standardvorlage für Briefe wird verwendet.');
+      break;
+    case 'add-letter-placeholder':
+      letterState.placeholders.push({ key: '', value: '' });
+      letterState.placeholdersDirty = true;
+      break;
+    case 'remove-letter-placeholder':
+      letterState.placeholders.splice(i, 1);
+      letterState.placeholdersDirty = true;
+      break;
+    case 'save-letter-placeholders':
+      await saveCurrentLetterPlaceholders();
+      setMessage('Benutzerdefinierte Briefplatzhalter gespeichert.');
+      break;
+    case 'reload-letter-placeholders': {
+      if (letterState.placeholdersDirty &&
+          !window.confirm('Ungespeicherte Briefplatzhalter verwerfen und die Einstellungen aus dem Datenordner neu laden?')) break;
+      const letterSettings = await window.club.getLetterSettings();
+      letterState.placeholders = letterSettings.placeholders;
+      letterState.placeholdersRevision = letterSettings.placeholdersRevision;
+      letterState.placeholdersDirty = false;
+      setMessage('Briefplatzhalter wurden neu geladen.');
+      break;
+    }
+    case 'copy-letter-placeholder':
+      if (!navigator.clipboard?.writeText) throw new Error('Die Zwischenablage ist nicht verfügbar.');
+      await navigator.clipboard.writeText(target.dataset.token);
+      setMessage(`Platzhalter ${target.dataset.token} kopiert.`);
       break;
     case 'open-customizations':
       await window.club.openCustomizationDirectory();
@@ -1254,6 +1336,30 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.hasAttribute('data-letter-placeholder-key') ||
+      target.hasAttribute('data-letter-placeholder-value')) {
+    const index = Number(target.dataset.letterPlaceholderKey ?? target.dataset.letterPlaceholderValue);
+    const placeholder = letterState.placeholders[index];
+    if (!placeholder) return;
+    if (target.hasAttribute('data-letter-placeholder-key')) {
+      placeholder.key = target.value;
+      const row = target.closest('.letter-placeholder-row');
+      const token = validLetterPlaceholderKey(placeholder.key) ? `{{${placeholder.key}}}` : null;
+      const tokenElement = row.querySelector('code[data-letter-placeholder-token]');
+      const copyButton = row.querySelector('[data-action="copy-letter-placeholder"]');
+      if (tokenElement) tokenElement.textContent = token || 'Ungültiger Schlüssel';
+      if (copyButton) {
+        copyButton.dataset.token = token || '';
+        copyButton.disabled = !token;
+      }
+    } else {
+      placeholder.value = target.value;
+    }
+    letterState.placeholdersDirty = true;
+    const saveButton = app.querySelector('[data-action="save-letter-placeholders"]');
+    if (saveButton) saveButton.disabled = !state.folder;
+    return;
+  }
   if (target.dataset.listSearch) {
     const module = target.dataset.listSearch;
     listSearch[module] = target.value;
@@ -1366,17 +1472,22 @@ app.addEventListener('change', event => {
 });
 
 window.addEventListener('beforeunload', event => {
-  if (state.dirty) { event.preventDefault(); event.returnValue = ''; }
+  if (state.dirty || letterState.placeholdersDirty) { event.preventDefault(); event.returnValue = ''; }
 });
 
 window.club.onPrepareUpdate(async () => {
   if (!confirmDiscard()) return;
+  if (letterState.placeholdersDirty &&
+      !window.confirm('Ungespeicherte Briefplatzhalter verwerfen und das Update fortsetzen?')) return;
   const wasDirty = state.dirty;
+  const werePlaceholdersDirty = letterState.placeholdersDirty;
   state.dirty = false;
+  letterState.placeholdersDirty = false;
   try {
     await window.club.installUpdate();
   } catch (error) {
     state.dirty = wasDirty;
+    letterState.placeholdersDirty = werePlaceholdersDirty;
     setMessage(error.message, true);
     render();
   }
@@ -1418,6 +1529,9 @@ window.club.onPrepareUpdate(async () => {
     state.sidebarCollapsed = sidebarCollapsed;
     letterState.template = letterSettings.template;
     letterState.signatures = letterSettings.signatures;
+    letterState.placeholders = letterSettings.placeholders;
+    letterState.placeholdersRevision = letterSettings.placeholdersRevision;
+    letterState.placeholdersDirty = false;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     state.meetings = state.folder ? await window.club.listMeetings() : [];
     letterState.letters = state.folder && state.view === 'letters' ? await window.club.listLetters() : [];

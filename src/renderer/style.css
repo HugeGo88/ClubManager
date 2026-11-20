@@ -49,6 +49,9 @@ button { cursor: pointer; }
 .settings-tab.selected { border-bottom-color: #2867c7; font-weight: 700; }
 .settings-tab:focus-visible { outline: 2px solid #2867c7; outline-offset: -2px; }
 .module-toggle { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.letter-placeholder-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(180px, 2fr) auto; align-items: end; gap: 10px; padding: 10px 0; border-top: 1px solid #e1e6ed; }
+.letter-placeholder-row .row, .letter-placeholder-actions { flex-wrap: wrap; }
+.letter-placeholder-row code { padding: 8px 0; }
 #app { display: flex; flex: 1; min-width: 0; height: 100vh; min-height: 0; flex-direction: column; }
 main { flex: 1; min-width: 0; }
 .app-header { display: flex; flex: 0 0 68px; align-items: center; justify-content: flex-end; gap: 12px; padding: 8px 24px; background: white; border-bottom: 1px solid #e1e6ed; }

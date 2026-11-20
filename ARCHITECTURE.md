@@ -95,9 +95,18 @@ settings.json in userData    user-selected data folder
   app-wide), so each folder maintains an independent signature library.
   Current document customizations live inside each data folder:
   `customizations/pdf.css`, `customizations/meeting.html`,
-  `customizations/letter.html` and `customizations/signatures/`. The signatures
-  directory includes a versioned manifest and copied image files. Missing
-  customization files are independent; each uses its packaged default.
+  `customizations/letter.html`, `customizations/letter-placeholders.json` and
+  `customizations/signatures/`. The signatures directory includes a versioned
+  manifest and copied image files. The letter-placeholder file is a versioned,
+  folder-local list of unique lowercase keys and single-line text values shared
+  by all letters in that folder; a missing file means no custom placeholders.
+  Built-in letter keys are reserved.
+  Settings values are HTML-escaped and can be used in the Markdown letter body
+  and in text content of a letter template, not template attributes. Unknown
+  keys fail template validation and export rather than being silently omitted.
+  Saves compare the loaded revision before atomic replacement; conflicts require
+  reloading the values. Missing CSS and template files are independent; each
+  uses its packaged default.
   Imports copy validated files into these standard locations, so exports do
   not depend on the source path. CSS syntax and HTML template placeholders are
   validated before import. Users can open the customization directory

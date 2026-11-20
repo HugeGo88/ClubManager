@@ -26,6 +26,8 @@ let protocolCss = null;
 let meetingTemplate = null;
 let letterTemplate = null;
 let signatures = [];
+let letterPlaceholders = [];
+let letterPlaceholdersRevision = null;
 let moduleSettings = { modules: {}, revision: null };
 const configuredModuleFolders = new Set();
 let legacyModules = {};
@@ -134,7 +136,7 @@ async function loadFolder() {
   const hadLegacyCustomizations = hasLegacyDocumentCustomizations();
   const conflicts = await migrateLegacyDocumentCustomizations(config.activeFolder);
   if (hadLegacyCustomizations || !selectionWasKnown) await persistSettings();
-  ({ protocolCss, meetingTemplate, letterTemplate, signatures } =
+  ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } =
     await loadFolderCustomizations(config.activeFolder));
   folder = config.activeFolder;
   moduleSettings = selection;
@@ -187,7 +189,10 @@ async function migrateLegacyDocumentCustomizations(folderPath) {
   if (!hasLegacyDocumentCustomizations()) return [];
   if (legacyDocumentCustomizations.protocolCss) await readProtocolCss(legacyDocumentCustomizations.protocolCss);
   if (legacyDocumentCustomizations.meetingTemplate) await readMeetingTemplate(legacyDocumentCustomizations.meetingTemplate);
-  if (legacyDocumentCustomizations.letterTemplate) await readLetterTemplate(legacyDocumentCustomizations.letterTemplate);
+  if (legacyDocumentCustomizations.letterTemplate) {
+    const customPlaceholders = await letters.loadLetterPlaceholders(folderPath);
+    await readLetterTemplate(legacyDocumentCustomizations.letterTemplate, customPlaceholders.placeholders);
+  }
   for (const signature of legacyDocumentCustomizations.signatures) await readSignature(signature);
   const { conflicts } = await documentCustomizations.migrateLegacyCustomizations(folderPath, legacyDocumentCustomizations);
   legacyDocumentCustomizations = { protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [] };
@@ -195,17 +200,20 @@ async function migrateLegacyDocumentCustomizations(folderPath) {
 }
 
 async function loadFolderCustomizations(folderPath) {
-  const [customProtocolCss, customMeetingTemplate, customLetterTemplate, folderSignatures] = await Promise.all([
+  const [customProtocolCss, customMeetingTemplate, customLetterTemplate, folderSignatures, folderLetterPlaceholders] = await Promise.all([
     documentCustomizations.customizationPath(folderPath, 'protocolCss'),
     documentCustomizations.customizationPath(folderPath, 'meetingTemplate'),
     documentCustomizations.customizationPath(folderPath, 'letterTemplate'),
-    documentCustomizations.loadSignatures(folderPath)
+    documentCustomizations.loadSignatures(folderPath),
+    letters.loadLetterPlaceholders(folderPath)
   ]);
   return {
     protocolCss: customProtocolCss,
     meetingTemplate: customMeetingTemplate,
     letterTemplate: customLetterTemplate,
-    signatures: folderSignatures
+    signatures: folderSignatures,
+    letterPlaceholders: folderLetterPlaceholders.placeholders,
+    letterPlaceholdersRevision: folderLetterPlaceholders.revision
   };
 }
 
@@ -231,7 +239,7 @@ async function activateFolder(selected) {
   configuredFolder = selected;
   folder = selected;
   moduleSettings = selection;
-  ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
+  ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } = customizations);
   return { folder: selected, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
 }
 
@@ -262,11 +270,11 @@ async function readMeetingTemplate(file) {
   return template;
 }
 
-async function readLetterTemplate(file) {
+async function readLetterTemplate(file, customPlaceholders = letterPlaceholders) {
   let template;
   try { template = await fs.readFile(file, 'utf8'); }
   catch (error) { throw new Error(`Die Briefvorlage konnte nicht gelesen werden: ${error.message}`); }
-  letters.validateLetterTemplate(template);
+  letters.validateLetterTemplate(template, customPlaceholders);
   return template;
 }
 
@@ -427,7 +435,7 @@ function registerHandlers() {
         configuredFolder = newPath;
         folder = newPath;
         moduleSettings = selection;
-        ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
+        ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } = customizations);
       }
       return { ...folderRegistry(), path: newPath };
     });
@@ -450,6 +458,8 @@ function registerHandlers() {
       meetingTemplate = null;
       letterTemplate = null;
       signatures = [];
+      letterPlaceholders = [];
+      letterPlaceholdersRevision = null;
       moduleSettings = { modules: {}, revision: null };
     }
     return folderRegistry();
@@ -524,16 +534,42 @@ function registerHandlers() {
     await documentCustomizations.resetCustomization(requireFolder(), 'meetingTemplate');
     meetingTemplate = null;
   }));
-  ipcMain.handle('letter-settings:get', () => ({ template: letterTemplate, signatures: signatures.map(item => ({ ...item })) }));
+  ipcMain.handle('letter-settings:get', () => serializeWrite(async () => {
+    if (folder) {
+      const currentPlaceholders = await letters.loadLetterPlaceholders(folder);
+      letterPlaceholders = currentPlaceholders.placeholders;
+      letterPlaceholdersRevision = currentPlaceholders.revision;
+    }
+    return {
+      template: letterTemplate,
+      signatures: signatures.map(item => ({ ...item })),
+      placeholders: letterPlaceholders.map(item => ({ ...item })),
+      placeholdersRevision: letterPlaceholdersRevision
+    };
+  }));
+  ipcMain.handle('letter-placeholders:set', (event, customPlaceholders, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) {
+      throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Briefplatzhalter neu.');
+    }
+    const saved = await letters.saveLetterPlaceholders(active, customPlaceholders, base.revision);
+    letterPlaceholders = saved.placeholders;
+    letterPlaceholdersRevision = saved.revision;
+    return saved;
+  }));
   ipcMain.handle('letter-template:choose', async () => {
     const currentFolder = requireFolder();
     const result = await dialog.showOpenDialog(mainWindow, { title: 'HTML-Vorlage für Briefe auswählen', properties: ['openFile'], filters: [{ name: 'HTML-Dateien', extensions: ['html', 'htm'] }] });
     if (result.canceled) return null;
     return serializeWrite(async () => {
       const file = result.filePaths[0];
+      const currentPlaceholders = await letters.loadLetterPlaceholders(currentFolder);
       const imported = await documentCustomizations.importCustomization(
-        currentFolder, 'letterTemplate', file, letters.validateLetterTemplate);
+        currentFolder, 'letterTemplate', file,
+        template => letters.validateLetterTemplate(template, currentPlaceholders.placeholders));
       letterTemplate = imported;
+      letterPlaceholders = currentPlaceholders.placeholders;
+      letterPlaceholdersRevision = currentPlaceholders.revision;
       return imported;
     });
   });
@@ -602,11 +638,14 @@ function registerHandlers() {
     }
     const cssFile = await documentCustomizations.customizationPath(currentFolder, 'protocolCss');
     const templateFile = await documentCustomizations.customizationPath(currentFolder, 'letterTemplate');
+    const currentPlaceholders = await letters.loadLetterPlaceholders(currentFolder);
+    letterPlaceholders = currentPlaceholders.placeholders;
+    letterPlaceholdersRevision = currentPlaceholders.revision;
     const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/letter.css'));
-    const template = templateFile ? await readLetterTemplate(templateFile) : null;
+    const template = templateFile ? await readLetterTemplate(templateFile, letterPlaceholders) : null;
     const pdfWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, nodeIntegration: false } });
     try {
-      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(letters.letterHtml(current.letter, css, images, template))}`);
+      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(letters.letterHtml(current.letter, css, images, template, letterPlaceholders))}`);
       const pdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
       const file = letters.pdfPath(currentFolder, current.letter.id);
       await fs.mkdir(path.dirname(file), { recursive: true });

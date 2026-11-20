@@ -138,6 +138,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [ ] Provide a module for writing series letters to members.
 - [x] Save individual letters, write them in a Markdown editor, and export PDFs
   with an optional address, custom template and linked signatures.
+- [x] Define folder-wide text values for custom placeholders in letter templates
+  and Markdown letter content.
 - [ ] Allow members to be filtered when selecting recipients for a series letter.
 - [ ] Prepare for writing a letter to a single person as well.
 - [ ] Use the same HTML and CSS approach as the invoice module for letter layout
@@ -151,8 +153,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [ ] Decide whether the current meeting JSON and generated PDF storage approach
   needs further protocol management features.
 - [ ] Decide whether people and other records are shared between modules.
-- [ ] Decide which member filters and letter personalization fields are needed, and whether
-  single-person recipients can be non-members.
+- [ ] Decide which member-derived personalization fields series letters need, and
+  whether single-person recipients can be non-members.
 - [ ] Decide how invoices are numbered and stored, and what PDF export or printing options
   are needed.
 - [ ] Decide on encryption, access control, backups, and storage formats for

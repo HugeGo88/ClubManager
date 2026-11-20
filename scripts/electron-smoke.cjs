@@ -28,7 +28,7 @@ async function main() {
   let selectedDataFolder = data;
   await fs.writeFile(cssFile, 'body { color: rgb(65, 43, 21); }');
   await fs.writeFile(templateFile, '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
-  await fs.writeFile(letterTemplateFile, '<main class="letter"><h1>Briefvorlage {{title}}</h1>{{date}}{{address}}{{content}}{{signatures}}</main>');
+  await fs.writeFile(letterTemplateFile, '<main class="letter"><h1>Briefvorlage {{title}}</h1><p>{{club_name}}</p>{{date}}{{address}}{{content}}{{signatures}}</main>');
   await fs.writeFile(signaturePng, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
   await fs.writeFile(signatureSvg, '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><path d="M1 15 Q20 0 39 15" fill="none" stroke="black"/></svg>');
   await fs.mkdir(data);
@@ -1777,6 +1777,18 @@ async function main() {
           };
           document.querySelector('[data-action="choose-signature"]').click();
           await waitFor(() => document.querySelectorAll('[data-action="remove-signature"]').length === 2);
+          document.querySelector('[data-action="add-letter-placeholder"]').click();
+          await waitFor(() => document.querySelector('[data-letter-placeholder-key="0"]'));
+          const placeholderKey = document.querySelector('[data-letter-placeholder-key="0"]');
+          const placeholderValue = document.querySelector('[data-letter-placeholder-value="0"]');
+          placeholderKey.value = 'club_name';
+          placeholderKey.dispatchEvent(new Event('input', { bubbles: true }));
+          placeholderValue.value = 'Verein <Beispiel>';
+          placeholderValue.dispatchEvent(new Event('input', { bubbles: true }));
+          document.querySelector('[data-action="save-letter-placeholders"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Benutzerdefinierte Briefplatzhalter gespeichert.');
+          document.querySelector('[data-action="copy-letter-placeholder"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Platzhalter {{club_name}} kopiert.');
           document.querySelector('[data-action="choose-letter-template"]').click();
           await waitFor(() => document.querySelector('[data-action="reset-letter-template"]'));
           document.querySelector('[data-view="letters"]').click();
@@ -1799,7 +1811,7 @@ async function main() {
           }
           const editor = document.querySelector('[data-letter-editor] .cm-content');
           editor.focus();
-          document.execCommand('insertText', false, '**Briefinhalt**');
+          document.execCommand('insertText', false, '**Briefinhalt** {{club_name}}');
           await waitFor(() => editor.textContent.includes('Briefinhalt'));
           document.querySelector('[data-action="save-letter"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent === 'Brief gespeichert.');
@@ -1807,7 +1819,8 @@ async function main() {
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
         })()`);
         assert.match(pdfDocuments.at(-1), /Briefvorlage Testbrief/);
-        assert.match(pdfDocuments.at(-1), /<strong>Briefinhalt<\/strong>/);
+        assert.match(pdfDocuments.at(-1), /<p>Verein &lt;Beispiel&gt;<\/p>/);
+        assert.match(pdfDocuments.at(-1), /<strong>Briefinhalt<\/strong> Verein &lt;Beispiel&gt;/);
         assert.doesNotMatch(pdfDocuments.at(-1), /class="letter-address"|class="letter-signature"/);
         const reloadLetters = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
@@ -1874,7 +1887,8 @@ async function main() {
         const localLetterSettings = await window.webContents.executeJavaScript('window.club.getLetterSettings()');
         assert.equal(localLetterSettings.template, customizationLetterTemplate);
         assert.equal(await fs.readFile(customizationLetterTemplate, 'utf8'),
-          '<main class="letter"><h1>Briefvorlage {{title}}</h1>{{date}}{{address}}{{content}}{{signatures}}</main>');
+          '<main class="letter"><h1>Briefvorlage {{title}}</h1><p>{{club_name}}</p>{{date}}{{address}}{{content}}{{signatures}}</main>');
+        assert.deepEqual(localLetterSettings.placeholders, [{ key: 'club_name', value: 'Verein <Beispiel>' }]);
         assert.equal(localLetterSettings.signatures.length, 2);
         assert.ok(localLetterSettings.signatures.every(item => item.path.startsWith(path.join(data, 'customizations', 'signatures'))));
         const localSvgSignature = localLetterSettings.signatures.find(item => item.path.endsWith('.svg'));

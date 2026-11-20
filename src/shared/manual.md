@@ -54,6 +54,8 @@ Mit **Adressfeld einfügen** blenden Sie die Felder für Firma, Name, Straße, P
 
 Unter **Einstellungen → Briefe** können Sie Unterschriftsbilder hinzufügen. Wählen Sie im Brief die gewünschten Unterschriften per Checkbox. Die Bilder werden in den Anpassungsordner des aktiven Datenordners kopiert.
 
+Für Briefe können Sie unter **Einstellungen → Briefe** benutzerdefinierte Briefplatzhalter mit einem Schlüssel und einem einzeiligen Textwert anlegen. Diese Werte gelten für alle Briefe des aktiven Datenordners. Verwenden Sie eindeutige Schlüssel, die mit einem Kleinbuchstaben beginnen und danach Kleinbuchstaben, Zahlen oder Unterstriche enthalten, zum Beispiel `club_name`; die eingebauten Schlüssel `title`, `date`, `address`, `content` und `signatures` sind reserviert. ClubManager zeigt den passenden Token `{{club_name}}` an und kann ihn in die Zwischenablage kopieren. Verwenden Sie den Token in der HTML-Vorlage oder im Markdown-Briefinhalt. Werte dürfen leer sein und werden als Text, nicht als HTML, eingesetzt.
+
 Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
 
 ## PDF-Gestaltung
@@ -64,7 +66,7 @@ Importierte CSS- und HTML-Dateien werden in den Anpassungsordner des Datenordner
 
 Bestehende app-weite Vorlagen, CSS-Dateien und Unterschriften werden in den aktiven Datenordner kopiert. Gibt es keinen aktiven Ordner, erfolgt die Migration beim ersten Auswählen eines Ordners. Bereits vorhandene Dateien am Ziel bleiben erhalten; ClubManager meldet den Konflikt, statt sie zu überschreiben.
 
-Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. In eigenen Sitzungsvorlagen fügt `{{chair}}` den Namen der Sitzungsleitung ein; bestehende Vorlagen müssen dafür ergänzt werden. Wenn Sie mehrere Datenordner verwenden, bleiben Vorlagen, CSS und Unterschriften jeweils beim zugehörigen Ordner.
+Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. In eigenen Sitzungsvorlagen fügt `{{chair}}` den Namen der Sitzungsleitung ein; bestehende Vorlagen müssen dafür ergänzt werden. Benutzerdefinierte Briefplatzhalter werden als `{{schlüssel}}` im Markdown-Briefinhalt oder in Briefvorlagen eingesetzt; in HTML-Vorlagen müssen sie im Textinhalt stehen, nicht in HTML-Attributen. Speichern Sie die Schlüssel in den Einstellungen, bevor Sie eine Vorlage mit ihnen importieren. Ein unbekannter oder später umbenannter oder entfernter Schlüssel führt beim Import oder PDF-Export zu einem Fehler; passen Sie dann die Vorlage an. Wenn Sie mehrere Datenordner verwenden, bleiben Vorlagen, CSS, Unterschriften und benutzerdefinierte Briefplatzhalter jeweils beim zugehörigen Ordner.
 
 ## Daten und Aktualisierungen
 

@@ -28,6 +28,10 @@ _Avoid_: personal module preference
 A user-provided HTML template or stylesheet for generated meeting protocols and letters, distinct from the app's interface.
 _Avoid_: app stylesheet
 
+**Custom letter placeholder**:
+A named, folder-wide text value that a letter HTML template or Markdown body can insert; it is shared by all letters in that data folder, not a per-letter or recipient field.
+_Avoid_: custom field
+
 **Signature library**:
 The named signatures available for use in letters for a data folder.
 _Avoid_: global signatures

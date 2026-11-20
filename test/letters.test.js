@@ -5,7 +5,10 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { initializeFolder } = require('../src/main/storage');
-const { saveLetter, listLetters, validateLetter, validateLetterTemplate, letterHtml } = require('../src/main/letters');
+const {
+  saveLetter, listLetters, validateLetter, validateLetterPlaceholders, loadLetterPlaceholders,
+  saveLetterPlaceholders, validateLetterTemplate, letterHtml
+} = require('../src/main/letters');
 
 function letter() {
   return { id: crypto.randomUUID(), title: 'Hallo <Welt>', date: '2026-11-15', includeAddress: true,
@@ -45,6 +48,48 @@ test('validates letter fields and safely renders templates and optional sections
   const partial = { ...value, address: { name: '', company: '', street: '', postalCode: '', city: 'Musterstadt' } };
   assert.match(letterHtml(partial, '', []), /<div class="letter-address">Musterstadt<\/div>/);
   assert.doesNotMatch(letterHtml({ ...partial, address: { ...partial.address, city: '' } }, '', []), /class="letter-address"/);
+});
+
+test('validates and safely renders folder-wide custom letter placeholders', () => {
+  const value = letter();
+  const custom = [
+    { key: 'club_name', value: '<Club> & Verein' },
+    { key: 'iban', value: 'DE12 3456 7890' }
+  ];
+  const template = '<main><p>{{club_name}}</p><h1>{{title}}</h1><footer><div><strong>Bankverbindung {{iban}}</strong></div></footer></main>';
+  validateLetterPlaceholders(custom);
+  validateLetterTemplate(template, custom);
+  const html = letterHtml(value, '', [], template, custom);
+  assert.match(html, /<p>&lt;Club&gt; &amp; Verein<\/p>/);
+  assert.match(html, /<strong>Bankverbindung DE12 3456 7890<\/strong>/);
+  assert.doesNotMatch(html, /<Club>/);
+  const bodyHtml = letterHtml({ ...value, content: 'Bankverbindung **{{iban}}**' }, '', [], null, custom);
+  assert.match(bodyHtml, /Bankverbindung <strong>DE12 3456 7890<\/strong>/);
+  assert.throws(() => letterHtml({ ...value, content: '{{missing}}' }, '', [], null, custom), /Unbekannter Platzhalter/);
+  assert.throws(() => validateLetterTemplate('<p>{{missing}}</p>', custom), /Unbekannter Platzhalter/);
+  assert.throws(() => validateLetterTemplate('<p title="{{club_name}}">Text<\/p>', custom), /Platzhalter müssen im Text/);
+  assert.throws(() => validateLetterPlaceholders([{ key: 'title', value: 'Custom' }]), /Briefplatzhalter ist ungültig/);
+  assert.throws(() => validateLetterPlaceholders([{ key: 'Club', value: 'Name' }]), /Briefplatzhalter ist ungültig/);
+  assert.throws(() => validateLetterPlaceholders([{ key: 'club_name', value: 'Name\nund Verein' }]), /einzeilige Textwerte/);
+  assert.throws(() => validateLetterPlaceholders([
+    { key: 'club_name', value: '' }, { key: 'club_name', value: 'Verein' }
+  ]), /Briefplatzhalter ist ungültig/);
+});
+
+test('saves folder-local letter placeholders and detects concurrent changes', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-letter-placeholders-'));
+  const otherFolder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-letter-placeholders-'));
+  t.after(() => Promise.all([
+    fs.rm(folder, { recursive: true, force: true }),
+    fs.rm(otherFolder, { recursive: true, force: true })
+  ]));
+  assert.deepEqual(await loadLetterPlaceholders(folder), { placeholders: [], revision: null });
+  const saved = await saveLetterPlaceholders(folder, [{ key: 'club_name', value: '' }], null);
+  assert.deepEqual(await loadLetterPlaceholders(folder), saved);
+  assert.deepEqual(await loadLetterPlaceholders(otherFolder), { placeholders: [], revision: null });
+  await assert.rejects(saveLetterPlaceholders(folder, [], null), /Datenträger geändert/);
+  const updated = await saveLetterPlaceholders(folder, [], saved.revision);
+  assert.deepEqual(updated.placeholders, []);
 });
 
 test('preserves legacy multiline addresses when loading, rendering and saving', async t => {
