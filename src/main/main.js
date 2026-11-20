@@ -26,7 +26,8 @@ let protocolCss = null;
 let meetingTemplate = null;
 let letterTemplate = null;
 let signatures = [];
-let enabledModules = {};
+let moduleSettings = { modules: {}, revision: null };
+const configuredModuleFolders = new Set();
 let legacyModules = {};
 let sidebarCollapsed = false;
 let lastSeenVersion = null;
@@ -103,6 +104,9 @@ function withRegisteredFolder(item) {
 async function loadFolder() {
   const config = await settings.loadSettings(settingsFile());
   dataFolders = config.dataFolders;
+  for (const item of dataFolders) {
+    if (item.moduleSettingsKnown) configuredModuleFolders.add(item.path);
+  }
   configuredFolder = config.activeFolder;
   legacyDocumentCustomizations = {
     protocolCss: config.protocolCss,
@@ -125,14 +129,15 @@ async function loadFolder() {
   await refreshFolderRegistry();
   if (!configuredFolder) return;
 
-  const modules = await initializeFolder(config.activeFolder);
+  const selectionWasKnown = configuredModuleFolders.has(config.activeFolder);
+  const selection = await initializeFolder(config.activeFolder);
   const hadLegacyCustomizations = hasLegacyDocumentCustomizations();
   const conflicts = await migrateLegacyDocumentCustomizations(config.activeFolder);
-  if (hadLegacyCustomizations) await persistSettings();
+  if (hadLegacyCustomizations || !selectionWasKnown) await persistSettings();
   ({ protocolCss, meetingTemplate, letterTemplate, signatures } =
     await loadFolderCustomizations(config.activeFolder));
   folder = config.activeFolder;
-  enabledModules = modules;
+  moduleSettings = selection;
   if (conflicts.length) {
     startupError = `Bestehende Anpassungen im Datenordner wurden nicht überschrieben: ${formatCustomizationConflicts(conflicts)}`;
   }
@@ -144,9 +149,12 @@ function settingsFile() {
 
 async function persistSettings(overrides = {}) {
   await settings.saveSettings(settingsFile(), {
-    dataFolders, activeFolder: configuredFolder,
+    activeFolder: configuredFolder,
     ...legacyDocumentCustomizations,
-    modules: legacyModules, sidebarCollapsed, lastSeenVersion, ...overrides
+    modules: legacyModules, sidebarCollapsed, lastSeenVersion, ...overrides,
+    dataFolders: (overrides.dataFolders ?? dataFolders).map(item => ({
+      ...item, moduleSettingsKnown: configuredModuleFolders.has(item.path)
+    }))
   });
   folderNamesNeedCaching = false;
   folderNameCacheWarning = null;
@@ -201,13 +209,16 @@ async function loadFolderCustomizations(folderPath) {
   };
 }
 
-async function initializeFolder(folderPath) {
+async function initializeFolder(folderPath, known = configuredModuleFolders.has(folderPath)) {
   const info = await fs.stat(folderPath);
   if (!info.isDirectory()) throw new Error('Der ausgewählte Speicherort ist kein Ordner.');
-  const modules = await folderModules.loadOrInitialize(folderPath, legacyModules);
+  const selection = known
+    ? await folderModules.reload(folderPath)
+    : await folderModules.loadOrInitialize(folderPath, legacyModules);
+  configuredModuleFolders.add(folderPath);
   await storage.initializeFolder(folderPath);
   await Promise.all([storage.listMeetings(folderPath), letters.listLetters(folderPath)]);
-  return modules;
+  return selection;
 }
 
 function folderRegistry() {
@@ -278,7 +289,10 @@ async function readSignature(signature) {
 }
 
 function registerHandlers() {
-  ipcMain.handle('app:startup', () => startupReady);
+  ipcMain.handle('app:startup', async () => {
+    await startupReady;
+    return moduleSettings;
+  });
   ipcMain.on('app:startup-complete', event => {
     if (event.sender !== mainWindow?.webContents) return;
     if (!startupComplete) {
@@ -342,7 +356,7 @@ function registerHandlers() {
     if (!await checkFolderAvailability(selected)) {
       throw new Error('Der ausgewählte Datenordner ist nicht verfügbar. Verknüpfen Sie ihn erneut oder wählen Sie einen verfügbaren Ordner aus.');
     }
-    const modules = await initializeFolder(selected);
+    const selection = await initializeFolder(selected);
     const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
     const conflicts = !folder ? await migrateLegacyDocumentCustomizations(selected) : [];
     const customizations = await loadFolderCustomizations(selected);
@@ -350,9 +364,9 @@ function registerHandlers() {
     dataFolders = nextFolders;
     configuredFolder = selected;
     folder = selected;
-    enabledModules = modules;
+    moduleSettings = selection;
     ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
-    return { folder: selected, modules, conflicts: formatCustomizationConflictList(conflicts) };
+    return { folder: selected, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
   }));
   ipcMain.handle('folder:rename', (event, selected, name) => serializeWrite(async () => {
     if (typeof selected !== 'string' || typeof name !== 'string' || !name.trim()) {
@@ -398,7 +412,7 @@ function registerHandlers() {
       if (dataFolders.some(item => item.path !== oldPath && item.path === newPath)) {
         throw new Error('Der ausgewählte Ordner ist bereits als ein anderer Datenordner registriert.');
       }
-      const modules = await initializeFolder(newPath);
+      const selection = await initializeFolder(newPath, configuredModuleFolders.has(oldPath) || configuredModuleFolders.has(newPath));
       const customizations = configuredFolder === oldPath ? await loadFolderCustomizations(newPath) : null;
       const renamedFolder = await resolveFolderName({ ...current, path: newPath, available: true });
       const nextFolders = dataFolders.map(item => item.path === oldPath ? renamedFolder : item);
@@ -408,7 +422,7 @@ function registerHandlers() {
       if (configuredFolder === oldPath) {
         configuredFolder = newPath;
         folder = newPath;
-        enabledModules = modules;
+        moduleSettings = selection;
         ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
       }
       return { ...folderRegistry(), path: newPath };
@@ -432,16 +446,25 @@ function registerHandlers() {
       meetingTemplate = null;
       letterTemplate = null;
       signatures = [];
-      enabledModules = {};
+      moduleSettings = { modules: {}, revision: null };
     }
     return folderRegistry();
   }));
-  ipcMain.handle('modules:get', () => ({ ...enabledModules }));
-  ipcMain.handle('modules:set', (event, modules) => serializeWrite(async () => {
-    const nextModules = settings.validateModules(modules);
-    await folderModules.save(requireFolder(), nextModules);
-    enabledModules = nextModules;
-    return { ...enabledModules };
+  ipcMain.handle('modules:get', () => moduleSettings.modules);
+  ipcMain.handle('modules:reload', () => serializeWrite(async () => {
+    moduleSettings = await folderModules.reload(requireFolder());
+    return moduleSettings;
+  }));
+  ipcMain.handle('modules:set', (event, modules, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) return { conflict: 'Der aktive Datenordner hat sich geändert. Bitte die Modul-Einstellungen neu laden.' };
+    try {
+      moduleSettings = await folderModules.save(active, modules, base.revision);
+      return moduleSettings;
+    } catch (error) {
+      if (error.cause?.code === 'MODULE_CONFLICT') return { conflict: error.message };
+      throw error;
+    }
   }));
   ipcMain.handle('sidebar:get', () => {
     if (!settingsLoaded) throw new Error('Die Seitenleisten-Einstellung konnte nicht geladen werden.');
@@ -549,7 +572,7 @@ function registerHandlers() {
       if (typeof selected !== 'string' || !path.isAbsolute(selected)) {
         throw new Error('Wählen Sie einen gültigen Datenordner aus.');
       }
-      const modules = await initializeFolder(selected);
+      const selection = await initializeFolder(selected);
       const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
       const conflicts = !folder ? await migrateLegacyDocumentCustomizations(selected) : [];
       const customizations = await loadFolderCustomizations(selected);
@@ -557,9 +580,9 @@ function registerHandlers() {
       dataFolders = nextFolders;
       configuredFolder = selected;
       folder = selected;
-      enabledModules = modules;
+      moduleSettings = selection;
       ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
-      return { folder, modules, conflicts: formatCustomizationConflictList(conflicts) };
+      return { folder, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
     });
   });
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));
@@ -671,7 +694,6 @@ app.whenReady().then(async () => {
   folderName = require('./folder-name');
   folderModules = require('./folder-modules');
   ({ loadManual } = require('./manual'));
-  enabledModules = {};
 
   let updateReady;
   if (app.isPackaged) {

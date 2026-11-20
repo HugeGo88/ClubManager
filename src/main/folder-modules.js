@@ -1,23 +1,34 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { DEFAULT_MODULES, validateModules } = require('./settings');
 const { atomicWrite } = require('./storage');
 
 const fileFor = folder => path.join(folder, 'clubmanager-modules.json');
 const encode = modules => JSON.stringify({ version: 1, modules }, null, 2) + '\n';
+const identity = info => `${info.dev}:${info.ino}:${info.birthtimeNs}:${info.mtimeNs}`;
+const revision = (info, content) => createHash('sha256').update(identity(info)).update('\0').update(content).digest('hex');
+const missing = () => new Error('Die zuvor geladenen Modul-Einstellungen fehlen. Stellen Sie die Datei wieder her und laden Sie die Einstellungen neu.');
+const conflict = reason => Object.assign(
+  new Error(`Konflikt: Die Modul-Einstellungen auf dem Datenträger wurden geändert${reason ? ` (${reason})` : ''}. Bitte die Modul-Einstellungen neu laden.`),
+  { code: 'MODULE_CONFLICT' }
+);
 
 async function read(folder) {
   const file = fileFor(folder);
   let info;
   try {
-    info = await fs.lstat(file);
+    info = await fs.lstat(file, { bigint: true });
   } catch (error) {
     if (error.code === 'ENOENT') return null;
     throw error;
   }
   if (!info.isFile()) throw new Error('Die Modul-Einstellungen sind keine reguläre Datei.');
-  const content = await fs.readFile(file, 'utf8');
+  const content = await fs.readFile(file);
+  const current = await fs.lstat(file, { bigint: true });
+  if (identity(info) !== identity(current)) {
+    throw new Error('Die Modul-Einstellungen wurden beim Lesen geändert. Bitte erneut laden.');
+  }
   let data;
   try {
     data = JSON.parse(content);
@@ -25,7 +36,7 @@ async function read(folder) {
     throw new Error('Die Modul-Einstellungen enthalten ungültiges JSON.');
   }
   if (!data || data.version !== 1) throw new Error('Die Modul-Einstellungen haben ein ungültiges oder nicht unterstütztes Format.');
-  return validateModules(data.modules);
+  return { modules: validateModules(data.modules), revision: revision(info, content) };
 }
 
 async function loadOrInitialize(folder, legacyModules) {
@@ -46,27 +57,49 @@ async function loadOrInitialize(folder, legacyModules) {
         await fs.link(staged, file);
       } catch (error) {
         if (error.code !== 'EEXIST') throw error;
-        const initialized = await read(folder);
-        if (initialized === null) throw error;
-        return initialized;
       }
     } finally {
       await fs.rm(staged, { force: true });
     }
-    return modules;
+    return await reload(folder);
   } catch (error) {
     throw new Error(`Die Modul-Einstellungen des Datenordners konnten nicht geladen oder initialisiert werden: ${error.message}`);
   }
 }
 
-async function save(folder, modules) {
+async function reload(folder) {
   try {
-    const validated = validateModules(modules);
-    await atomicWrite(fileFor(folder), encode(validated));
-    return validated;
+    const saved = await read(folder);
+    if (saved === null) throw missing();
+    return saved;
   } catch (error) {
-    throw new Error(`Die Modul-Einstellungen des Datenordners konnten nicht gespeichert werden: ${error.message}`);
+    throw new Error(`Die Modul-Einstellungen des Datenordners konnten nicht geladen werden: ${error.message}`);
   }
 }
 
-module.exports = { loadOrInitialize, save };
+async function save(folder, modules, expectedRevision) {
+  try {
+    const validated = validateModules(modules);
+    const content = encode(validated);
+    const checkRevision = async () => {
+      let saved;
+      try {
+        saved = await read(folder);
+      } catch (error) {
+        throw conflict(error.message);
+      }
+      if (!saved || saved.revision !== expectedRevision) throw conflict();
+    };
+    await checkRevision();
+    const newRevision = await atomicWrite(fileFor(folder), content, async staged => {
+      const info = await fs.lstat(staged, { bigint: true });
+      await checkRevision();
+      return revision(info, content);
+    });
+    return { modules: validated, revision: newRevision };
+  } catch (error) {
+    throw new Error(`Die Modul-Einstellungen des Datenordners konnten nicht gespeichert werden: ${error.message}`, { cause: error });
+  }
+}
+
+module.exports = { loadOrInitialize, reload, save };

@@ -11,6 +11,8 @@ let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 let meetingNavExpanded = true;
 let settingsTab = 'general';
+let moduleRevision = null;
+let moduleConflict = null;
 const MODULES = [
   ['meetings', 'Sitzungen', 'Besprechungen und Protokolle'],
   ['members', 'Mitglieder', 'Mitgliederverwaltung und Geburtstage'],
@@ -164,10 +166,20 @@ async function transitionModules(nextModules, commit) {
   const edited = editedModule();
   const hidesEditor = edited && !nextModules[edited];
   if (hidesEditor && !await guardDraft('Ändern der Modulauswahl')) return false;
-  state.modules = await commit(nextModules);
+  adoptModuleSettings(await commit(nextModules));
   if (hidesEditor) clearEditor();
   ensureAvailableView();
   return true;
+}
+
+function adoptModuleSettings({ modules, revision }) {
+  state.modules = modules;
+  moduleRevision = revision;
+  moduleConflict = null;
+}
+
+function applyModuleRefresh(selection) {
+  return transitionModules(selection.modules, () => selection);
 }
 
 let folderNameCacheWarning = null;
@@ -179,7 +191,7 @@ function adoptFolderRegistry(registry) {
 
 async function adoptActiveFolder(result) {
   state.folder = result.folder;
-  state.modules = result.modules;
+  adoptModuleSettings(result);
   ensureAvailableView();
   const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
     window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
@@ -535,7 +547,7 @@ function settingsView() {
       <h2>${selected[1]}</h2>
       <p>${selected[2]}.</p>
       <p>${activeFolder ? `Modulauswahl für Datenordner „${escape(activeFolder.name)}“` : 'Wählen Sie zuerst einen verfügbaren Datenordner aus.'}</p>
-      <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''} ${state.folder ? '' : 'disabled'}> Modul aktivieren</label>
+      <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''} ${state.folder && !moduleConflict ? '' : 'disabled'}> Modul aktivieren</label>
       <p class="muted">${state.modules[selected[0]] ? 'Das Modul wird in der Seitenleiste angezeigt.' : 'Das Modul ist deaktiviert und wird aus der Seitenleiste ausgeblendet.'}</p>
       ${selected[0] === 'meetings' ? `<h2>HTML-Vorlage für Sitzungsprotokolle</h2>
         <p>Optional: Importieren Sie eine HTML-Datei in den Anpassungsordner dieses Datenordners. Die gemeinsame CSS-Datei gilt weiterhin.</p>
@@ -582,6 +594,8 @@ function settingsView() {
       <div class="card"><h2>Über ClubManager</h2><p data-app-version>Version: ${escape(state.version ?? 'Nicht verfügbar')}</p></div>
     </section>`;
   return `<h1>Einstellungen</h1>
+    ${moduleConflict && state.message !== moduleConflict ? `<p role="status" class="notice error">${escape(moduleConflict)}</p>` : ''}
+    ${state.folder ? button('reload-modules', 'Modul-Einstellungen neu laden') : ''}
     <div class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
       ${tabs.map(([id, label]) => `<button type="button" class="settings-tab ${settingsTab === id ? 'selected' : ''}" id="settings-tab-${id}" role="tab" aria-selected="${settingsTab === id}" data-action="settings-tab" data-settings-tab="${id}">${label}</button>`).join('')}
     </div>
@@ -756,11 +770,18 @@ async function changeView(view) {
   }
   const preserveEditor = view === 'settings' || (state.view === 'settings' && view === editedModule());
   if (!preserveEditor && !confirmDiscard()) return;
+  let refreshError;
+  if (view === 'settings') {
+    adoptFolderRegistry(await window.club.getFolders());
+    if (state.folder) {
+      const selection = await window.club.reloadModules().catch(error => { refreshError = error; });
+      if (selection && !await applyModuleRefresh(selection)) return;
+    }
+  }
   if (view === 'manual') manual = await window.club.getManual();
   if (!preserveEditor) clearEditor();
   state.view = view;
-  setMessage('');
-  if (view === 'settings') adoptFolderRegistry(await window.club.getFolders());
+  setMessage(refreshError?.message ?? '', Boolean(refreshError));
   if (!['changelog', 'manual'].includes(view)) await refresh();
 }
 
@@ -769,6 +790,10 @@ async function run(action, target) {
   const i = Number(target.dataset.index);
   switch (action) {
     case 'open-settings': await changeView('settings'); break;
+    case 'reload-modules':
+      adoptFolderRegistry(await window.club.getFolders());
+      if (await applyModuleRefresh(await window.club.reloadModules())) setMessage('Modul-Einstellungen wurden neu geladen.');
+      break;
     case 'settings-tab':
       settingsTab = target.dataset.settingsTab;
       setMessage('');
@@ -818,7 +843,7 @@ async function run(action, target) {
       if (isActive) {
         clearEditor();
         state.folder = null;
-        state.modules = {};
+        adoptModuleSettings({ modules: {}, revision: null });
         state.meetings = [];
         letterState.letters = [];
         state.protocolCss = null;
@@ -1049,7 +1074,7 @@ async function run(action, target) {
 
 document.addEventListener('click', async event => {
   const target = event.target.closest('button');
-  if (!target || target.disabled) return;
+  if (!target || target.disabled || target.closest('.folder-switch-dialog')) return;
   if (target.dataset.action === 'toggle-sidebar') {
     const hadFocus = document.activeElement === target;
     target.disabled = true;
@@ -1173,9 +1198,17 @@ app.addEventListener('change', async event => {
     const module = target.dataset.moduleToggle;
     const nextModules = { ...state.modules, [module]: target.checked };
     target.checked = Boolean(state.modules[module]);
+    if (!state.folder || moduleConflict) return;
     document.body.inert = true;
     try {
-      if (await transitionModules(nextModules, modules => window.club.setModules(modules))) {
+      if (await transitionModules(nextModules, async modules => {
+        const result = await window.club.setModules(modules, { folder: state.folder, revision: moduleRevision });
+        if (result.conflict) {
+          moduleConflict = result.conflict;
+          throw new Error(result.conflict);
+        }
+        return result;
+      })) {
         setMessage(`${MODULES.find(([id]) => id === module)[1]} ${nextModules[module] ? 'aktiviert' : 'deaktiviert'}.`);
       }
     } catch (error) {
@@ -1359,7 +1392,7 @@ window.club.onPrepareUpdate(async () => {
       return null;
     })
   ]);
-  await startup;
+  const selection = await startup;
   const changelogVisibility = window.club.shouldShowChangelog().then(
     shouldShow => ({ shouldShow }),
     error => ({ error })
@@ -1367,12 +1400,11 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, folders, protocolCss, meetingTemplate, modules, sidebarCollapsed, letterSettings] = await Promise.all([
+    const [folder, folders, protocolCss, meetingTemplate, sidebarCollapsed, letterSettings] = await Promise.all([
       window.club.getFolder(),
       window.club.getFolders(),
       window.club.getProtocolCss(),
       window.club.getMeetingTemplate(),
-      window.club.getModules(),
       window.club.getSidebarCollapsed(),
       window.club.getLetterSettings()
     ]);
@@ -1380,7 +1412,7 @@ window.club.onPrepareUpdate(async () => {
     adoptFolderRegistry(folders);
     state.protocolCss = protocolCss;
     state.meetingTemplate = meetingTemplate;
-    state.modules = modules;
+    adoptModuleSettings(selection);
     state.sidebarCollapsed = sidebarCollapsed;
     letterState.template = letterSettings.template;
     letterState.signatures = letterSettings.signatures;

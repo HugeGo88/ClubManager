@@ -9,7 +9,11 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
 
-Die Modulauswahl wird beim Öffnen oder Wechseln des Datenordners gelesen. Änderungen durch andere Personen werden beim Öffnen der Einstellungen noch nicht automatisch aktualisiert; gleichzeitige Änderungen werden noch nicht auf Konflikte geprüft. Ein geöffneter Sitzungs- oder Briefentwurf bleibt beim Wechsel in die Einstellungen erhalten. Wenn das Deaktivieren sein Modul ausblenden würde, können Sie den Entwurf speichern, verwerfen oder abbrechen. Bei einem Speicherfehler bleiben Entwurf und bisherige Modulauswahl erhalten. Schlägt erst das Speichern der Modulauswahl fehl, bleibt ein zuvor erfolgreich gespeicherter Entwurf gespeichert.
+ClubManager liest die Modulauswahl beim Öffnen oder Wechseln eines Datenordners, beim Aufrufen der Einstellungen und über **Modul-Einstellungen neu laden**. Änderungen auf anderen Computern werden nicht laufend übernommen. Wenn sich die gespeicherte Auswahl seit dem Laden geändert hat, meldet ClubManager beim Speichern einen Konflikt, ohne die Datei zu überschreiben. Laden Sie die Modul-Einstellungen neu, prüfen Sie die Auswahl und nehmen Sie Ihre Änderung erneut vor.
+
+Ein geöffneter Sitzungs- oder Briefentwurf bleibt beim Aufrufen der Einstellungen erhalten, sofern sein Modul sichtbar bleibt. Würde eine Änderung oder Aktualisierung das bearbeitete Modul ausblenden, können Sie den Entwurf speichern, verwerfen oder abbrechen. Ein Abbruch oder ein Fehler beim Speichern des Entwurfs lässt den Editor und die bisherige Auswahl unverändert. Beim Abbrechen einer Aktualisierung bleiben auch die neueren Einstellungen auf dem Datenträger unverändert.
+
+Fehlende, beschädigte oder nicht lesbare Modul-Einstellungen eines bereits eingerichteten Datenordners werden nicht durch Standardwerte ersetzt. Stellen Sie die Datei wieder her oder wählen Sie einen anderen Datenordner. Scheitert ein Ordnerwechsel, bleibt der bisherige Ordner aktiv. Beim Start ohne verwendbaren Datenordner bleiben Einstellungen und Ordnerauswahl verfügbar.
 
 ## Datenordner und Zugriff
 

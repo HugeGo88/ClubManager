@@ -114,9 +114,11 @@ settings.json in userData    user-selected data folder
   a folder with existing module or customization structure inherits the
   preserved legacy app-wide selection if its selection is missing; a folder
   without that structure starts with Meetings only. Exclusive initialization
-  preserves a competing initializer's selection. Subsequent edits write only
-  the active folder and do not alter the legacy migration source. Invalid,
-  unreadable or unwritable settings are reported rather than silently replaced.
+  loads and validates the winning file. The registration remembers whether a
+  valid selection was seen, so a missing file in a known folder is an error
+  even on restart. The marker is not a copy or override of the selection.
+  Invalid, unreadable or unwritable settings are reported rather than silently
+  replaced. Module and display-name settings use separate files.
   Folder activation validates the selection and records before committing the
   active context; failure retains the prior context. At startup with unusable
   settings, folder-backed navigation is disabled and Settings remains usable.
@@ -124,8 +126,13 @@ settings.json in userData    user-selected data folder
   usable folder. The current module remains selected on a switch if enabled,
   otherwise navigation falls back to the first enabled module or Settings.
   Hiding a module does not delete records and is not an authorization boundary.
-  Settings-entry refresh and stale-write conflict handling (#17) are not yet
-  implemented.
+  Opening or switching folders, entering Settings and explicitly reloading
+  read the selection from disk. There is no watcher. The renderer keeps the
+  revision of the selection it actually applied, even when it declines a
+  refresh. Saves check that revision against the file's contents and identity
+  before replacing it with a staged write; a conflict requires a reload.
+  This is optimistic conflict detection, not a cross-computer lock or an
+  atomic compare-and-swap against writers racing the final rename.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German
@@ -164,10 +171,9 @@ settings.json in userData    user-selected data folder
   would hide that editor uses the same guard before writing or applying the selection;
   unrelated changes do not prompt. Cancel or save failure keeps the draft and
   previous selection. If the selection write fails after a successful draft save,
-  the saved editor and previous selection remain available. The guarded selection
-  transition accepts a commit operation so a future external refresh can apply a
-  loaded selection without writing it back. Settings-entry refresh and stale
-  selection conflict detection are not yet implemented (#17). If the active folder
+  the saved editor and previous selection remain available. An external refresh
+  uses the same guard and never writes the module selection, even if the user
+  saves a draft before applying it. If the active folder
   becomes unavailable at startup, it is cleared, no folder-backed data loads, the app does
   not silently recreate it, and the user is guided to choose or relink a folder. An
   unavailable folder cannot be activated until it is successfully relinked to an available
@@ -360,7 +366,8 @@ settings, lists, conflicts and PDF export. They
 also verify copied customizations, reset/default behavior, and PDF output when
 switching between two folders; separate processes verify unavailable-folder
 and configuration recovery, relinking, non-destructive unregister, a
-deterministic initialization-write failure and retry, and a full app restart
+deterministic initialization-write failure and retry, guarded external refresh,
+stale-save reload recovery, and a full app restart
 using the same settings context.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
 syntax, providing a virtual display for Electron. The `start`, Electron smoke

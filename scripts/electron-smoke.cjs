@@ -335,7 +335,7 @@ async function main() {
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true, moduleSettingsKnown: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.equal(await window.webContents.executeJavaScript('window.club.getProtocolCss()'), customizationCss);
         assert.equal(await fs.readFile(customizationCss, 'utf8'), 'body { color: rgb(9, 8, 7); }');
@@ -753,7 +753,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true, moduleSettingsKnown: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1549,7 +1549,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true, moduleSettingsKnown: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
@@ -2410,14 +2410,16 @@ async function main() {
         const secondFolderName = JSON.parse(await fs.readFile(path.join(secondData, 'clubmanager-folder.json'), 'utf8'));
         assert.equal(secondFolderName.name, 'Verein B', 'Renaming must update the name stored in the data folder');
         assert.deepEqual(folderSettings.dataFolders, [
-          { path: data, name: 'data', available: true },
-          { path: secondData, name: 'Verein B', available: true }
+          { path: data, name: 'data', available: true, moduleSettingsKnown: true },
+          { path: secondData, name: 'Verein B', available: true, moduleSettingsKnown: true }
         ]);
         assert.equal(folderSettings.activeFolder, data);
         await runFolderRecoverySmoke();
         await runFolderRecoverySmoke('configuration');
         await runFolderRecoverySmoke('restart-setup');
         await runFolderRecoverySmoke('restart-check');
+        await runFolderRecoverySmoke('restart-external');
+        await runFolderRecoverySmoke('restart-missing');
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();

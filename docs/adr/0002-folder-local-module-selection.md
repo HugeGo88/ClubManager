@@ -4,14 +4,12 @@ status: accepted
 
 # Folder-local module selection
 
-Each data folder will own one explicit module selection, stored with that
+Each data folder owns one explicit module selection, stored with that
 folder and shared by everyone opening it. This replaces app-wide module
 visibility with portable, folder-specific settings rather than inferring
-modules from records or adding personal overrides. The design is agreed;
-the first implementation slice provides folder-local persistence, activation,
-navigation and failure recovery. Draft protection for module-setting changes
-(#16) is implemented. Settings-entry refresh and stale-write conflict handling
-(#17) remain unimplemented.
+modules from records or adding personal overrides. The three implementation
+slices (#15–#17) cover folder-local persistence and activation, draft protection,
+explicit refresh and stale-write recovery. Implementation does not imply a release.
 
 ## Considered options
 
@@ -46,12 +44,14 @@ navigation and failure recovery. Draft protection for module-setting changes
   Cancel when there are unsaved edits. Cancellation or a failed save retains
   the editing state and prevents the transition.
 - Reload module settings when opening a folder, switching to it, or entering
-  Settings. No live file watching is planned.
+  Settings, or explicitly from Settings. There is no live file watching.
 - Reject saves that conflict with an externally changed selection and
   require a reload instead of silently overwriting the external change.
   Cancelling a refresh must not overwrite those newer settings.
-- Missing module settings are initialized using the rules above. Invalid
-  settings are not silently replaced. Read, validation, initialization,
+- Initialize missing settings only for folders not previously known to have
+  a selection. Concurrent initialization loads and validates the winning file.
+  Missing known settings and invalid settings are not silently replaced.
+  Read, validation, initialization,
   and save failures show an explicit error and retain the last valid state;
   a failed folder switch retains the previous active folder.
 - At startup, if the saved active folder has unusable module settings,

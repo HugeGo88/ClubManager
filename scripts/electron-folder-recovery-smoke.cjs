@@ -22,6 +22,7 @@ async function restartScenario(root, mode) {
   const fixture = path.join(root, 'restart-recovery');
   const userData = path.join(fixture, 'settings');
   const folder = path.join(fixture, 'verein');
+  const moduleFile = path.join(folder, 'clubmanager-modules.json');
   app.setVersion(require('../package.json').version);
   if (mode === 'restart-setup') {
     await fs.mkdir(userData, { recursive: true });
@@ -31,6 +32,18 @@ async function restartScenario(root, mode) {
       lastSeenVersion: app.getVersion()
     }));
   }
+  if (mode === 'restart-external') {
+    await fs.writeFile(moduleFile, JSON.stringify({
+      version: 1, modules: { meetings: false, members: true, invoices: false, letters: false }
+    }));
+  } else if (mode === 'restart-missing') {
+    await fs.unlink(moduleFile);
+  }
+  const startupDialogs = [];
+  dialog.showMessageBox = async (window, options) => {
+    startupDialogs.push(options);
+    return { response: 0 };
+  };
   app.setPath('userData', userData);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
   const timeout = setTimeout(() => {
@@ -75,6 +88,19 @@ async function restartScenario(root, mode) {
       toggle.checked = false;
       toggle.dispatchEvent(new Event('change', { bubbles: true }));
       await waitFor(() => !document.body.inert && document.querySelector('[data-module-nav="meetings"]').hidden);
+    } else if (${JSON.stringify(mode)} === 'restart-external') {
+      if (await window.club.getFolder() !== ${JSON.stringify(folder)} ||
+          !document.querySelector('[data-view="members"].active') ||
+          !document.querySelector('[data-module-view="letters"]').hidden) {
+        throw new Error('Opening the known folder must apply the external selection, not the previously saved selection');
+      }
+    } else if (${JSON.stringify(mode)} === 'restart-missing') {
+      await waitFor(() => document.querySelector('[data-settings-tab="letters"]'));
+      document.querySelector('[data-settings-tab="letters"]').click();
+      await waitFor(() => document.querySelector('[data-module-toggle="letters"]')?.disabled);
+      if (await window.club.getFolder() !== null || !document.querySelector('[data-action="choose-folder"]')) {
+        throw new Error('Missing configuration on restart must keep Settings and data folder selection available');
+      }
     } else {
       if (await window.club.getFolder() !== ${JSON.stringify(folder)} ||
           document.querySelector('[data-folder-switcher]').value !== ${JSON.stringify(folder)} ||
@@ -97,6 +123,12 @@ async function restartScenario(root, mode) {
     const savedSettings = JSON.parse(await fs.readFile(path.join(userData, 'settings.json'), 'utf8'));
     assert.deepEqual(savedSettings.modules, { meetings: true, members: false, invoices: false, letters: false },
       'The app-wide migration source must differ from the selected folder modules');
+  } else if (mode === 'restart-missing') {
+    await assert.rejects(fs.stat(moduleFile), { code: 'ENOENT' });
+    assert.ok(startupDialogs.some(item => /zuvor geladenen.*fehlen/.test(item.detail)), 'Startup must report the missing configuration');
+    console.log('Electron restart smoke test passed: missing known selection is not reinitialized.');
+  } else if (mode === 'restart-external') {
+    console.log('Electron restart smoke test passed: opening a known folder loads the external selection.');
   } else {
     console.log('Electron full restart smoke test passed: same app settings restore the folder-owned selection.');
   }
@@ -108,7 +140,7 @@ async function main() {
   const root = process.env.CLUBMANAGER_SMOKE_ROOT;
   if (!root) throw new Error('CLUBMANAGER_SMOKE_ROOT is required.');
 
-  if (['restart-setup', 'restart-check'].includes(process.env.CLUBMANAGER_RECOVERY_MODE)) {
+  if (['restart-setup', 'restart-check', 'restart-external', 'restart-missing'].includes(process.env.CLUBMANAGER_RECOVERY_MODE)) {
     await restartScenario(root, process.env.CLUBMANAGER_RECOVERY_MODE);
     return;
   }
@@ -209,6 +241,148 @@ async function main() {
         }
       })()`);
       const modulesFile = path.join(root, 'data', 'clubmanager-modules.json');
+      const beforeExternalEdit = await fs.readFile(modulesFile, 'utf8');
+      const external = JSON.parse(beforeExternalEdit);
+      external.modules.members = false;
+      external.modules.invoices = !external.modules.invoices;
+      const externalBytes = JSON.stringify(external);
+      await fs.writeFile(modulesFile, externalBytes);
+      await window.webContents.executeJavaScript(`(async () => {
+        const waitFor = async (label, test) => {
+          for (let i = 0; i < 200; i++) {
+            if (test()) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for ' + label);
+        };
+        document.querySelector('[data-module-toggle="members"]').click();
+        await waitFor('visible conflict', () => /Konflikt.*neu laden/.test(document.querySelector('.notice.error')?.textContent));
+        const toggle = document.querySelector('[data-module-toggle="members"]');
+        if (!toggle.checked || !toggle.disabled) throw new Error('Conflict must retain the previous selection and require a reload');
+      })()`);
+      assert.equal(await fs.readFile(modulesFile, 'utf8'), externalBytes, 'A stale UI edit must leave the external change intact');
+      await window.webContents.executeJavaScript(`(async () => {
+        const waitFor = async (label, test) => {
+          for (let i = 0; i < 200; i++) {
+            if (test()) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for ' + label);
+        };
+        document.querySelector('[data-action="reload-modules"]').click();
+        await waitFor('reload', () => !document.body.inert && !document.querySelector('[data-module-toggle="members"]').checked);
+        if (document.querySelector('[data-module-view="invoices"]').hidden !== ${!external.modules.invoices}) {
+          throw new Error('Reload must reflect the externally changed module');
+        }
+        document.querySelector('[data-module-toggle="members"]').click();
+        await waitFor('successful post-reload edit', () => !document.body.inert && document.querySelector('[data-module-toggle="members"]').checked);
+      })()`);
+      assert.deepEqual(JSON.parse(await fs.readFile(modulesFile, 'utf8')).modules, { ...external.modules, members: true });
+      await fs.writeFile(modulesFile, beforeExternalEdit);
+      await window.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-view="letters"]').click();
+        for (let i = 0; i < 200 && !document.querySelector('[data-view="letters"].active'); i++) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        if (document.querySelector('[data-module-view="invoices"]').hidden !== ${!external.modules.invoices}) {
+          throw new Error('No live refresh should have changed navigation');
+        }
+        document.querySelector('[data-view="settings"]').click();
+        for (let i = 0; i < 200 && document.body.inert; i++) await new Promise(resolve => setTimeout(resolve, 25));
+        if (!document.querySelector('[data-view="settings"].active') ||
+            document.querySelector('[data-module-view="invoices"]').hidden !== ${external.modules.invoices}) {
+          throw new Error('Entering Settings must refresh the visible navigation from disk');
+        }
+      })()`);
+      // Park a letter draft in Settings, then simulate another app hiding Letters.
+      const interact = (body) => window.webContents.executeJavaScript(`(async () => {
+        const el = selector => document.querySelector(selector);
+        const wait = async (label, condition) => {
+          for (let i = 0; i < 200; i++) {
+            const value = await condition();
+            if (value) return value;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for ' + label);
+        };
+        const click = async selector => (await wait(selector, () => el(selector))).click();
+        const idle = () => !document.body.inert && !el('.folder-switch-dialog');
+        ${body}
+      })()`);
+      await interact(`
+        await click('[data-view="letters"]');
+        await click('[data-action="new-letter"]');
+        const title = await wait('letter draft', () => el('[data-letter-field="title"]'));
+        title.value = 'Entwurf bei externer Modulauswahl';
+        title.dispatchEvent(new Event('input', { bubbles: true }));
+        await click('[data-view="settings"]');
+        await wait('Settings', () => idle() && el('[data-settings-tab="members"]'));
+        await click('[data-settings-tab="members"]');
+      `);
+      const hidesLetters = JSON.parse(beforeExternalEdit);
+      hidesLetters.modules.letters = false;
+      const hidesLettersBytes = JSON.stringify(hidesLetters);
+      await fs.writeFile(modulesFile, hidesLettersBytes);
+      await interact(`
+        await click('[data-action="reload-modules"]');
+        await click('.folder-switch-dialog [value="cancel"]');
+        await wait('cancelled reload', idle);
+        if (el('[data-module-view="letters"]').hidden) throw new Error('Cancelled refresh hid Letters');
+        await click('[data-module-toggle="members"]');
+        await wait('conflict after cancelling refresh', () => /Konflikt.*neu laden/.test(el('.notice.error')?.textContent));
+        await click('[data-view="letters"]');
+        await wait('retained draft', () => idle() && el('[data-letter-field="title"]')?.value === 'Entwurf bei externer Modulauswahl');
+        await click('[data-view="settings"]');
+        await click('.folder-switch-dialog [value="cancel"]');
+        await wait('cancelled Settings entry', () => idle() && el('[data-view="letters"].active'));
+        if (el('[data-letter-field="title"]').value !== 'Entwurf bei externer Modulauswahl') throw new Error('Settings entry lost the draft');
+      `);
+      assert.equal(await fs.readFile(modulesFile, 'utf8'), hidesLettersBytes, 'Cancelling refresh and attempting a stale save must not overwrite external settings');
+      await interact(`
+        const title = el('[data-letter-field="title"]');
+        title.value = '';
+        title.dispatchEvent(new Event('input', { bubbles: true }));
+        await click('[data-view="settings"]');
+        await click('.folder-switch-dialog [value="save"]');
+        await wait('draft save error', () => idle() && el('.notice.error') && el('[data-view="letters"].active'));
+        if (el('[data-letter-field="title"]').value !== '' || el('[data-module-view="letters"]').hidden) {
+          throw new Error('Failed draft save must retain the editor and selection');
+        }
+        el('[data-letter-field="title"]').value = 'Gespeichert vor externer Aktualisierung';
+        el('[data-letter-field="title"]').dispatchEvent(new Event('input', { bubbles: true }));
+        await click('[data-view="settings"]');
+        await click('.folder-switch-dialog [value="save"]');
+        await wait('guarded Settings entry', () => idle() && el('[data-view="settings"].active') && el('[data-module-view="letters"]').hidden);
+        if (!(await window.club.listLetters()).some(({ letter }) => letter.title === 'Gespeichert vor externer Aktualisierung')) {
+          throw new Error('Refresh must save the draft in the same folder before hiding Letters');
+        }
+      `);
+      assert.equal(await fs.readFile(modulesFile, 'utf8'), hidesLettersBytes, 'Applying an external refresh must not rewrite the selection');
+      await fs.writeFile(modulesFile, beforeExternalEdit);
+      await interact(`
+        await click('[data-action="reload-modules"]');
+        await wait('restored Letters', () => idle() && !el('[data-module-view="letters"]').hidden);
+        await click('[data-view="letters"]');
+        await click('[data-action="new-letter"]');
+        const title = await wait('new draft', () => el('[data-letter-field="title"]'));
+        title.value = 'Verworfener externer Entwurf';
+        title.dispatchEvent(new Event('input', { bubbles: true }));
+      `);
+      await fs.writeFile(modulesFile, hidesLettersBytes);
+      await interact(`
+        await click('[data-view="settings"]');
+        await click('.folder-switch-dialog [value="discard"]');
+        await wait('discarded draft', () => idle() && el('[data-module-view="letters"]').hidden);
+        if ((await window.club.listLetters()).some(({ letter }) => letter.title === 'Verworfener externer Entwurf')) {
+          throw new Error('Discard must not persist the draft');
+        }
+      `);
+      assert.equal(await fs.readFile(modulesFile, 'utf8'), hidesLettersBytes);
+      await fs.writeFile(modulesFile, beforeExternalEdit);
+      await interact(`
+        await click('[data-action="reload-modules"]');
+        await wait('restored Letters', () => idle() && !el('[data-module-view="letters"]').hidden);
+      `);
       const savedModulesFile = `${modulesFile}.fixture`;
       await fs.rename(modulesFile, savedModulesFile);
       try {
@@ -231,7 +405,62 @@ async function main() {
         await fs.rmdir(modulesFile);
         await fs.rename(savedModulesFile, modulesFile);
       }
+      await interact(`
+        await click('[data-action="reload-modules"]');
+        await wait('recovery after restoring the module file', () => idle() && el('[data-module-toggle="members"]')?.disabled === false);
+      `);
       const initializationFolder = path.join(fixture, 'initialization-failure');
+      async function verifySwitchRefresh() {
+        const firstFolder = path.join(root, 'data');
+        const switchTo = folder => `
+          el('[data-folder-switcher]').value = ${JSON.stringify(folder)};
+          el('[data-folder-switcher]').dispatchEvent(new Event('change', { bubbles: true }));
+        `;
+        const secondModulesFile = path.join(initializationFolder, 'clubmanager-modules.json');
+        const secondSelection = await fs.readFile(secondModulesFile, 'utf8');
+        const allDisabled = { meetings: false, members: false, invoices: false, letters: false };
+        const replaceSelection = modules => fs.writeFile(modulesFile, JSON.stringify({ version: 1, modules }));
+        await replaceSelection({ ...allDisabled, meetings: true, letters: true });
+        await interact(`
+          await click('[data-view="meetings"]');
+          await wait('Meetings', () => idle() && el('[data-view="meetings"].active'));
+          ${switchTo(firstFolder)}
+          await wait('switch retaining Meetings', async () => idle() && await window.club.getFolder() === ${JSON.stringify(firstFolder)});
+          if (!el('[data-view="meetings"].active') || el('[data-module-view="letters"]').hidden || !el('[data-module-view="members"]').hidden) {
+            throw new Error('Switch must load the destination selection and keep the enabled current module');
+          }
+          ${switchTo(initializationFolder)}
+          await wait('switch back', async () => idle() && await window.club.getFolder() === ${JSON.stringify(initializationFolder)});
+        `);
+        await replaceSelection({ ...allDisabled, invoices: true, letters: true });
+        await interact(`
+          ${switchTo(firstFolder)}
+          await wait('switch falling back to Invoices', () => idle() && el('[data-view="invoices"].active'));
+          ${switchTo(initializationFolder)}
+          await wait('switch falling back to Meetings', () => idle() && el('[data-view="meetings"].active'));
+        `);
+        await replaceSelection(allDisabled);
+        await interact(`
+          ${switchTo(firstFolder)}
+          await wait('switch falling back to Settings', () => idle() && el('[data-view="settings"].active'));
+          if (!el('[data-view="manual"]') || !el('[data-view="changelog"]') || !el('[data-folder-switcher]')) {
+            throw new Error('Empty selection must retain general navigation');
+          }
+          ${switchTo(initializationFolder)}
+          await wait('switch to independent folder', async () => idle() && await window.club.getFolder() === ${JSON.stringify(initializationFolder)});
+        `);
+        await fs.unlink(modulesFile);
+        await interact(`
+          ${switchTo(firstFolder)}
+          await wait('deleted configuration error', () => idle() && /zuvor geladenen.*fehlen/.test(el('.notice.error')?.textContent));
+          if (await window.club.getFolder() !== ${JSON.stringify(initializationFolder)} || el('[data-module-nav="meetings"]').hidden) {
+            throw new Error('A failed switch must retain the active folder and its selection');
+          }
+        `);
+        await assert.rejects(fs.stat(modulesFile), { code: 'ENOENT' });
+        await fs.writeFile(modulesFile, beforeExternalEdit);
+        assert.equal(await fs.readFile(secondModulesFile, 'utf8'), secondSelection, 'External edits must not affect another folder');
+      }
       await fs.mkdir(initializationFolder);
       selectedFolder = initializationFolder;
       const originalWriteFile = fs.writeFile;
@@ -286,9 +515,10 @@ async function main() {
           throw new Error('Retrying after an initialization failure must activate the new folder with its default selection');
         }
       })()`);
+      await verifySwitchRefresh();
       assert.equal(await fs.readFile(path.join(brokenFolder, 'clubmanager-modules.json'), 'utf8'), '{');
       assert.ok(startupDialogs.some(item => item.detail?.includes('Modul-Einstellungen')), 'Configuration startup error must be shown');
-      console.log('Electron configuration recovery smoke test passed: startup error, portability, failed activation and initialization-write recovery.');
+      console.log('Electron configuration smoke test passed: portability, guarded external refresh, conflict/reload, switch navigation, deletion, and failure recovery.');
       clearTimeout(timeout);
       app.exit(0);
       return;
