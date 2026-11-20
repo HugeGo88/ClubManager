@@ -129,10 +129,11 @@ settings.json in userData    user-selected data folder
   Opening or switching folders, entering Settings and explicitly reloading
   read the selection from disk. There is no watcher. The renderer keeps the
   revision of the selection it actually applied, even when it declines a
-  refresh. Saves check that revision against the file's contents and identity
-  before replacing it with a staged write; a conflict requires a reload.
-  This is optimistic conflict detection, not a cross-computer lock or an
-  atomic compare-and-swap against writers racing the final rename.
+  refresh. Saves compare that revision with the file's contents and identity,
+  including a final check before renaming the staged file. A change observed
+  by that check rejects the save and requires a reload. A write after that
+  check but before the rename can still be overwritten. This is optimistic
+  conflict detection, not a cross-computer lock or atomic compare-and-swap.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German
@@ -209,10 +210,11 @@ settings.json in userData    user-selected data folder
   cause an export error. SVG and raster images are decoded
   in an isolated window and rasterized before embedding.
 - Writes use a temporary file followed by rename. SHA-256 revisions detect
-  changes on disk before saves and exports; the caller must reload after a
-  conflict rather than overwrite external edits. This is not a synchronization
-  service, cross-process locking mechanism or replacement for backups. Club
-  data is not encrypted.
+  changes on disk at the checks before saves and exports; the caller must reload
+  after a detected conflict. These checks do not protect against writes racing
+  after the last check and before replacement. This is not a synchronization
+  service, cross-process locking mechanism or replacement for backups. Club data
+  is not encrypted.
 
 [src/main/protocol.js](src/main/protocol.js) builds protocol HTML from saved
 meeting data, escapes text and converts Markdown using `marked` followed by

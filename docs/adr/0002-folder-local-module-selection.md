@@ -45,9 +45,10 @@ explicit refresh and stale-write recovery. Implementation does not imply a relea
   the editing state and prevents the transition.
 - Reload module settings when opening a folder, switching to it, or entering
   Settings, or explicitly from Settings. There is no live file watching.
-- Reject saves that conflict with an externally changed selection and
-  require a reload instead of silently overwriting the external change.
-  Cancelling a refresh must not overwrite those newer settings.
+- Reject a save and require a reload if the final pre-rename revision check
+  observes that the selection has changed. This optimistic check does not
+  protect a write racing after the check and before the rename, which can be
+  overwritten. Cancelling a refresh does not write the module selection.
 - Initialize missing settings only for folders not previously known to have
   a selection. Concurrent initialization loads and validates the winning file.
   Missing known settings and invalid settings are not silently replaced.
@@ -66,9 +67,10 @@ configuration introduces validation and write failures into folder activation.
 The legacy app-wide selection is only a migration source, not a second
 configuration layer.
 
-The precise file schema and conflict-detection mechanism remain implementation
-details. Existing folder display-name metadata must remain compatible;
-renaming a folder must not erase its module selection.
+The optimistic revision check is accepted without distributed locking or a
+synchronization service; it is not an atomic compare-and-swap. Existing folder
+display-name metadata must remain compatible; renaming a folder must not erase
+its module selection.
 
 Implementation must update the architecture's current-behavior description
 and the German manual together, with focused tests for migration, switching,
