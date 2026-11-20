@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.1.9",
+    "date": "2026-11-20",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Allgemeine Wartungsarbeiten."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.8",
     "date": "2026-11-19",
     "sections": [
