@@ -1,8 +1,8 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
-const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: {}, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: {}, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, preview: { open: false, url: null, error: false }, previewWidth: 420, dirty: false, message: '', error: false };
 const letterState = {
-  letters: [], letter: null, revision: null, hasPdf: false, pdfPreviewUrl: null, previewOpen: false, template: null, signatures: [],
+  letters: [], letter: null, revision: null, hasPdf: false, preview: { open: false, url: null, error: false }, template: null, signatures: [],
   placeholders: [], placeholdersRevision: null, placeholdersDirty: false
 };
 const listSearch = { meetings: '', letters: '' };
@@ -165,8 +165,8 @@ async function guardDraft(reason) {
 }
 
 function clearEditor() {
-  closeProtocolPreview();
-  closeLetterPdfPreview();
+  closePdfPreview(state.preview);
+  closePdfPreview(letterState.preview);
   state.meeting = null;
   letterState.letter = null;
   letterState.revision = null;
@@ -251,16 +251,35 @@ function setMessage(message, error = false) {
   state.error = error;
 }
 
-function closeProtocolPreview() {
-  if (state.protocolPreviewUrl) URL.revokeObjectURL(state.protocolPreviewUrl);
-  state.protocolPreviewUrl = null;
-  state.previewOpen = false;
+function replacePdfPreviewContent(preview, pdf, error = false) {
+  if (preview.url) URL.revokeObjectURL(preview.url);
+  preview.url = pdf ? URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' })) : null;
+  preview.error = error;
 }
 
-function closeLetterPdfPreview() {
-  if (letterState.pdfPreviewUrl) URL.revokeObjectURL(letterState.pdfPreviewUrl);
-  letterState.pdfPreviewUrl = null;
-  letterState.previewOpen = false;
+function closePdfPreview(preview) {
+  replacePdfPreviewContent(preview);
+  preview.open = false;
+}
+
+async function openPdfPreview(preview, readPdf, id) {
+  replacePdfPreviewContent(preview, await readPdf(id));
+  preview.open = true;
+}
+
+async function selectPdfPreview(preview, hasExport, readPdf, id) {
+  let hasPdf = false;
+  let pdf;
+  try {
+    hasPdf = await hasExport(id);
+    if (preview.open && hasPdf) pdf = await readPdf(id);
+  } catch (error) {
+    if (!preview.open) throw error;
+    replacePdfPreviewContent(preview, null, true);
+    return hasPdf;
+  }
+  replacePdfPreviewContent(preview, pdf);
+  return hasPdf;
 }
 
 function meetingList() {
@@ -709,15 +728,12 @@ function render() {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
-  const showMeetingPreview = state.view === 'meetings' && state.folder && state.meeting &&
-    state.hasProtocol && state.previewOpen && state.protocolPreviewUrl;
-  const showLetterPreview = state.view === 'letters' && state.folder && letterState.letter &&
-    letterState.hasPdf && letterState.previewOpen && letterState.pdfPreviewUrl;
-  const showPreview = showMeetingPreview || showLetterPreview;
-  const previewOpen = state.view === 'meetings' ? state.previewOpen : letterState.previewOpen;
-  const previewUrl = state.view === 'meetings' ? state.protocolPreviewUrl : letterState.pdfPreviewUrl;
-  const showPreviewToggle = (state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol) ||
-    (state.view === 'letters' && state.folder && letterState.letter && letterState.hasPdf);
+  const preview = state.view === 'meetings' ? state.preview : letterState.preview;
+  const previewOpen = preview.open;
+  const previewAvailable = state.folder && ((state.view === 'meetings' && state.meeting) ||
+    (state.view === 'letters' && letterState.letter));
+  const showPreview = previewAvailable && previewOpen;
+  const showPreviewToggle = previewAvailable && (previewOpen || (state.view === 'meetings' ? state.hasProtocol : letterState.hasPdf));
   const folderOptions = state.dataFolders.length
     ? state.dataFolders.map(item => `<option value="${escape(item.path)}" title="${escape(item.path)}" ${!item.available ? 'disabled' : ''} ${item.path === state.folder ? 'selected' : ''}>${escape(item.name)}${!item.available ? ' (nicht verfügbar)' : ''}</option>`).join('')
     : '<option value="" selected>Kein Datenordner</option>';
@@ -730,7 +746,9 @@ function render() {
       ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="PDF-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
         <aside class="preview-pane" aria-label="PDF-Vorschau">
           <div class="preview-header"><h2>PDF-Vorschau</h2><button class="action" data-action="close-preview" aria-label="PDF-Vorschau schließen">Schließen</button></div>
-          <iframe title="${state.view === 'meetings' ? 'Gespeichertes Sitzungsprotokoll' : 'Gespeicherter Brief'}" src="${escape(previewUrl)}"></iframe>
+          ${preview.url ? `<iframe title="${state.view === 'meetings' ? 'Gespeichertes Sitzungsprotokoll' : 'Gespeicherter Brief'}" src="${escape(preview.url)}"></iframe>`
+            : `<p class="preview-message" role="${preview.error ? 'alert' : 'status'}">${preview.error
+              ? 'Das exportierte PDF konnte nicht gelesen werden.' : 'Für diesen Eintrag wurde noch kein PDF exportiert.'}</p>`}
         </aside>` : ''}
     </div></div>`;
   if (showPreview) resizeProtocolPreview(state.previewWidth);
@@ -1011,7 +1029,7 @@ async function run(action, target) {
       break;
     case 'new-letter':
       if (!confirmDiscard()) return;
-      closeLetterPdfPreview();
+      closePdfPreview(letterState.preview);
       letterState.letter = blankLetter();
       letterState.revision = null;
       letterState.hasPdf = false;
@@ -1019,14 +1037,14 @@ async function run(action, target) {
       setMessage('');
       break;
     case 'select-letter': {
-      if (!confirmDiscard()) return;
-      closeLetterPdfPreview();
+      if (!confirmDiscard()) return false;
       await refresh();
       const selected = letterState.letters.find(item => item.letter.id === target.dataset.id);
       if (!selected) throw new Error('Der Brief ist auf dem Datenträger nicht mehr vorhanden.');
+      letterState.hasPdf = await selectPdfPreview(letterState.preview, window.club.hasLetterPdf,
+        window.club.previewLetterPdf, selected.letter.id);
       letterState.letter = structuredClone(selected.letter);
       letterState.revision = selected.revision;
-      letterState.hasPdf = await window.club.hasLetterPdf(selected.letter.id);
       state.dirty = false;
       setMessage('');
       break;
@@ -1048,7 +1066,7 @@ async function run(action, target) {
       break;
     case 'new':
       if (!confirmDiscard()) return;
-      closeProtocolPreview();
+      closePdfPreview(state.preview);
       state.meeting = blankMeeting();
       state.revision = null;
       state.hasProtocol = false;
@@ -1060,15 +1078,15 @@ async function run(action, target) {
     case 'select-task-meeting':
     case 'select-decision-meeting':
     case 'select-top-meeting': {
-      if (!confirmDiscard()) return;
-      closeProtocolPreview();
+      if (!confirmDiscard()) return false;
+      if (action !== 'select' || state.view !== 'meetings') closePdfPreview(state.preview);
       await refresh();
       const selected = state.meetings.find(item => item.meeting.id === target.dataset.id);
       if (!selected) throw new Error('Die Sitzung ist auf dem Datenträger nicht mehr vorhanden.');
-      const hasProtocol = await window.club.hasProtocol(selected.meeting.id);
+      state.hasProtocol = await selectPdfPreview(state.preview, window.club.hasProtocol,
+        window.club.previewProtocol, selected.meeting.id);
       state.meeting = structuredClone(selected.meeting);
       state.revision = selected.revision;
-      state.hasProtocol = hasProtocol;
       includeEarlierTasks = false;
       state.dirty = false;
       state.view = 'meetings';
@@ -1140,26 +1158,15 @@ async function run(action, target) {
       await window.club.openProtocol(meeting.id);
       break;
     case 'toggle-preview':
-      if (state.previewOpen) {
-        closeProtocolPreview();
-      } else {
-        const pdf = await window.club.previewProtocol(meeting.id);
-        state.protocolPreviewUrl = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
-        state.previewOpen = true;
-      }
+      if (state.preview.open) closePdfPreview(state.preview);
+      else await openPdfPreview(state.preview, window.club.previewProtocol, meeting.id);
       break;
     case 'close-preview':
-      if (state.view === 'letters') closeLetterPdfPreview();
-      else closeProtocolPreview();
+      closePdfPreview(state.view === 'letters' ? letterState.preview : state.preview);
       break;
     case 'toggle-letter-preview':
-      if (letterState.previewOpen) {
-        closeLetterPdfPreview();
-      } else {
-        const pdf = await window.club.previewLetterPdf(letterState.letter.id);
-        letterState.pdfPreviewUrl = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
-        letterState.previewOpen = true;
-      }
+      if (letterState.preview.open) closePdfPreview(letterState.preview);
+      else await openPdfPreview(letterState.preview, window.club.previewLetterPdf, letterState.letter.id);
       break;
     case 'add-person': meeting.attendance.push({ name: '', status: 'attending' }); state.dirty = true; break;
     case 'remove-person': meeting.attendance.splice(i, 1); state.dirty = true; break;
@@ -1184,6 +1191,7 @@ async function run(action, target) {
 document.addEventListener('click', async event => {
   const target = event.target.closest('button');
   if (!target || target.disabled || target.closest('.folder-switch-dialog')) return;
+  if (document.body.inert && target.matches('.list-item')) return;
   if (target.dataset.action === 'toggle-sidebar') {
     const hadFocus = document.activeElement === target;
     target.disabled = true;
@@ -1191,7 +1199,7 @@ document.addEventListener('click', async event => {
       state.sidebarCollapsed = await window.club.setSidebarCollapsed(!state.sidebarCollapsed);
       document.querySelector('.activity').classList.add('sidebar-transition');
       renderNavigation();
-      if (state.previewOpen) resizeProtocolPreview(state.previewWidth);
+      if (state.preview.open || letterState.preview.open) resizeProtocolPreview(state.previewWidth);
     } catch (error) {
       setMessage(`Die Seitenleiste konnte nicht gespeichert werden: ${error.message}`, true);
       render();
@@ -1211,7 +1219,7 @@ document.addEventListener('click', async event => {
     if (target.dataset.view) await changeView(target.dataset.view);
     if (target.dataset.action === 'toggle-meeting-nav') {
       if (state.view === 'meetings') meetingNavExpanded = !meetingNavExpanded;
-    } else if (target.dataset.action) await run(target.dataset.action, target);
+    } else if (target.dataset.action && (await run(target.dataset.action, target)) === false) return;
   } catch (error) {
     setMessage(error.message, true);
   } finally {
@@ -1229,7 +1237,7 @@ document.addEventListener('click', async event => {
 });
 
 document.querySelector('.activity').addEventListener('transitionend', event => {
-  if (event.target === event.currentTarget && event.propertyName === 'width' && (state.previewOpen || letterState.previewOpen)) {
+  if (event.target === event.currentTarget && event.propertyName === 'width' && (state.preview.open || letterState.preview.open)) {
     resizeProtocolPreview(state.previewWidth);
   }
 });

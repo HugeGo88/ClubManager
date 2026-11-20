@@ -139,6 +139,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Save individual letters, write them in a Markdown editor, and export PDFs
   with an optional address, custom template and linked signatures.
 - [x] Preview the last exported letter PDF in a resizable in-app pane.
+- [x] Keep the PDF preview open while switching saved letters or meetings, with
+  a message when the selected item has no readable export.
 - [x] Define folder-wide text values for custom placeholders in letter templates
   and Markdown letter content.
 - [ ] Allow members to be filtered when selecting recipients for a series letter.

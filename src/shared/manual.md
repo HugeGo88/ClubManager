@@ -39,6 +39,8 @@ Mit **Protokoll schreibgeschützt** schützen Sie den Inhalt vor versehentlichen
 
 Mit **PDF exportieren** erstellen Sie ein Protokoll des gespeicherten Stands. Das gespeicherte PDF kann geöffnet und in der App angezeigt werden; spätere Änderungen erfordern einen erneuten Export. Optional können offene Aufgaben früherer, datierter Sitzungen einbezogen werden. Dies setzt ein gültiges Datum der aktuellen Sitzung voraus.
 
+Mit dem Augensymbol öffnen Sie die PDF-Vorschau. Wählen Sie eine andere Sitzung aus der Liste, bleibt die Vorschau in derselben Breite geöffnet und zeigt das zuletzt exportierte Protokoll ab der ersten Seite. Fehlt das PDF oder kann es nicht gelesen werden, erscheint stattdessen ein Hinweis. Exportieren Sie die gerade ausgewählte Sitzung erneut, schließen und öffnen Sie die Vorschau, um das neue PDF zu sehen.
+
 ## Sitzungsübersichten
 
 - **Offene Aufgaben** zeigt gespeicherte offene Aufgaben. Überfällige offene Aufgaben stehen in einer eigenen Tabelle darüber; die Zahl am Symbol zählt alle überfälligen offenen Aufgaben unabhängig von Filtern. Mit **Erledigte Aufgaben anzeigen** erscheinen auch abgeschlossene Aufgaben in der unteren Tabelle. Sie können beide Tabellen durchsuchen, nach Verantwortlichen filtern, sortieren, TOP-Details anzeigen und Aufgaben direkt erledigen oder wieder öffnen.
@@ -56,7 +58,7 @@ Unter **Einstellungen → Briefe** können Sie Unterschriftsbilder hinzufügen. 
 
 Für Briefe können Sie unter **Einstellungen → Briefe** benutzerdefinierte Briefplatzhalter mit einem Schlüssel und einem einzeiligen Textwert anlegen. Diese Werte gelten für alle Briefe des aktiven Datenordners. Verwenden Sie eindeutige Schlüssel, die mit einem Kleinbuchstaben beginnen und danach Kleinbuchstaben, Zahlen oder Unterstriche enthalten, zum Beispiel `club_name`; die eingebauten Schlüssel `title`, `date`, `address`, `content` und `signatures` sind reserviert. ClubManager zeigt den passenden Token `{{club_name}}` an und kann ihn in die Zwischenablage kopieren. Verwenden Sie den Token in der HTML-Vorlage oder im Markdown-Briefinhalt. Werte dürfen leer sein und werden als Text, nicht als HTML, eingesetzt.
 
-Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Mit dem Augensymbol öffnen Sie das PDF in der Vorschau; die Vorschau lässt sich mit der Maus oder Tastatur in der Breite anpassen. Sie zeigt den Stand beim Öffnen. Exportieren Sie erneut, während die Vorschau geöffnet ist, schließen und öffnen Sie sie erneut, um das neue PDF zu sehen. Das PDF kann weiterhin über **Gespeichertes PDF öffnen** geöffnet werden. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
+Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Mit dem Augensymbol öffnen Sie das PDF in der Vorschau; die Vorschau lässt sich mit der Maus oder Tastatur in der Breite anpassen. Wählen Sie einen anderen Brief aus der Liste, bleibt dieselbe Breite erhalten und die Vorschau zeigt dessen letzten Export ab der ersten Seite. Fehlt das PDF oder kann es nicht gelesen werden, erscheint stattdessen ein Hinweis. Exportieren Sie den gerade ausgewählten Brief erneut, schließen und öffnen Sie die Vorschau, um das neue PDF zu sehen. Das PDF kann weiterhin über **Gespeichertes PDF öffnen** geöffnet werden. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
 
 ## PDF-Gestaltung
 

@@ -5,7 +5,158 @@ const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
+
+async function previewSelectionSmoke(window) {
+  window.setSize(1100, 800);
+  for (const module of ['meetings', 'letters']) {
+    const fixtures = await window.webContents.executeJavaScript(`(async () => {
+      const meetings = ${JSON.stringify(module)} === 'meetings';
+      const fixtures = [];
+      for (const [index, title] of ['Vorschau A', 'Vorschau B', 'Ohne Export', 'Nicht lesbar'].entries()) {
+        const base = { id: crypto.randomUUID(), title, date: '2026-01-02' };
+        const record = meetings
+          ? { ...base, attendance: [], points: [] }
+          : { ...base, includeAddress: false, address: { name: '', company: '', street: '', postalCode: '', city: '' },
+              content: title, signatures: [] };
+        const revision = await (meetings ? window.club.saveMeeting : window.club.saveLetter)(record, null);
+        const file = index >= 2 ? null : meetings
+          ? await window.club.exportMeeting(record, revision, false)
+          : await window.club.exportLetter(record, revision);
+        fixtures.push({ id: record.id, file });
+      }
+      return fixtures;
+    })()`);
+    const [first, second, missing, unreadable] = fixtures;
+    await fs.mkdir(path.join(path.dirname(second.file), `${unreadable.id}.pdf`));
+    const [a, b] = await Promise.all([first, second].map(async ({ id, file }) => ({
+      id, hash: createHash('sha256').update(await fs.readFile(file)).digest('hex')
+    })));
+    assert.notEqual(a.hash, b.hash, `${module}: PDF fixtures must be distinct`);
+    const loaded = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+    window.webContents.reload();
+    await loaded;
+    await window.webContents.executeJavaScript(`(async () => {
+      const module = ${JSON.stringify(module)};
+      const [a, b, missing, unreadable] = ${JSON.stringify([a, b, missing.id, unreadable.id])};
+      const meetings = module === 'meetings';
+      const query = selector => document.querySelector(selector);
+      for (let i = 0; i < 200 && query('#app')?.dataset.modulesLoaded !== 'true'; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      const click = async selector => {
+        const control = query(selector);
+        if (!control) throw new Error(module + ': missing control ' + selector);
+        control.click();
+        for (let i = 0; i < 200 && document.body.inert; i++) await new Promise(resolve => setTimeout(resolve, 10));
+        if (document.body.inert) throw new Error(module + ': action did not finish: ' + selector);
+      };
+      const select = id => click('[data-list-results] [data-id="' + id + '"]');
+      const frame = () => query('.preview-pane iframe');
+      // Capture the bytes sent to the built-in viewer without changing the app's CSP.
+      const blobs = new Map();
+      const createObjectURL = URL.createObjectURL;
+      URL.createObjectURL = blob => {
+        const url = createObjectURL(blob);
+        blobs.set(url, blob);
+        return url;
+      };
+      const assertPdf = async (fixture, scenario) => {
+        if (query('[data-list-results] .selected')?.dataset.id !== fixture.id || !frame()) {
+          throw new Error(module + ': ' + scenario + ' must display the selected item with an open PDF preview');
+        }
+        const bytes = await blobs.get(frame().src).arrayBuffer();
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)).toHex();
+        if (hash !== fixture.hash) throw new Error(module + ': ' + scenario + ' displayed the wrong PDF');
+      };
+      await click('[data-view="' + module + '"]');
+      await select(a.id);
+      await click('[data-action="' + (meetings ? 'toggle-preview' : 'toggle-letter-preview') + '"]');
+      await assertPdf(a, 'opening the preview');
+      const splitter = () => query('[data-preview-splitter]');
+      const width = () => splitter()?.getAttribute('aria-valuenow');
+      const initialWidth = width();
+      splitter().focus();
+      splitter().dispatchEvent(new KeyboardEvent('keydown', {
+        key: initialWidth === splitter().getAttribute('aria-valuemin') ? 'ArrowLeft' : 'ArrowRight', bubbles: true
+      }));
+      const resizedWidth = width();
+      if (resizedWidth === initialWidth) throw new Error(module + ': resizing the preview did not change its width');
+      const originalFrame = frame();
+      await select(b.id);
+      await assertPdf(b, 'switching list items');
+      if (frame() === originalFrame || new URL(frame().src).hash) {
+        throw new Error(module + ': the new PDF must start in a fresh viewer at its default first page');
+      }
+      if (width() !== resizedWidth) throw new Error(module + ': switching items changed the preview width');
+
+      const selectedId = () => query('[data-list-results] .selected')?.dataset.id;
+      const assertMessage = (id, role, text) => {
+        if (selectedId() !== id || frame() || width() !== resizedWidth ||
+            !query('.preview-pane [role="' + role + '"]')?.textContent.includes(text)) {
+          throw new Error(module + ': the panel should show only the expected message for the selected item: ' + text);
+        }
+      };
+      await select(missing);
+      assertMessage(missing, 'status', 'noch kein PDF exportiert');
+      await select(unreadable);
+      assertMessage(unreadable, 'alert', 'konnte nicht gelesen werden');
+      await select(a.id);
+      const switching = select(b.id);
+      // The list is inert during a switch; even a queued click must not start a competing update.
+      query('[data-list-results] [data-id="' + a.id + '"]').click();
+      await switching;
+      await assertPdf(b, 'finishing a switch with a second click while busy');
+      await select(a.id);
+      await assertPdf(a, 'quickly switching back from an unreadable PDF');
+
+      const currentUrl = frame().src;
+      await click('[data-action="' + (meetings ? 'export' : 'export-letter') + '"]');
+      if (frame()?.src !== currentUrl || !query('.notice')?.textContent.includes('PDF gespeichert')) {
+        throw new Error(module + ': re-exporting the selected item must keep the current preview snapshot');
+      }
+
+      const editorTitle = query(meetings ? '[data-field="title"]' : '[data-letter-field="title"]');
+      editorTitle.value = 'Entwurf für die Vorschau';
+      editorTitle.dispatchEvent(new Event('input', { bubbles: true }));
+      const retainedFrame = frame();
+      const originalConfirm = window.confirm;
+      try {
+        let prompted = false;
+        window.confirm = message => {
+          prompted = message.includes('Ungespeicherte Änderungen');
+          return false;
+        };
+        await select(b.id);
+        if (!prompted || frame() !== retainedFrame || selectedId() !== a.id || !editorTitle.isConnected ||
+            editorTitle.value !== 'Entwurf für die Vorschau') {
+          throw new Error(module + ': canceling a switch must preserve the draft, selection and PDF viewer');
+        }
+        window.confirm = () => true;
+        await select(missing);
+      } finally {
+        window.confirm = originalConfirm;
+      }
+      assertMessage(missing, 'status', 'noch kein PDF exportiert');
+      await click('.preview-pane [data-action="close-preview"]');
+      await select(b.id);
+      if (selectedId() !== b.id || query('.preview-pane')) {
+        throw new Error(module + ': closing the empty panel must keep it closed on the next selection');
+      }
+      await click('[data-action="' + (meetings ? 'toggle-preview' : 'toggle-letter-preview') + '"]');
+      await select(unreadable);
+      assertMessage(unreadable, 'alert', 'konnte nicht gelesen werden');
+      await click('.preview-pane [data-action="close-preview"]');
+      if (query('.preview-pane')) throw new Error(module + ': the unreadable preview must close normally');
+      await select(b.id);
+      await click('[data-action="' + (meetings ? 'toggle-preview' : 'toggle-letter-preview') + '"]');
+      await click('[data-view="' + (meetings ? 'letters' : 'meetings') + '"]');
+      await click('[data-view="' + module + '"]');
+      await select(b.id);
+      if (query('.preview-pane')) throw new Error(module + ': leaving the module must not carry over the preview');
+    })()`);
+  }
+}
 
 async function main() {
   app.setVersion(require('../package.json').version);
@@ -2456,6 +2607,7 @@ async function main() {
           { path: secondData, name: 'Verein B', available: true, moduleSettingsKnown: true }
         ]);
         assert.equal(folderSettings.activeFolder, data);
+        await previewSelectionSmoke(window);
         await runFolderRecoverySmoke();
         await runFolderRecoverySmoke('configuration');
         await runFolderRecoverySmoke('restart-setup');

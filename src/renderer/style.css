@@ -78,6 +78,7 @@ main { flex: 1; min-width: 0; }
 .preview-pane { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: #e9edf2; border-left: 1px solid #d5dbe2; }
 .preview-header { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: white; border-bottom: 1px solid #d5dbe2; }
 .preview-header h2 { margin: 0; font-size: 14px; }
+.preview-message { margin: 16px; }
 .preview-pane iframe { width: 100%; flex: 1; min-height: 0; border: 0; background: #80858c; }
 .content-inner { max-width: 900px; margin: auto; }
 .content-inner-wide { max-width: 1600px; }
