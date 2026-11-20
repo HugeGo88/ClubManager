@@ -5,9 +5,11 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 ## Erste Schritte und Navigation
 
 1. Öffnen Sie **Einstellungen → Allgemein** und wählen Sie einen Datenordner. ClubManager erstellt darin für jedes Modul einen Unterordner. Über das Auswahlmenü oben können Sie registrierte Datenordner wechseln; mit **Datenordner hinzufügen** nehmen Sie weitere Ordner auf. Unter **Einstellungen → Allgemein** können Sie die Bezeichnung des aktiven Ordners ändern. Ein Wechsel verschiebt keine vorhandenen Daten.
-2. Aktivieren oder deaktivieren Sie Module im jeweiligen Einstellungsbereich. Standardmäßig ist nur **Sitzungen** aktiviert. **Mitglieder** und **Rechnungen** sind noch Platzhalter.
+2. Aktivieren oder deaktivieren Sie Module im jeweiligen Einstellungsbereich für den dort genannten aktiven Datenordner. Die Auswahl wird im Datenordner gespeichert und auf andere Computer mitgenommen. Neue Datenordner starten nur mit **Sitzungen**; bereits vorhandene ClubManager-Ordner übernehmen einmalig die bisherige Modulauswahl. Ohne verwendbaren Datenordner sind die Schalter deaktiviert. **Mitglieder** und **Rechnungen** sind noch Platzhalter. Das Ausblenden eines Moduls löscht keine Daten.
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
+
+Die Modulauswahl wird beim Öffnen oder Wechseln des Datenordners gelesen. Änderungen durch andere Personen werden beim Öffnen der Einstellungen noch nicht automatisch aktualisiert; gleichzeitige Änderungen werden noch nicht auf Konflikte geprüft. Speichern Sie Entwürfe vor Änderungen an der Modulauswahl.
 
 ## Datenordner und Zugriff
 

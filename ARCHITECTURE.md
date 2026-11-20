@@ -87,8 +87,8 @@ settings.json in userData    user-selected data folder
 
 - Electron's `userData/settings.json`, outside the club data folders, stores the
   registered folder paths and display names plus the active folder path,
-  legacy app-wide customization paths until they are migrated, four Boolean
-  module settings, sidebar width preference and the
+  legacy app-wide customization paths until they are migrated, the legacy
+  module-selection migration source, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Signatures are stored only within each folder's customization directory (never
@@ -108,8 +108,24 @@ settings.json in userData    user-selected data folder
   files and filesystem failures are surfaced and do not silently fall back.
   A legacy single `folder` setting loads as one registered folder named after
   its final path component. Existing settings without module selections use the
-  Meetings-only defaults. Module visibility and the sidebar preference remain
-  app-wide rather than following the active folder.
+  Meetings-only defaults. The sidebar preference remains app-wide.
+- Each data folder owns `clubmanager-modules.json`, a version 1 record containing
+  a complete validated Boolean selection. Before creating module directories,
+  a folder with existing module or customization structure inherits the
+  preserved legacy app-wide selection if its selection is missing; a folder
+  without that structure starts with Meetings only. Exclusive initialization
+  preserves a competing initializer's selection. Subsequent edits write only
+  the active folder and do not alter the legacy migration source. Invalid,
+  unreadable or unwritable settings are reported rather than silently replaced.
+  Folder activation validates the selection and records before committing the
+  active context; failure retains the prior context. At startup with unusable
+  settings, folder-backed navigation is disabled and Settings remains usable.
+  Module controls display the active folder name and are disabled without a
+  usable folder. The current module remains selected on a switch if enabled,
+  otherwise navigation falls back to the first enabled module or Settings.
+  Hiding a module does not delete records and is not an authorization boundary.
+  Draft guards for module-setting transitions (#16), Settings-entry refresh
+  and stale-write conflict handling (#17) are not yet implemented.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German

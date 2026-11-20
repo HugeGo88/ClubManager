@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
-const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
+const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: {}, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const letterState = { letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [] };
 const listSearch = { meetings: '', letters: '' };
 let manual = null;
@@ -137,8 +137,13 @@ function adoptFolderRegistry(registry) {
   folderNameCacheWarning = registry.nameCacheWarning;
 }
 
-async function adoptActiveFolder(folder) {
-  state.folder = folder;
+async function adoptActiveFolder(result) {
+  state.folder = result.folder;
+  state.modules = result.modules;
+  const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'meetings' : state.view;
+  if (!['settings', 'manual', 'changelog'].includes(state.view) && !state.modules[module]) {
+    state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
+  }
   const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
     window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
     window.club.getLetterSettings()
@@ -499,7 +504,8 @@ function settingsView() {
   const moduleSettings = selected ? `<section class="card" role="tabpanel" aria-labelledby="settings-tab-${selected[0]}">
       <h2>${selected[1]}</h2>
       <p>${selected[2]}.</p>
-      <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''}> Modul aktivieren</label>
+      <p>${activeFolder ? `Modulauswahl für Datenordner „${escape(activeFolder.name)}“` : 'Wählen Sie zuerst einen verfügbaren Datenordner aus.'}</p>
+      <label class="checkbox module-toggle"><input type="checkbox" data-module-toggle="${selected[0]}" ${state.modules[selected[0]] ? 'checked' : ''} ${state.folder ? '' : 'disabled'}> Modul aktivieren</label>
       <p class="muted">${state.modules[selected[0]] ? 'Das Modul wird in der Seitenleiste angezeigt.' : 'Das Modul ist deaktiviert und wird aus der Seitenleiste ausgeblendet.'}</p>
       ${selected[0] === 'meetings' ? `<h2>HTML-Vorlage für Sitzungsprotokolle</h2>
         <p>Optional: Importieren Sie eine HTML-Datei in den Anpassungsordner dieses Datenordners. Die gemeinsame CSS-Datei gilt weiterhin.</p>
@@ -750,7 +756,7 @@ async function run(action, target) {
       if (choice === 'save') await saveCurrentDraft();
       const result = await window.club.chooseFolder();
       if (result) {
-        await adoptActiveFolder(result.folder);
+        await adoptActiveFolder(result);
         setMessage(result.conflicts.length
           ? `Datenordner ausgewählt. Bestehende Anpassungen wurden nicht überschrieben: ${result.conflicts.join(', ')}.`
           : 'Datenordner ausgewählt. Die Modulordner sind bereit.', result.conflicts.length > 0);
@@ -789,6 +795,9 @@ async function run(action, target) {
       adoptFolderRegistry(result);
       if (isActive) {
         state.folder = null;
+        state.modules = {};
+        state.meetings = [];
+        letterState.letters = [];
         state.protocolCss = null;
         state.meetingTemplate = null;
         letterState.template = null;
@@ -1273,12 +1282,17 @@ app.addEventListener('change', event => {
       if (!selected || selected === state.folder) return;
       const choice = await confirmFolderSwitch();
       if (choice === 'cancel') return;
-      if (choice === 'save') await saveCurrentDraft();
-      const result = await window.club.activateFolder(selected);
-      await adoptActiveFolder(result.folder);
-      setMessage(result.conflicts.length
-        ? `Datenordner gewechselt. Bestehende Anpassungen wurden nicht überschrieben: ${result.conflicts.join(', ')}.`
-        : 'Datenordner gewechselt.', result.conflicts.length > 0);
+      document.body.inert = true;
+      try {
+        if (choice === 'save') await saveCurrentDraft();
+        const result = await window.club.activateFolder(selected);
+        await adoptActiveFolder(result);
+        setMessage(result.conflicts.length
+          ? `Datenordner gewechselt. Bestehende Anpassungen wurden nicht überschrieben: ${result.conflicts.join(', ')}.`
+          : 'Datenordner gewechselt.', result.conflicts.length > 0);
+      } finally {
+        document.body.inert = false;
+      }
     })().catch(error => setMessage(error.message, true)).finally(render);
     return;
   }

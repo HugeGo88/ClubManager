@@ -23,20 +23,28 @@ async function main() {
   if (!root) throw new Error('CLUBMANAGER_SMOKE_ROOT is required.');
 
   app.setVersion(require('../package.json').version);
-  const fixture = path.join(root, 'folder-recovery');
+  const configurationMode = process.env.CLUBMANAGER_RECOVERY_MODE === 'configuration';
+  const fixture = path.join(root, configurationMode ? 'configuration-recovery' : 'folder-recovery');
   const userData = path.join(fixture, 'settings');
   const unavailableFolder = path.join(fixture, 'missing-club');
   const restoredFolder = path.join(fixture, 'restored-club');
   const movedFolder = path.join(fixture, 'moved-club');
   const markerFile = path.join(restoredFolder, 'keep.txt');
+  const brokenFolder = path.join(fixture, 'broken-club');
   await fs.mkdir(userData, { recursive: true });
   await fs.mkdir(restoredFolder, { recursive: true });
   await fs.writeFile(markerFile, 'folder contents survive unregister');
+  if (configurationMode) {
+    await fs.mkdir(brokenFolder);
+    await fs.writeFile(path.join(brokenFolder, 'clubmanager-modules.json'), '{');
+  }
   app.setPath('userData', userData);
 
   await fs.writeFile(path.join(userData, 'settings.json'), JSON.stringify({
-    dataFolders: [{ path: unavailableFolder, name: 'Mein Verein', available: true }],
-    activeFolder: unavailableFolder,
+    dataFolders: configurationMode
+      ? [{ path: brokenFolder, name: 'Kaputt', available: true }]
+      : [{ path: unavailableFolder, name: 'Mein Verein', available: true }],
+    activeFolder: configurationMode ? brokenFolder : unavailableFolder,
     protocolCss: null,
     meetingTemplate: null,
     letterTemplate: null,
@@ -51,7 +59,7 @@ async function main() {
     startupDialogs.push(options);
     return { response: 0 };
   };
-  let selectedFolder = restoredFolder;
+  let selectedFolder = configurationMode ? path.join(root, 'data') : restoredFolder;
   dialog.showOpenDialog = async (window, options) => {
     if (!options.properties.includes('openDirectory')) {
       throw new Error(`Unexpected folder-recovery dialog: ${options.title}`);
@@ -78,6 +86,68 @@ async function main() {
 
     require('../src/main/main');
     const window = await mainWindowReady;
+    if (configurationMode) {
+      await window.webContents.executeJavaScript(`(async () => {
+        const waitFor = async test => {
+          for (let i = 0; i < 400; i++) {
+            if (await test()) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          throw new Error('Timed out waiting for configuration recovery');
+        };
+        await waitFor(() => document.querySelector('#app')?.dataset.modulesLoaded === 'true');
+        if (await window.club.getFolder() !== null || Object.values(await window.club.getModules()).some(Boolean)) {
+          throw new Error('Invalid startup configuration must leave folder modules inactive');
+        }
+        document.querySelector('[data-view="settings"]').click();
+        await waitFor(() => document.querySelector('[data-settings-tab="members"]'));
+        document.querySelector('[data-settings-tab="members"]').click();
+        await waitFor(() => document.querySelector('[data-module-toggle="members"]'));
+        if (!document.querySelector('[data-module-toggle="members"]').disabled) throw new Error('Invalid startup configuration must disable controls');
+        document.querySelector('[data-action="choose-folder"]').click();
+        await waitFor(async () => await window.club.getFolder() === ${JSON.stringify(path.join(root, 'data'))} &&
+          !document.body.inert && !document.querySelector('[data-module-toggle="members"]')?.disabled);
+        const modules = await window.club.getModules();
+        if (!modules.members || !modules.letters) throw new Error('Folder selection must travel to an independent settings context');
+        const selector = document.querySelector('[data-folder-switcher]');
+        selector.value = ${JSON.stringify(brokenFolder)};
+        selector.dispatchEvent(new Event('change', { bubbles: true }));
+        await waitFor(() => document.querySelector('.notice.error'));
+        if (await window.club.getFolder() !== ${JSON.stringify(path.join(root, 'data'))} ||
+            !(await window.club.getModules()).members || document.querySelector('[data-folder-switcher]').value !== ${JSON.stringify(path.join(root, 'data'))}) {
+          throw new Error('A failed activation must retain the previous coherent context');
+        }
+      })()`);
+      const modulesFile = path.join(root, 'data', 'clubmanager-modules.json');
+      const savedModulesFile = `${modulesFile}.fixture`;
+      await fs.rename(modulesFile, savedModulesFile);
+      try {
+        await fs.mkdir(modulesFile);
+        await window.webContents.executeJavaScript(`(async () => {
+          const toggle = document.querySelector('[data-module-toggle="members"]');
+          toggle.checked = false;
+          toggle.dispatchEvent(new Event('change', { bubbles: true }));
+          for (let i = 0; i < 400; i++) {
+            if (!document.body.inert && document.querySelector('.notice.error')?.textContent.includes('gespeichert')) break;
+            await new Promise(resolve => setTimeout(resolve, 25));
+          }
+          if (!document.querySelector('.notice.error')?.textContent.includes('gespeichert') ||
+              !document.querySelector('[data-module-toggle="members"]').checked ||
+              !(await window.club.getModules()).members) {
+            throw new Error('A failed selection save must show an error and retain the last valid selection');
+          }
+        })()`);
+      } finally {
+        await fs.rmdir(modulesFile);
+        await fs.rename(savedModulesFile, modulesFile);
+      }
+      assert.equal(await fs.readFile(path.join(brokenFolder, 'clubmanager-modules.json'), 'utf8'), '{');
+      assert.ok(startupDialogs.some(item => item.detail?.includes('Modul-Einstellungen')), 'Configuration startup error must be shown');
+      console.log('Electron configuration recovery smoke test passed: startup error, portability, and failed activation.');
+      clearTimeout(timeout);
+      app.exit(0);
+      return;
+    }
     await window.webContents.executeJavaScript(`(async () => {
       const waitFor = async test => {
         for (let i = 0; i < 400; i++) {
