@@ -75,7 +75,7 @@ async function main() {
   const timeout = setTimeout(() => {
     console.error('Electron smoke test timed out.');
     app.exit(1);
-  }, 30000);
+  }, 60000);
   async function runFolderRecoverySmoke(mode = '') {
     const output = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [path.join(__dirname, 'electron-folder-recovery-smoke.cjs')], {
@@ -2182,6 +2182,8 @@ async function main() {
         assert.equal(folderSettings.activeFolder, data);
         await runFolderRecoverySmoke();
         await runFolderRecoverySmoke('configuration');
+        await runFolderRecoverySmoke('restart-setup');
+        await runFolderRecoverySmoke('restart-check');
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();

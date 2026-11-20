@@ -18,10 +18,100 @@ async function snapshotDirectory(directory, root = directory) {
   return contents.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+async function restartScenario(root, mode) {
+  const fixture = path.join(root, 'restart-recovery');
+  const userData = path.join(fixture, 'settings');
+  const folder = path.join(fixture, 'verein');
+  app.setVersion(require('../package.json').version);
+  if (mode === 'restart-setup') {
+    await fs.mkdir(userData, { recursive: true });
+    await fs.mkdir(folder);
+    await fs.writeFile(path.join(userData, 'settings.json'), JSON.stringify({
+      modules: { meetings: true, members: false, invoices: false, letters: false },
+      lastSeenVersion: app.getVersion()
+    }));
+  }
+  app.setPath('userData', userData);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+  const timeout = setTimeout(() => {
+    console.error('Full restart smoke test timed out.');
+    app.exit(1);
+  }, 20000);
+  const mainWindowReady = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The restart app window did not load.')), 15000);
+    app.on('browser-window-created', (event, window) => {
+      window.webContents.once('did-finish-load', () => {
+        if (!window.webContents.getURL().endsWith('/renderer/index.html')) return;
+        clearTimeout(timer);
+        resolve(window);
+      });
+    });
+  });
+  require('../src/main/main');
+  const window = await mainWindowReady;
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 400; i++) {
+        if (await test()) return;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for full restart scenario');
+    };
+    await waitFor(() => document.querySelector('#app')?.dataset.modulesLoaded === 'true');
+    if (${JSON.stringify(mode)} === 'restart-setup') {
+      document.querySelector('[data-action="choose-folder"]').click();
+      await waitFor(async () => await window.club.getFolder() === ${JSON.stringify(folder)} && !document.body.inert);
+      document.querySelector('[data-view="settings"]').click();
+      await waitFor(() => document.querySelector('[data-settings-tab="letters"]'));
+      document.querySelector('[data-settings-tab="letters"]').click();
+      await waitFor(() => document.querySelector('[data-module-toggle="letters"]'));
+      let toggle = document.querySelector('[data-module-toggle="letters"]');
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change', { bubbles: true }));
+      await waitFor(() => !document.body.inert && !document.querySelector('[data-module-view="letters"]').hidden);
+      document.querySelector('[data-settings-tab="meetings"]').click();
+      await waitFor(() => document.querySelector('[data-module-toggle="meetings"]'));
+      toggle = document.querySelector('[data-module-toggle="meetings"]');
+      toggle.checked = false;
+      toggle.dispatchEvent(new Event('change', { bubbles: true }));
+      await waitFor(() => !document.body.inert && document.querySelector('[data-module-nav="meetings"]').hidden);
+    } else {
+      if (await window.club.getFolder() !== ${JSON.stringify(folder)} ||
+          document.querySelector('[data-folder-switcher]').value !== ${JSON.stringify(folder)} ||
+          document.querySelector('[data-module-view="letters"]').hidden ||
+          !document.querySelector('[data-module-nav="meetings"]').hidden ||
+          !document.querySelector('[data-view="letters"]').classList.contains('active')) {
+        throw new Error('A full restart must restore the active folder and its visible module selection');
+      }
+      document.querySelector('[data-view="settings"]').click();
+      await waitFor(() => document.querySelector('[data-settings-tab="letters"]'));
+      document.querySelector('[data-settings-tab="letters"]').click();
+      await waitFor(() => document.querySelector('[data-module-toggle="letters"]'));
+      if (!document.querySelector('[data-module-toggle="letters"]').checked ||
+          !document.querySelector('main').textContent.includes('verein')) {
+        throw new Error('The restored selection must be editable for the named data folder');
+      }
+    }
+  })()`);
+  if (mode === 'restart-setup') {
+    const savedSettings = JSON.parse(await fs.readFile(path.join(userData, 'settings.json'), 'utf8'));
+    assert.deepEqual(savedSettings.modules, { meetings: true, members: false, invoices: false, letters: false },
+      'The app-wide migration source must differ from the selected folder modules');
+  } else {
+    console.log('Electron full restart smoke test passed: same app settings restore the folder-owned selection.');
+  }
+  clearTimeout(timeout);
+  app.quit();
+}
+
 async function main() {
   const root = process.env.CLUBMANAGER_SMOKE_ROOT;
   if (!root) throw new Error('CLUBMANAGER_SMOKE_ROOT is required.');
 
+  if (['restart-setup', 'restart-check'].includes(process.env.CLUBMANAGER_RECOVERY_MODE)) {
+    await restartScenario(root, process.env.CLUBMANAGER_RECOVERY_MODE);
+    return;
+  }
   app.setVersion(require('../package.json').version);
   const configurationMode = process.env.CLUBMANAGER_RECOVERY_MODE === 'configuration';
   const fixture = path.join(root, configurationMode ? 'configuration-recovery' : 'folder-recovery');
@@ -141,9 +231,64 @@ async function main() {
         await fs.rmdir(modulesFile);
         await fs.rename(savedModulesFile, modulesFile);
       }
+      const initializationFolder = path.join(fixture, 'initialization-failure');
+      await fs.mkdir(initializationFolder);
+      selectedFolder = initializationFolder;
+      const originalWriteFile = fs.writeFile;
+      let failedInitializationWrites = 0;
+      fs.writeFile = async (file, ...args) => {
+        if (typeof file === 'string' && file.startsWith(path.join(initializationFolder, 'clubmanager-modules.json.')) && file.endsWith('.tmp')) {
+          failedInitializationWrites++;
+          const error = new Error('Simulierter Schreibfehler');
+          error.code = 'EIO';
+          throw error;
+        }
+        return originalWriteFile(file, ...args);
+      };
+      try {
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 400; i++) {
+              if (await test()) return;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for initialization failure');
+          };
+          document.querySelector('[data-action="choose-folder"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('.notice.error')?.textContent.includes('Simulierter Schreibfehler'));
+          if (await window.club.getFolder() !== ${JSON.stringify(path.join(root, 'data'))} ||
+              document.querySelector('[data-folder-switcher]').value !== ${JSON.stringify(path.join(root, 'data'))} ||
+              !(await window.club.getModules()).members ||
+              !document.querySelector('[data-module-toggle="members"]').checked ||
+              document.querySelector('[data-module-toggle="members"]').disabled ||
+              document.querySelector('[data-module-view="members"]').hidden ||
+              !(await window.club.listMeetings()).length) {
+            throw new Error('Initialization failure must retain the previous usable folder, selection and records');
+          }
+          if ((await window.club.getFolders()).dataFolders.some(item => item.path === ${JSON.stringify(initializationFolder)})) {
+            throw new Error('An unsuccessfully initialized folder must not be registered');
+          }
+        })()`);
+      } finally {
+        fs.writeFile = originalWriteFile;
+      }
+      assert.equal(failedInitializationWrites, 1, 'The fixture must fail the initial selection write');
+      assert.deepEqual(await fs.readdir(initializationFolder), [], 'A failed initialization must not create selection or module directories');
+      await window.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-action="choose-folder"]').click();
+        for (let i = 0; i < 400; i++) {
+          if (await window.club.getFolder() === ${JSON.stringify(initializationFolder)} && !document.body.inert) break;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        if (await window.club.getFolder() !== ${JSON.stringify(initializationFolder)} ||
+            !(await window.club.getModules()).meetings || (await window.club.getModules()).members ||
+            document.querySelector('[data-folder-switcher]').value !== ${JSON.stringify(initializationFolder)}) {
+          throw new Error('Retrying after an initialization failure must activate the new folder with its default selection');
+        }
+      })()`);
       assert.equal(await fs.readFile(path.join(brokenFolder, 'clubmanager-modules.json'), 'utf8'), '{');
       assert.ok(startupDialogs.some(item => item.detail?.includes('Modul-Einstellungen')), 'Configuration startup error must be shown');
-      console.log('Electron configuration recovery smoke test passed: startup error, portability, and failed activation.');
+      console.log('Electron configuration recovery smoke test passed: startup error, portability, failed activation and initialization-write recovery.');
       clearTimeout(timeout);
       app.exit(0);
       return;

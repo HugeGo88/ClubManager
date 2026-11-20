@@ -348,8 +348,10 @@ npm run dist:linux
 minimum version in `.nvmrc` before running. The Electron smoke tests exercise the application through Electron, including
 meeting editing, navigation, settings, lists, conflicts and PDF export. They
 also verify copied customizations, reset/default behavior, and PDF output when
-switching between two folders; a separate process verifies unavailable-folder
-startup recovery, relinking and non-destructive unregister.
+switching between two folders; separate processes verify unavailable-folder
+and configuration recovery, relinking, non-destructive unregister, a
+deterministic initialization-write failure and retry, and a full app restart
+using the same settings context.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
 syntax, providing a virtual display for Electron. The `start`, Electron smoke
 test and distribution scripts build the editor and versioned manual through npm
