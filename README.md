@@ -118,9 +118,12 @@ editor supports Markdown and an optional manually entered address with separate
 company, name, street, postal code and city fields. Existing multiline addresses
 are preserved in the name field and can be reorganized manually.
 Select any configured signatures with the checkboxes, save, then export to PDF.
-The saved PDF can be opened from the letter editor and is a snapshot of the
-last export. Letter records are stored in `letters/<id>.json` and PDFs in
-`letters/pdf/<id>.pdf`; conflicting external edits are reported.
+The eye icon opens the saved PDF in a resizable in-app preview; it is a snapshot
+of the last export, not a live view of edits. If you export again while the
+preview is open, close and reopen it to see the new PDF. The saved PDF can also
+be opened from the letter editor. Letter records are stored in
+`letters/<id>.json` and PDFs in `letters/pdf/<id>.pdf`; conflicting external
+edits are reported.
 
 Import signature image files in the Letters settings. PNG, JPEG, SVG, WebP and
 GIF are supported, up to 10 MB per image. Images are copied into the active

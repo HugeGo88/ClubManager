@@ -56,7 +56,7 @@ Unter **Einstellungen → Briefe** können Sie Unterschriftsbilder hinzufügen. 
 
 Für Briefe können Sie unter **Einstellungen → Briefe** benutzerdefinierte Briefplatzhalter mit einem Schlüssel und einem einzeiligen Textwert anlegen. Diese Werte gelten für alle Briefe des aktiven Datenordners. Verwenden Sie eindeutige Schlüssel, die mit einem Kleinbuchstaben beginnen und danach Kleinbuchstaben, Zahlen oder Unterstriche enthalten, zum Beispiel `club_name`; die eingebauten Schlüssel `title`, `date`, `address`, `content` und `signatures` sind reserviert. ClubManager zeigt den passenden Token `{{club_name}}` an und kann ihn in die Zwischenablage kopieren. Verwenden Sie den Token in der HTML-Vorlage oder im Markdown-Briefinhalt. Werte dürfen leer sein und werden als Text, nicht als HTML, eingesetzt.
 
-Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
+Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Mit dem Augensymbol öffnen Sie das PDF in der Vorschau; die Vorschau lässt sich mit der Maus oder Tastatur in der Breite anpassen. Sie zeigt den Stand beim Öffnen. Exportieren Sie erneut, während die Vorschau geöffnet ist, schließen und öffnen Sie sie erneut, um das neue PDF zu sehen. Das PDF kann weiterhin über **Gespeichertes PDF öffnen** geöffnet werden. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
 
 ## PDF-Gestaltung
 

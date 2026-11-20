@@ -119,6 +119,11 @@ async function hasPdf(folder, id) {
   }
 }
 
+async function readPdf(folder, id) {
+  if (!await hasPdf(folder, id)) throw new Error('Das Brief-PDF wurde nicht gefunden. Exportieren Sie es erneut.');
+  return fs.readFile(pdfPath(folder, id));
+}
+
 function revision(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
@@ -202,6 +207,7 @@ module.exports = {
   saveLetter,
   pdfPath,
   hasPdf,
+  readPdf,
   validateLetterPlaceholders,
   loadLetterPlaceholders,
   saveLetterPlaceholders,

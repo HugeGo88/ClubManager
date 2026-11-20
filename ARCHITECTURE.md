@@ -72,8 +72,8 @@ settings.json in userData    user-selected data folder
   IPC covers application version, folder selection, registry, activation and
   renaming, module settings, folder-local document customization import, reset
   and directory opening, PDF CSS,
-  meeting list/save/export, opening exported PDFs, reading an existing meeting
-  PDF for its resizable in-app preview and update installation.
+  meeting list/save/export, opening exported PDFs, reading existing meeting
+  and letter PDFs for their resizable in-app previews and update installation.
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Main-process write operations are serialized. User-visible errors are

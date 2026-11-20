@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('club', {
   exportLetter: (letter, revision) => invoke('letters:export', letter, revision),
   hasLetterPdf: id => invoke('letters:has-pdf', id),
   openLetterPdf: id => invoke('letters:open-pdf', id),
+  previewLetterPdf: id => invoke('letters:preview-pdf', id),
   listMeetings: () => invoke('meetings:list'),
   saveMeeting: (meeting, revision) => invoke('meetings:save', meeting, revision),
   exportMeeting: (meeting, revision, includeEarlierTasks) => invoke('meetings:export', meeting, revision, includeEarlierTasks),

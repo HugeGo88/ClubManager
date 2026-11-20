@@ -2,7 +2,7 @@ const app = document.querySelector('#app');
 document.querySelector('.activity').inert = true;
 const state = { view: 'meetings', version: null, changelog: null, folder: null, dataFolders: [], protocolCss: null, meetingTemplate: null, modules: {}, sidebarCollapsed: false, meetings: [], meeting: null, revision: null, hasProtocol: false, protocolPreviewUrl: null, previewOpen: false, previewWidth: 420, dirty: false, message: '', error: false };
 const letterState = {
-  letters: [], letter: null, revision: null, hasPdf: false, template: null, signatures: [],
+  letters: [], letter: null, revision: null, hasPdf: false, pdfPreviewUrl: null, previewOpen: false, template: null, signatures: [],
   placeholders: [], placeholdersRevision: null, placeholdersDirty: false
 };
 const listSearch = { meetings: '', letters: '' };
@@ -166,6 +166,7 @@ async function guardDraft(reason) {
 
 function clearEditor() {
   closeProtocolPreview();
+  closeLetterPdfPreview();
   state.meeting = null;
   letterState.letter = null;
   letterState.revision = null;
@@ -254,6 +255,12 @@ function closeProtocolPreview() {
   if (state.protocolPreviewUrl) URL.revokeObjectURL(state.protocolPreviewUrl);
   state.protocolPreviewUrl = null;
   state.previewOpen = false;
+}
+
+function closeLetterPdfPreview() {
+  if (letterState.pdfPreviewUrl) URL.revokeObjectURL(letterState.pdfPreviewUrl);
+  letterState.pdfPreviewUrl = null;
+  letterState.previewOpen = false;
 }
 
 function meetingList() {
@@ -702,9 +709,15 @@ function render() {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
-  const showPreview = state.view === 'meetings' && state.folder && state.meeting &&
+  const showMeetingPreview = state.view === 'meetings' && state.folder && state.meeting &&
     state.hasProtocol && state.previewOpen && state.protocolPreviewUrl;
-  const showPreviewToggle = state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol;
+  const showLetterPreview = state.view === 'letters' && state.folder && letterState.letter &&
+    letterState.hasPdf && letterState.previewOpen && letterState.pdfPreviewUrl;
+  const showPreview = showMeetingPreview || showLetterPreview;
+  const previewOpen = state.view === 'meetings' ? state.previewOpen : letterState.previewOpen;
+  const previewUrl = state.view === 'meetings' ? state.protocolPreviewUrl : letterState.pdfPreviewUrl;
+  const showPreviewToggle = (state.view === 'meetings' && state.folder && state.meeting && state.hasProtocol) ||
+    (state.view === 'letters' && state.folder && letterState.letter && letterState.hasPdf);
   const folderOptions = state.dataFolders.length
     ? state.dataFolders.map(item => `<option value="${escape(item.path)}" title="${escape(item.path)}" ${!item.available ? 'disabled' : ''} ${item.path === state.folder ? 'selected' : ''}>${escape(item.name)}${!item.available ? ' (nicht verfügbar)' : ''}</option>`).join('')
     : '<option value="" selected>Kein Datenordner</option>';
@@ -712,12 +725,12 @@ function render() {
     ${button('choose-folder', 'Datenordner hinzufügen', 'primary')}</header>
     <div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : state.view === 'letters' && state.folder ? letterList() : ''}
     <div class="meeting-stage ${showPreview ? 'preview-open' : ''}" ${showPreview ? `style="--preview-width: ${state.previewWidth}px"` : ''}>
-      ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="toggle-preview" aria-label="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" title="${state.previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" aria-pressed="${state.previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
+      ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="${state.view === 'meetings' ? 'toggle-preview' : 'toggle-letter-preview'}" aria-label="${previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" title="${previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" aria-pressed="${previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
       <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div>
       ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="PDF-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
         <aside class="preview-pane" aria-label="PDF-Vorschau">
           <div class="preview-header"><h2>PDF-Vorschau</h2><button class="action" data-action="close-preview" aria-label="PDF-Vorschau schließen">Schließen</button></div>
-          <iframe title="Gespeichertes Sitzungsprotokoll" src="${escape(state.protocolPreviewUrl)}"></iframe>
+          <iframe title="${state.view === 'meetings' ? 'Gespeichertes Sitzungsprotokoll' : 'Gespeicherter Brief'}" src="${escape(previewUrl)}"></iframe>
         </aside>` : ''}
     </div></div>`;
   if (showPreview) resizeProtocolPreview(state.previewWidth);
@@ -998,6 +1011,7 @@ async function run(action, target) {
       break;
     case 'new-letter':
       if (!confirmDiscard()) return;
+      closeLetterPdfPreview();
       letterState.letter = blankLetter();
       letterState.revision = null;
       letterState.hasPdf = false;
@@ -1006,6 +1020,7 @@ async function run(action, target) {
       break;
     case 'select-letter': {
       if (!confirmDiscard()) return;
+      closeLetterPdfPreview();
       await refresh();
       const selected = letterState.letters.find(item => item.letter.id === target.dataset.id);
       if (!selected) throw new Error('Der Brief ist auf dem Datenträger nicht mehr vorhanden.');
@@ -1134,7 +1149,17 @@ async function run(action, target) {
       }
       break;
     case 'close-preview':
-      closeProtocolPreview();
+      if (state.view === 'letters') closeLetterPdfPreview();
+      else closeProtocolPreview();
+      break;
+    case 'toggle-letter-preview':
+      if (letterState.previewOpen) {
+        closeLetterPdfPreview();
+      } else {
+        const pdf = await window.club.previewLetterPdf(letterState.letter.id);
+        letterState.pdfPreviewUrl = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+        letterState.previewOpen = true;
+      }
       break;
     case 'add-person': meeting.attendance.push({ name: '', status: 'attending' }); state.dirty = true; break;
     case 'remove-person': meeting.attendance.splice(i, 1); state.dirty = true; break;
@@ -1204,7 +1229,7 @@ document.addEventListener('click', async event => {
 });
 
 document.querySelector('.activity').addEventListener('transitionend', event => {
-  if (event.target === event.currentTarget && event.propertyName === 'width' && state.previewOpen) {
+  if (event.target === event.currentTarget && event.propertyName === 'width' && (state.previewOpen || letterState.previewOpen)) {
     resizeProtocolPreview(state.previewWidth);
   }
 });

@@ -1817,10 +1817,38 @@ async function main() {
           await waitFor(() => document.querySelector('.notice')?.textContent === 'Brief gespeichert.');
           document.querySelector('[data-action="export-letter"]').click();
           await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+          const previewButton = document.querySelector('[data-action="toggle-letter-preview"]');
+          if (!previewButton?.querySelector('svg') || previewButton.getAttribute('aria-label') !== 'PDF-Vorschau öffnen') {
+            throw new Error('Letter PDF preview should use an accessible icon button');
+          }
+          if (!document.querySelector('[data-action="open-letter-pdf"]')) {
+            throw new Error('The saved PDF open action should remain available');
+          }
+          previewButton.click();
+          await waitFor(() => document.querySelector('.preview-pane iframe'));
+          const previewUrl = document.querySelector('.preview-pane iframe').src;
+          if (!previewUrl.startsWith('blob:') ||
+              document.querySelector('[data-action="toggle-letter-preview"]').getAttribute('aria-pressed') !== 'true') {
+            throw new Error('Saved letter PDF preview did not open');
+          }
+          const updatedEditor = document.querySelector('[data-letter-editor] .cm-content');
+          updatedEditor.focus();
+          document.execCommand('insertText', false, ' aktualisiert');
+          await waitFor(() => document.querySelector('[data-letter-editor] .cm-content').textContent.includes('aktualisiert'));
+          document.querySelector('[data-action="save-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent === 'Brief gespeichert.');
+          document.querySelector('[data-action="export-letter"]').click();
+          await waitFor(() => document.querySelector('.notice')?.textContent.includes('PDF gespeichert'));
+          if (document.querySelector('.preview-pane iframe').src !== previewUrl) {
+            throw new Error('An open letter preview should retain its loaded PDF snapshot after re-export');
+          }
+          document.querySelector('[data-action="close-preview"]').click();
+          await waitFor(() => !document.querySelector('.preview-pane'));
         })()`);
         assert.match(pdfDocuments.at(-1), /Briefvorlage Testbrief/);
         assert.match(pdfDocuments.at(-1), /<p>Verein &lt;Beispiel&gt;<\/p>/);
         assert.match(pdfDocuments.at(-1), /<strong>Briefinhalt<\/strong> Verein &lt;Beispiel&gt;/);
+        assert.match(pdfDocuments.at(-1), /aktualisiert/);
         assert.doesNotMatch(pdfDocuments.at(-1), /class="letter-address"|class="letter-signature"/);
         const reloadLetters = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();

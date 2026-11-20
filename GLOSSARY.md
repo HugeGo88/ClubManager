@@ -36,6 +36,9 @@ _Avoid_: custom field
 The named signatures available for use in letters for a data folder.
 _Avoid_: global signatures
 
+**PDF preview**:
+A read-only view of an exported document PDF, not a live rendering of unsaved edits.
+
 ## Sitzungen
 
 **Sitzungsleitung**:

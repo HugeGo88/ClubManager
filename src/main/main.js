@@ -619,6 +619,7 @@ function registerHandlers() {
   ipcMain.handle('letters:list', () => letters.listLetters(requireFolder()));
   ipcMain.handle('letters:save', (event, letter, revision) => serializeWrite(() => letters.saveLetter(requireFolder(), letter, revision)));
   ipcMain.handle('letters:has-pdf', (event, id) => letters.hasPdf(requireFolder(), id));
+  ipcMain.handle('letters:preview-pdf', (event, id) => letters.readPdf(requireFolder(), id));
   ipcMain.handle('letters:open-pdf', async (event, id) => {
     const currentFolder = requireFolder();
     if (!await letters.hasPdf(currentFolder, id)) throw new Error('Das Brief-PDF wurde nicht gefunden. Exportieren Sie es erneut.');

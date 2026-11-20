@@ -7,8 +7,22 @@ const crypto = require('node:crypto');
 const { initializeFolder } = require('../src/main/storage');
 const {
   saveLetter, listLetters, validateLetter, validateLetterPlaceholders, loadLetterPlaceholders,
-  saveLetterPlaceholders, validateLetterTemplate, letterHtml
+  saveLetterPlaceholders, validateLetterTemplate, letterHtml, pdfPath, readPdf
 } = require('../src/main/letters');
+
+test('reads saved letter PDF bytes for preview and reports a missing PDF', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-letter-preview-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  const id = crypto.randomUUID();
+  const file = pdfPath(folder, id);
+  const pdf = Buffer.from('%PDF-1.4\npreview');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, pdf);
+
+  assert.deepEqual(await readPdf(folder, id), pdf);
+  await fs.rm(file);
+  await assert.rejects(readPdf(folder, id), /Das Brief-PDF wurde nicht gefunden/);
+});
 
 function letter() {
   return { id: crypto.randomUUID(), title: 'Hallo <Welt>', date: '2026-11-15', includeAddress: true,
