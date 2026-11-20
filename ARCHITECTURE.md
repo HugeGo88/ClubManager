@@ -87,8 +87,8 @@ settings.json in userData    user-selected data folder
 
 - Electron's `userData/settings.json`, outside the club data folders, stores the
   registered folder paths and display names plus the active folder path,
-  legacy app-wide customization paths until they are migrated, four Boolean
-  module settings, sidebar width preference and the
+  legacy app-wide customization paths until they are migrated, the legacy
+  module-selection migration source, sidebar width preference and the
   last version whose changelog was displayed.
   [src/main/settings.js](src/main/settings.js) validates and persists them.
   Signatures are stored only within each folder's customization directory (never
@@ -108,12 +108,32 @@ settings.json in userData    user-selected data folder
   files and filesystem failures are surfaced and do not silently fall back.
   A legacy single `folder` setting loads as one registered folder named after
   its final path component. Existing settings without module selections use the
-  Meetings-only defaults. Module visibility and the sidebar preference remain
-  app-wide rather than following the active folder.
-- **Proposed, not implemented:** [folder-local module selection](docs/adr/0002-folder-local-module-selection.md)
-  will make module visibility an explicit, portable setting of each data folder,
-  with one-time migration, coordinated switching, and conflict protection.
-  The sidebar width preference remains app-wide.
+  Meetings-only defaults. The sidebar preference remains app-wide.
+- Each data folder owns `clubmanager-modules.json`, a version 1 record containing
+  a complete validated Boolean selection. Before creating module directories,
+  a folder with existing module or customization structure inherits the
+  preserved legacy app-wide selection if its selection is missing; a folder
+  without that structure starts with Meetings only. Exclusive initialization
+  loads and validates the winning file. The registration remembers whether a
+  valid selection was seen, so a missing file in a known folder is an error
+  even on restart. The marker is not a copy or override of the selection.
+  Invalid, unreadable or unwritable settings are reported rather than silently
+  replaced. Module and display-name settings use separate files.
+  Folder activation validates the selection and records before committing the
+  active context; failure retains the prior context. At startup with unusable
+  settings, folder-backed navigation is disabled and Settings remains usable.
+  Module controls display the active folder name and are disabled without a
+  usable folder. The current module remains selected on a switch if enabled,
+  otherwise navigation falls back to the first enabled module or Settings.
+  Hiding a module does not delete records and is not an authorization boundary.
+  Opening or switching folders, entering Settings and explicitly reloading
+  read the selection from disk. There is no watcher. The renderer keeps the
+  revision of the selection it actually applied, even when it declines a
+  refresh. Saves compare that revision with the file's contents and identity,
+  including a final check before renaming the staged file. A change observed
+  by that check rejects the save and requires a reload. A write after that
+  check but before the rename can still be overwritten. This is optimistic
+  conflict detection, not a cross-computer lock or atomic compare-and-swap.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German
@@ -147,12 +167,19 @@ settings.json in userData    user-selected data folder
   registration), or unregister a folder (remove the registration without changing
   folder contents). Changing folders opens the new location without moving
   existing data. When there are unsaved edits, the renderer offers save, discard or cancel;
-  a failed save prevents switching and preserves the current draft. If the active folder
+  a failed save prevents switching and preserves the current draft. Settings can be
+  opened without abandoning a meeting or letter editor. A module selection that
+  would hide that editor uses the same guard before writing or applying the selection;
+  unrelated changes do not prompt. Cancel or save failure keeps the draft and
+  previous selection. If the selection write fails after a successful draft save,
+  the saved editor and previous selection remain available. An external refresh
+  uses the same guard and never writes the module selection, even if the user
+  saves a draft before applying it. If the active folder
   becomes unavailable at startup, it is cleared, no folder-backed data loads, the app does
   not silently recreate it, and the user is guided to choose or relink a folder. An
   unavailable folder cannot be activated until it is successfully relinked to an available
   path. Unregistering a folder removes only its registration and never deletes or modifies
-  folder contents. Unregistering the active folder clears the active selection and guides
+  folder contents.   Unregistering the active folder also guards an open draft, clears the active selection and guides
   the user to select another folder without implicitly switching.
 - [src/main/storage.js](src/main/storage.js) stores each meeting in
   `meetings/<UUID>.json` as `{ "version": 1, "meeting": { ... } }` and its last
@@ -183,10 +210,11 @@ settings.json in userData    user-selected data folder
   cause an export error. SVG and raster images are decoded
   in an isolated window and rasterized before embedding.
 - Writes use a temporary file followed by rename. SHA-256 revisions detect
-  changes on disk before saves and exports; the caller must reload after a
-  conflict rather than overwrite external edits. This is not a synchronization
-  service, cross-process locking mechanism or replacement for backups. Club
-  data is not encrypted.
+  changes on disk at the checks before saves and exports; the caller must reload
+  after a detected conflict. These checks do not protect against writes racing
+  after the last check and before replacement. This is not a synchronization
+  service, cross-process locking mechanism or replacement for backups. Club data
+  is not encrypted.
 
 [src/main/protocol.js](src/main/protocol.js) builds protocol HTML from saved
 meeting data, escapes text and converts Markdown using `marked` followed by
@@ -254,7 +282,8 @@ verification remain separate operational steps.
   locale so native date controls display German dates and start weeks on Monday.
   The renderer escapes user content inserted into HTML.
   Async button actions make the body inert, handle failures as visible notices
-  and then re-render. Navigation checks for unsaved meeting edits.
+  and then re-render. Navigation checks for unsaved meeting and letter edits;
+  moving between an editor and Settings retains the editor.
 - The meeting editor works on a clone of the selected saved record, tracks a
   revision and dirty flag, and requires a save before exporting. A generated PDF
   is a snapshot, not automatically updated when the meeting changes. A saved
@@ -337,10 +366,14 @@ npm run dist:linux
 
 `npm test` runs Node's test runner. The test scripts check that Node meets the
 minimum version in `.nvmrc` before running. The Electron smoke tests exercise the application through Electron, including
-meeting editing, navigation, settings, lists, conflicts and PDF export. They
+meeting and letter draft decisions for folder and module transitions, navigation,
+settings, lists, conflicts and PDF export. They
 also verify copied customizations, reset/default behavior, and PDF output when
-switching between two folders; a separate process verifies unavailable-folder
-startup recovery, relinking and non-destructive unregister.
+switching between two folders; separate processes verify unavailable-folder
+and configuration recovery, relinking, non-destructive unregister, a
+deterministic initialization-write failure and retry, guarded external refresh,
+stale-save reload recovery, and a full app restart
+using the same settings context.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
 syntax, providing a virtual display for Electron. The `start`, Electron smoke
 test and distribution scripts build the editor and versioned manual through npm

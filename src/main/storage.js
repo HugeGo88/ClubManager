@@ -36,11 +36,13 @@ function revision(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
-async function atomicWrite(file, content) {
+async function atomicWrite(file, content, beforeRename) {
   const temporary = `${file}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.writeFile(temporary, content, { flag: 'wx' });
+    const result = await beforeRename?.(temporary);
     await fs.rename(temporary, file);
+    return result;
   } finally {
     await fs.rm(temporary, { force: true });
   }

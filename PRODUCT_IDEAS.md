@@ -35,13 +35,11 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Store customizable display names with their data folders so they survive
   moves, backups, and re-registration.
 - [ ] Remove folders from the app's list without deleting their files.
-- [x] Keep module visibility and sidebar preference app-wide rather than
-  changing them with the active folder.
-- [ ] Replace app-wide module visibility with an explicit, shared selection
-  stored in each data folder, while keeping sidebar width app-wide.
-  The [agreed design](docs/adr/0002-folder-local-module-selection.md) covers
-  migration, defaults, unsaved edits, folder switching, and configuration
-  failures; application behavior has not changed yet.
+- [x] Keep module selection with each data folder; keep the sidebar preference
+  app-wide. Existing folders inherit the legacy selection once.
+- [x] Protect drafts when module-setting changes hide an editor (#16).
+- [x] Refresh the folder selection on open, switch and Settings entry; protect
+  drafts and reject stale edits until the user reloads (#17).
 - [x] Migrate existing global templates, CSS, and signatures into the active
   folder (or the first folder added), preserving existing destination files and
   reporting conflicts.

@@ -5,9 +5,15 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 ## Erste Schritte und Navigation
 
 1. Öffnen Sie **Einstellungen → Allgemein** und wählen Sie einen Datenordner. ClubManager erstellt darin für jedes Modul einen Unterordner. Über das Auswahlmenü oben können Sie registrierte Datenordner wechseln; mit **Datenordner hinzufügen** nehmen Sie weitere Ordner auf. Unter **Einstellungen → Allgemein** können Sie die Bezeichnung des aktiven Ordners ändern. Ein Wechsel verschiebt keine vorhandenen Daten.
-2. Aktivieren oder deaktivieren Sie Module im jeweiligen Einstellungsbereich. Standardmäßig ist nur **Sitzungen** aktiviert. **Mitglieder** und **Rechnungen** sind noch Platzhalter.
+2. Aktivieren oder deaktivieren Sie Module im jeweiligen Einstellungsbereich für den dort genannten aktiven Datenordner. Die Auswahl wird im Datenordner gespeichert und auf andere Computer mitgenommen. Neue Datenordner starten nur mit **Sitzungen**; bereits vorhandene ClubManager-Ordner übernehmen einmalig die bisherige Modulauswahl. Ohne verwendbaren Datenordner sind die Schalter deaktiviert. **Mitglieder** und **Rechnungen** sind noch Platzhalter. Das Ausblenden eines Moduls löscht keine Daten.
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
+
+ClubManager liest die Modulauswahl beim Öffnen oder Wechseln eines Datenordners, beim Aufrufen der Einstellungen und über **Modul-Einstellungen neu laden**. Änderungen auf anderen Computern werden nicht laufend übernommen. Erkennt die letzte Prüfung vor dem Ersetzen der Datei eine Änderung seit dem Laden, lehnt ClubManager das Speichern mit einem Konflikt ab. Laden Sie die Modul-Einstellungen neu, prüfen Sie die Auswahl und nehmen Sie Ihre Änderung erneut vor. Eine Änderung, die erst nach dieser Prüfung und vor dem Ersetzen der Datei geschrieben wird, ist nicht geschützt und kann überschrieben werden.
+
+Ein geöffneter Sitzungs- oder Briefentwurf bleibt beim Aufrufen der Einstellungen erhalten, sofern sein Modul sichtbar bleibt. Würde eine Änderung oder Aktualisierung das bearbeitete Modul ausblenden, können Sie den Entwurf speichern, verwerfen oder abbrechen. Ein Abbruch oder ein Fehler beim Speichern des Entwurfs lässt den Editor und die bisherige Auswahl unverändert. Beim Abbrechen einer Aktualisierung bleiben auch die neueren Einstellungen auf dem Datenträger unverändert.
+
+Fehlende, beschädigte oder nicht lesbare Modul-Einstellungen eines bereits eingerichteten Datenordners werden nicht durch Standardwerte ersetzt. Stellen Sie die Datei wieder her oder wählen Sie einen anderen Datenordner. Scheitert ein Ordnerwechsel, bleibt der bisherige Ordner aktiv. Beim Start ohne verwendbaren Datenordner bleiben Einstellungen und Ordnerauswahl verfügbar.
 
 ## Datenordner und Zugriff
 

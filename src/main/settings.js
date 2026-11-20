@@ -33,11 +33,14 @@ function validateDataFolders(dataFolders) {
   if (!Array.isArray(dataFolders) || dataFolders.some(item => !item ||
       typeof item.path !== 'string' || !path.isAbsolute(item.path) ||
       typeof item.name !== 'string' || !item.name.trim() ||
-      typeof item.available !== 'boolean') ||
+      typeof item.available !== 'boolean' ||
+      (item.moduleSettingsKnown !== undefined && typeof item.moduleSettingsKnown !== 'boolean')) ||
       new Set(dataFolders.map(item => item.path)).size !== dataFolders.length) {
     throw new Error('Die Datenordner-Liste ist ungültig.');
   }
-  return dataFolders.map(({ path: folderPath, name, available }) => ({ path: folderPath, name: name.trim(), available }));
+  return dataFolders.map(({ path: folderPath, name, available, moduleSettingsKnown }) => ({
+    path: folderPath, name: name.trim(), available, ...(moduleSettingsKnown ? { moduleSettingsKnown } : {})
+  }));
 }
 
 function validateActiveFolder(activeFolder, dataFolders) {

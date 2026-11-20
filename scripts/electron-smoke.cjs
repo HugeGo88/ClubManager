@@ -75,11 +75,11 @@ async function main() {
   const timeout = setTimeout(() => {
     console.error('Electron smoke test timed out.');
     app.exit(1);
-  }, 30000);
-  async function runFolderRecoverySmoke() {
+  }, 60000);
+  async function runFolderRecoverySmoke(mode = '') {
     const output = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [path.join(__dirname, 'electron-folder-recovery-smoke.cjs')], {
-        env: { ...process.env, CLUBMANAGER_SMOKE_ROOT: root },
+        env: { ...process.env, CLUBMANAGER_SMOKE_ROOT: root, CLUBMANAGER_RECOVERY_MODE: mode },
         stdio: ['ignore', 'pipe', 'pipe']
       });
       let stdout = '';
@@ -186,13 +186,13 @@ async function main() {
           for (const nav of document.querySelectorAll('.activity [data-view]')) {
             if (nav.title !== nav.getAttribute('aria-label')) throw new Error('Missing collapsed tooltip for ' + nav.dataset.view);
           }
-          document.querySelector('[data-view="tasks"]').click();
-          for (let i = 0; i < 200 && !document.querySelector('[data-view="tasks"]').classList.contains('active'); i++) await new Promise(resolve => setTimeout(resolve, 25));
-          if (!document.querySelector('[data-view="tasks"]').classList.contains('active')) throw new Error('Collapsed navigation must remain usable');
+          document.querySelector('[data-view="settings"]').click();
+          for (let i = 0; i < 200 && !document.querySelector('[data-view="settings"]').classList.contains('active'); i++) await new Promise(resolve => setTimeout(resolve, 25));
+          if (!document.querySelector('[data-view="settings"]').classList.contains('active')) throw new Error('Collapsed navigation must remain usable');
         })()`);
         const sidebarSettingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.equal(JSON.parse(await fs.readFile(sidebarSettingsFile, 'utf8')).sidebarCollapsed, true);
-        await window.webContents.executeJavaScript(`window.club.setModules({ meetings: true, members: false, invoices: false, letters: false })`);
+        await assert.rejects(window.webContents.executeJavaScript(`window.club.setModules({ meetings: true, members: false, invoices: false, letters: false })`), /Datenordner/);
         assert.equal(JSON.parse(await fs.readFile(sidebarSettingsFile, 'utf8')).sidebarCollapsed, true);
         const reloadFinished = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
         window.webContents.reload();
@@ -286,12 +286,23 @@ async function main() {
           }
           const tabNames = [...document.querySelectorAll('[data-settings-tab]')].map(tab => tab.textContent);
           if (tabNames.join('|') !== 'Allgemein|Sitzungen|Mitglieder|Rechnungen|Briefe') throw new Error('Every module must have a settings tab');
-          const defaultModules = { meetings: true, members: false, invoices: false, letters: false };
-          for (const [module, enabled] of Object.entries(defaultModules)) {
+          for (const module of ['meetings', 'members', 'invoices', 'letters']) {
             if (document.querySelector('[data-settings-tab="' + module + '"]') === null) throw new Error('Missing module settings tab: ' + module);
             const nav = document.querySelector('[data-module-nav="' + module + '"]') ||
               document.querySelector('[data-module-view="' + module + '"]');
-            if (nav.hidden === enabled) throw new Error('Unexpected default sidebar visibility for ' + module);
+            if (!nav.hidden) throw new Error('Module visible without a data folder: ' + module);
+          }
+          document.querySelector('[data-settings-tab="members"]').click();
+          await waitFor(() => document.querySelector('[data-module-toggle="members"]'));
+          if (!document.querySelector('[data-module-toggle="members"]').disabled) throw new Error('Module control must be disabled without a folder');
+          document.querySelector('[data-settings-tab="general"]').click();
+          await waitFor(() => document.querySelector('[data-action="choose-folder"]'));
+          document.querySelector('[data-action="choose-folder"]').click();
+          await waitFor(async () => await window.club.getFolder() === ${JSON.stringify(data)} && !document.body.inert);
+          await waitFor(() => document.querySelector('.notice')?.textContent);
+          const migrationNotice = document.querySelector('.notice');
+          if (!migrationNotice.classList.contains('error') || !migrationNotice.textContent.includes('PDF-CSS')) {
+            throw new Error('Legacy migration conflict was not reported: ' + migrationNotice.textContent);
           }
           const setModule = async (module, enabled) => {
             await waitFor(() => !document.body.inert);
@@ -318,24 +329,13 @@ async function main() {
           if (JSON.stringify(await window.club.getModules()) !== JSON.stringify({ meetings: true, members: true, invoices: true, letters: true })) {
             throw new Error('Enabled modules were not persisted');
           }
-          document.querySelector('[data-action="choose-folder"]').click();
-          for (let i = 0; i < 200; i++) {
-            if (await window.club.getFolder() === ${JSON.stringify(data)}) break;
-            await new Promise(resolve => setTimeout(resolve, 25));
-          }
-          if (await window.club.getFolder() !== ${JSON.stringify(data)}) throw new Error('First data folder was not selected');
-          await waitFor(() => document.querySelector('.notice')?.textContent);
-          const migrationNotice = document.querySelector('.notice');
-          if (!migrationNotice.classList.contains('error') || !migrationNotice.textContent.includes('PDF-CSS')) {
-            throw new Error('Legacy migration conflict was not reported: ' + migrationNotice.textContent);
-          }
           document.querySelector('[data-settings-tab="general"]').click();
           await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
           await waitFor(() => document.querySelector('[data-action="reset-protocol-css"]'));
         })()`);
         const settingsFile = path.join(app.getPath('userData'), 'settings.json');
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true, moduleSettingsKnown: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.equal(await window.webContents.executeJavaScript('window.club.getProtocolCss()'), customizationCss);
         assert.equal(await fs.readFile(customizationCss, 'utf8'), 'body { color: rgb(9, 8, 7); }');
@@ -753,7 +753,7 @@ async function main() {
         assert.deepEqual(pdfPointHeadings, [['1. Budget', '2. Kommende Veranstaltung (TOP Leitung & Team)']]);
         assert.deepEqual(pdfVoteResults, [['Abstimmung: Angenommen mit 5 Ja-Stimmen, 1 Gegenstimmen, 0 Enthaltungen']]);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true, moduleSettingsKnown: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         assert.deepEqual(openedPaths, [path.join(meetingsDir, 'protocols', `${saved.meeting.id}.pdf`)]);
         const corruptMeeting = path.join(meetingsDir, `${randomUUID()}.json`);
@@ -1549,7 +1549,7 @@ async function main() {
         })()`);
         assert.deepEqual(pdfColors, ['rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(9, 8, 7)', 'rgb(36, 41, 47)']);
         assert.deepEqual(JSON.parse(await fs.readFile(settingsFile, 'utf8')), {
-          dataFolders: [{ path: data, name: 'data', available: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: true, invoices: true, letters: true }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
+          dataFolders: [{ path: data, name: 'data', available: true, moduleSettingsKnown: true }], activeFolder: data, protocolCss: null, meetingTemplate: null, letterTemplate: null, modules: { meetings: true, members: false, invoices: false, letters: false }, sidebarCollapsed: false, lastSeenVersion: app.getVersion()
         });
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
@@ -1979,6 +1979,9 @@ async function main() {
           if (!option || option.textContent !== 'second-club' || option.title !== secondPath) {
             throw new Error('The switcher should show the folder name and full path');
           }
+          if (JSON.stringify(await window.club.getModules()) !== JSON.stringify({ meetings: true, members: false, invoices: false, letters: false })) {
+            throw new Error('A new folder must start with Meetings only');
+          }
           const nameInput = await waitFor(() => document.querySelector('[data-folder-name]'));
           nameInput.value = 'Verein B';
           nameInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1998,6 +2001,19 @@ async function main() {
           const secondMeeting = ${JSON.stringify(secondFolderMeeting)};
           const secondRevision = await window.club.saveMeeting(secondMeeting, null);
           await window.club.exportMeeting(secondMeeting, secondRevision, false);
+          await click('[data-settings-tab="members"]');
+          await waitFor(() => document.querySelector('[data-module-toggle="members"]'));
+          if (!document.querySelector('main').textContent.includes('Verein B')) throw new Error('The module controls must identify the active folder');
+          let toggle = document.querySelector('[data-module-toggle="members"]');
+          toggle.checked = true;
+          toggle.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).members);
+          await click('[data-settings-tab="meetings"]');
+          await waitFor(() => document.querySelector('[data-module-toggle="meetings"]'));
+          toggle = document.querySelector('[data-module-toggle="meetings"]');
+          toggle.checked = false;
+          toggle.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(async () => !document.body.inert && !(await window.club.getModules()).meetings);
           const firstPath = ${JSON.stringify(data)};
           const currentSwitcher = document.querySelector('[data-folder-switcher]');
           currentSwitcher.value = firstPath;
@@ -2018,10 +2034,29 @@ async function main() {
           const firstOption = [...document.querySelector('[data-folder-switcher]').options]
             .find(item => item.value === firstPath);
           if (firstOption.textContent !== 'data') throw new Error('The first folder display name changed unexpectedly');
+          if (!(await window.club.getModules()).letters || !(await window.club.getModules()).meetings) {
+            throw new Error('First folder selection must remain independent');
+          }
           await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('[data-view="meetings"].active'));
+          let selector = document.querySelector('[data-folder-switcher]');
+          selector.value = secondPath;
+          selector.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(() => document.querySelector('[data-view="members"].active'));
+          if (!document.querySelector('[data-module-nav="meetings"]').hidden) throw new Error('Destination selection must control navigation');
+          await click('[data-view="tasks"]');
+          await waitFor(() => document.querySelector('.notice.error'));
+          if (!document.querySelector('[data-view="members"].active')) throw new Error('Disabled meeting subviews must reject navigation');
+          selector = document.querySelector('[data-folder-switcher]');
+          selector.value = firstPath;
+          selector.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(() => document.querySelector('[data-view="members"].active') &&
+            !document.querySelector('[data-module-nav="meetings"]').hidden &&
+            document.querySelector('[data-folder-switcher]')?.value === firstPath);
           const firstMeeting = (await window.club.listMeetings())[0]?.meeting;
           if (!firstMeeting) throw new Error('The first folder should contain a saved meeting for switch confirmation tests');
           const selectMeeting = async () => {
+            await click('[data-view="meetings"]');
             const button = await waitFor(() => [...document.querySelectorAll('[data-action="select"]')]
               .find(item => item.dataset.id === firstMeeting.id));
             button.click();
@@ -2079,6 +2114,278 @@ async function main() {
           await waitForActiveFolder(firstPath);
           const savedMeeting = (await window.club.listMeetings()).find(item => item.meeting.id === firstMeeting.id);
           if (savedMeeting.meeting.title !== savedTitle) throw new Error('Saving a draft must complete before switching folders');
+          await waitFor(() => !document.querySelector('[data-module-nav="meetings"]').hidden);
+          await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('[data-view="meetings"].active'));
+          selector = document.querySelector('[data-folder-switcher]');
+          selector.value = secondPath;
+          selector.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(() => document.querySelector('[data-view="members"].active'));
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="members"]');
+          toggle = await waitFor(() => document.querySelector('[data-module-toggle="members"]'));
+          toggle.checked = false;
+          toggle.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(async () => !document.body.inert && !(await window.club.getModules()).members);
+          selector = document.querySelector('[data-folder-switcher]');
+          selector.value = firstPath;
+          selector.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(() => !document.querySelector('[data-module-nav="meetings"]').hidden);
+          await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('[data-view="meetings"].active'));
+          selector = document.querySelector('[data-folder-switcher]');
+          selector.value = secondPath;
+          selector.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(() => document.querySelector('[data-view="settings"].active') &&
+            document.querySelector('[data-module-nav="meetings"]').hidden);
+          if (!document.querySelector('[data-view="manual"]') || !document.querySelector('[data-view="changelog"]')) {
+            throw new Error('General navigation must remain available with an empty selection');
+          }
+          await click('[data-settings-tab="meetings"]');
+          toggle = await waitFor(() => document.querySelector('[data-module-toggle="meetings"]'));
+          toggle.checked = true;
+          toggle.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).meetings);
+          await click('[data-view="meetings"]');
+          await waitFor(() => [...document.querySelectorAll('[data-action="select"]')].some(item => item.dataset.id === secondMeeting.id));
+          selector = document.querySelector('[data-folder-switcher]');
+          selector.value = firstPath;
+          selector.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitFor(() => !document.querySelector('[data-module-nav="meetings"]').hidden);
+        })()`);
+        const selectionBeforeDecision = await fs.readFile(path.join(data, 'clubmanager-modules.json'), 'utf8');
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = await test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out in module draft protection');
+          };
+          const click = async selector => (await waitFor(() => !document.body.inert && document.querySelector(selector))).click();
+          await click('[data-view="meetings"]');
+          await click('[data-action="select"]');
+          const title = await waitFor(() => document.querySelector('[data-field="title"]'));
+          title.value = 'Entwurf bei Modulauswahl';
+          title.dispatchEvent(new Event('input', { bubbles: true }));
+          const confirm = window.confirm;
+          window.confirm = () => false;
+          await click('[data-view="settings"]');
+          window.confirm = confirm;
+          await click('[data-settings-tab="meetings"]');
+          const toggle = await waitFor(() => document.querySelector('[data-module-toggle="meetings"]'));
+          toggle.click();
+          const dialog = await waitFor(() => document.querySelector('.folder-switch-dialog'));
+          if (!document.querySelector('[data-module-toggle="meetings"]').checked ||
+              !(await window.club.getModules()).meetings) throw new Error('Proposed selection must not be committed before the decision');
+        })()`);
+        assert.equal(await fs.readFile(path.join(data, 'clubmanager-modules.json'), 'utf8'), selectionBeforeDecision,
+          'Opening the draft decision must not persist the proposed selection');
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = await test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out cancelling the module change');
+          };
+          document.querySelector('.folder-switch-dialog [value="cancel"]').click();
+          await waitFor(() => !document.querySelector('.folder-switch-dialog') && !document.body.inert);
+          if (!document.querySelector('[data-module-toggle="meetings"]').checked ||
+              !(await window.club.getModules()).meetings) throw new Error('Cancel must retain the selection');
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => document.querySelector('[data-field="title"]')?.value === 'Entwurf bei Modulauswahl');
+        })()`);
+        assert.equal(await fs.readFile(path.join(data, 'clubmanager-modules.json'), 'utf8'), selectionBeforeDecision,
+          'Cancel must leave the persisted selection untouched');
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = await test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out in module draft protection');
+          };
+          const click = async selector => (await waitFor(() => !document.body.inert && document.querySelector(selector))).click();
+          const firstFolder = ${JSON.stringify(data)};
+          const originalMeeting = (await window.club.listMeetings())[0].meeting;
+          const titleInput = document.querySelector('[data-field="title"]');
+          titleInput.value = '';
+          titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="meetings"]');
+          document.querySelector('[data-module-toggle="meetings"]').click();
+          (await waitFor(() => document.querySelector('.folder-switch-dialog'))).querySelector('[value="save"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('.notice.error'));
+          if (!document.querySelector('[data-module-toggle="meetings"]').checked ||
+              !(await window.club.getModules()).meetings || await window.club.getFolder() !== firstFolder) {
+            throw new Error('Failed meeting save must block the selection');
+          }
+          await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('[data-field="title"]'));
+          if (document.querySelector('[data-field="title"]').value !== '' ||
+              !document.querySelector('.status').textContent.includes('Ungespeicherte')) {
+            throw new Error('Failed meeting save must retain the dirty editor');
+          }
+          const draft = document.querySelector('[data-field="title"]');
+          draft.value = 'Nicht gespeicherter Sitzungsentwurf';
+          draft.dispatchEvent(new Event('input', { bubbles: true }));
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="general"]');
+          const confirmRemoval = window.confirm;
+          window.confirm = () => true;
+          const unregister = [...document.querySelectorAll('[data-action="unregister-folder"]')]
+            .find(item => item.dataset.path === firstFolder);
+          unregister.click();
+          (await waitFor(() => document.querySelector('.folder-switch-dialog'))).querySelector('[value="cancel"]').click();
+          await waitFor(() => !document.body.inert && !document.querySelector('.folder-switch-dialog'));
+          window.confirm = confirmRemoval;
+          if (await window.club.getFolder() !== firstFolder) throw new Error('Cancel must prevent unregistering the active draft folder');
+          await click('[data-settings-tab="members"]');
+          const membersBefore = (await window.club.getModules()).members;
+          document.querySelector('[data-module-toggle="members"]').click();
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).members !== membersBefore);
+          if (document.querySelector('.folder-switch-dialog')) throw new Error('Unrelated module change must not prompt');
+          document.querySelector('[data-module-toggle="members"]').click();
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).members === membersBefore);
+          await click('[data-view="meetings"]');
+          await waitFor(() => document.querySelector('[data-field="title"]'));
+          if (document.querySelector('[data-field="title"]')?.value !== 'Nicht gespeicherter Sitzungsentwurf') {
+            throw new Error('Unrelated module change must preserve the draft');
+          }
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="meetings"]');
+          document.querySelector('[data-module-toggle="meetings"]').click();
+          (await waitFor(() => document.querySelector('.folder-switch-dialog'))).querySelector('[value="discard"]').click();
+          await waitFor(async () => !document.body.inert && !(await window.club.getModules()).meetings);
+          if (!document.querySelector('[data-module-nav="meetings"]').hidden ||
+              !document.querySelector('[data-view="settings"].active') ||
+              (await window.club.listMeetings()).find(item => item.meeting.id === originalMeeting.id).meeting.title !== originalMeeting.title) {
+            throw new Error('Discard must hide the module without saving the draft');
+          }
+          document.querySelector('[data-module-toggle="meetings"]').click();
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).meetings);
+          await click('[data-view="letters"]');
+          await click('[data-action="select-letter"]');
+          const letterTitle = await waitFor(() => document.querySelector('[data-letter-field="title"]'));
+          letterTitle.value = 'Briefentwurf mit Konflikt';
+          letterTitle.dispatchEvent(new Event('input', { bubbles: true }));
+          const externalLetter = (await window.club.listLetters())[0];
+          externalLetter.letter.title = 'Extern geänderter Brief';
+          await window.club.saveLetter(externalLetter.letter, externalLetter.revision);
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="letters"]');
+          document.querySelector('[data-module-toggle="letters"]').click();
+          (await waitFor(() => document.querySelector('.folder-switch-dialog'))).querySelector('[value="save"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('.notice.error'));
+          if (!document.querySelector('[data-module-toggle="letters"]').checked ||
+              !(await window.club.getModules()).letters) throw new Error('Conflicting letter save must retain selection');
+          await click('[data-view="letters"]');
+          await waitFor(() => document.querySelector('[data-letter-field="title"]'));
+          if (document.querySelector('[data-letter-field="title"]').value !== 'Briefentwurf mit Konflikt' ||
+              !document.querySelector('.status').textContent.includes('Ungespeicherte')) {
+            throw new Error('Conflicting letter save must preserve the draft');
+          }
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="letters"]');
+          document.querySelector('[data-module-toggle="letters"]').click();
+          (await waitFor(() => document.querySelector('.folder-switch-dialog'))).querySelector('[value="discard"]').click();
+          await waitFor(async () => !document.body.inert && !(await window.club.getModules()).letters);
+          if (!(await window.club.listLetters()).some(item => item.letter.title === 'Extern geänderter Brief')) {
+            throw new Error('Discard must not overwrite the conflicting letter');
+          }
+          document.querySelector('[data-module-toggle="letters"]').click();
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).letters);
+          await click('[data-view="letters"]');
+          await click('[data-action="select-letter"]');
+          const freshLetterTitle = await waitFor(() => document.querySelector('[data-letter-field="title"]'));
+          freshLetterTitle.value = 'Gespeicherter Brief trotz Modulfehler';
+          freshLetterTitle.dispatchEvent(new Event('input', { bubbles: true }));
+          await click('[data-view="settings"]');
+          await click('[data-settings-tab="letters"]');
+        })()`);
+        const moduleFile = path.join(data, 'clubmanager-modules.json');
+        const savedModuleFile = `${moduleFile}.fixture`;
+        await fs.rename(moduleFile, savedModuleFile);
+        try {
+          await fs.mkdir(moduleFile);
+          await window.webContents.executeJavaScript(`(async () => {
+            const waitFor = async test => {
+              for (let i = 0; i < 200; i++) {
+                const value = await test();
+                if (value) return value;
+                await new Promise(resolve => setTimeout(resolve, 25));
+              }
+              throw new Error('Timed out waiting for module write failure');
+            };
+            document.querySelector('[data-module-toggle="letters"]').click();
+            const dialog = await waitFor(() => document.querySelector('.folder-switch-dialog'));
+            if (!document.querySelector('[data-module-toggle="letters"]').checked) throw new Error('Toggle changed before decision');
+            dialog.querySelector('[value="save"]').click();
+            await waitFor(() => !document.body.inert && document.querySelector('.notice.error'));
+            if (!document.querySelector('[data-module-toggle="letters"]').checked ||
+                !(await window.club.getModules()).letters ||
+                await window.club.getFolder() !== ${JSON.stringify(data)} ||
+                document.querySelector('[data-module-view="letters"]').hidden ||
+                !document.querySelector('[data-view="settings"].active')) {
+              throw new Error('Failed module write must retain selection and navigation');
+            }
+            if (!(await window.club.listLetters()).some(item => item.letter.title === 'Gespeicherter Brief trotz Modulfehler')) {
+              throw new Error('Letter save must complete in the original folder before module write');
+            }
+            document.querySelector('[data-view="letters"]').click();
+            await waitFor(() => document.querySelector('[data-letter-field="title"]'));
+            if (document.querySelector('[data-letter-field="title"]').value !== 'Gespeicherter Brief trotz Modulfehler' ||
+                document.querySelector('.status').textContent !== 'Gespeichert') {
+              throw new Error('Successfully saved letter remains open and clean after module write failure');
+            }
+          })()`);
+        } finally {
+          await fs.rmdir(moduleFile);
+          await fs.rename(savedModuleFile, moduleFile);
+        }
+        await window.webContents.executeJavaScript(`(async () => {
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = await test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for clean letter transition');
+          };
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('[data-module-toggle="letters"]'));
+          document.querySelector('[data-module-toggle="letters"]').click();
+          await waitFor(async () => !document.body.inert && !(await window.club.getModules()).letters);
+          if (document.querySelector('.folder-switch-dialog') ||
+              !document.querySelector('[data-module-view="letters"]').hidden ||
+              !document.querySelector('[data-view="settings"].active')) throw new Error('Clean editor should transition without a prompt');
+          document.querySelector('[data-module-toggle="letters"]').click();
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).letters);
+          document.querySelector('[data-view="meetings"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('[data-action="select"]'));
+          document.querySelector('[data-action="select"]').click();
+          const title = await waitFor(() => document.querySelector('[data-field="title"]'));
+          title.value = 'Sitzung vor Modulwechsel gespeichert';
+          title.dispatchEvent(new Event('input', { bubbles: true }));
+          document.querySelector('[data-view="settings"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('[data-settings-tab="meetings"]'));
+          document.querySelector('[data-settings-tab="meetings"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('[data-module-toggle="meetings"]'));
+          document.querySelector('[data-module-toggle="meetings"]').click();
+          (await waitFor(() => document.querySelector('.folder-switch-dialog'))).querySelector('[value="save"]').click();
+          await waitFor(async () => !document.body.inert && !(await window.club.getModules()).meetings);
+          if (await window.club.getFolder() !== ${JSON.stringify(data)} ||
+              !(await window.club.listMeetings()).some(item => item.meeting.title === 'Sitzung vor Modulwechsel gespeichert') ||
+              !document.querySelector('[data-module-nav="meetings"]').hidden ||
+              !document.querySelector('[data-view="settings"].active')) {
+            throw new Error('Save must complete in the original folder before hiding Meetings');
+          }
+          document.querySelector('[data-module-toggle="meetings"]').click();
+          await waitFor(async () => !document.body.inert && (await window.club.getModules()).meetings);
         })()`);
         assert.match(pdfDocuments.at(-2), /<h1>Verein B<\/h1>/);
         assert.equal(pdfColors.at(-2), 'rgb(1, 2, 3)');
@@ -2103,11 +2410,16 @@ async function main() {
         const secondFolderName = JSON.parse(await fs.readFile(path.join(secondData, 'clubmanager-folder.json'), 'utf8'));
         assert.equal(secondFolderName.name, 'Verein B', 'Renaming must update the name stored in the data folder');
         assert.deepEqual(folderSettings.dataFolders, [
-          { path: data, name: 'data', available: true },
-          { path: secondData, name: 'Verein B', available: true }
+          { path: data, name: 'data', available: true, moduleSettingsKnown: true },
+          { path: secondData, name: 'Verein B', available: true, moduleSettingsKnown: true }
         ]);
         assert.equal(folderSettings.activeFolder, data);
         await runFolderRecoverySmoke();
+        await runFolderRecoverySmoke('configuration');
+        await runFolderRecoverySmoke('restart-setup');
+        await runFolderRecoverySmoke('restart-check');
+        await runFolderRecoverySmoke('restart-external');
+        await runFolderRecoverySmoke('restart-missing');
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         window.destroy();
