@@ -221,6 +221,20 @@ async function initializeFolder(folderPath, known = configuredModuleFolders.has(
   return selection;
 }
 
+async function activateFolder(selected) {
+  const selection = await initializeFolder(selected);
+  const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
+  const conflicts = !folder ? await migrateLegacyDocumentCustomizations(selected) : [];
+  const customizations = await loadFolderCustomizations(selected);
+  await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
+  dataFolders = nextFolders;
+  configuredFolder = selected;
+  folder = selected;
+  moduleSettings = selection;
+  ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
+  return { folder: selected, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
+}
+
 function folderRegistry() {
   return {
     dataFolders: dataFolders.map(item => ({ ...item })),
@@ -356,17 +370,7 @@ function registerHandlers() {
     if (!await checkFolderAvailability(selected)) {
       throw new Error('Der ausgewählte Datenordner ist nicht verfügbar. Verknüpfen Sie ihn erneut oder wählen Sie einen verfügbaren Ordner aus.');
     }
-    const selection = await initializeFolder(selected);
-    const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
-    const conflicts = !folder ? await migrateLegacyDocumentCustomizations(selected) : [];
-    const customizations = await loadFolderCustomizations(selected);
-    await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
-    dataFolders = nextFolders;
-    configuredFolder = selected;
-    folder = selected;
-    moduleSettings = selection;
-    ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
-    return { folder: selected, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
+    return activateFolder(selected);
   }));
   ipcMain.handle('folder:rename', (event, selected, name) => serializeWrite(async () => {
     if (typeof selected !== 'string' || typeof name !== 'string' || !name.trim()) {
@@ -572,17 +576,7 @@ function registerHandlers() {
       if (typeof selected !== 'string' || !path.isAbsolute(selected)) {
         throw new Error('Wählen Sie einen gültigen Datenordner aus.');
       }
-      const selection = await initializeFolder(selected);
-      const nextFolders = withRegisteredFolder(await resolveRegisteredFolderName(selected));
-      const conflicts = !folder ? await migrateLegacyDocumentCustomizations(selected) : [];
-      const customizations = await loadFolderCustomizations(selected);
-      await persistSettings({ dataFolders: nextFolders, activeFolder: selected });
-      dataFolders = nextFolders;
-      configuredFolder = selected;
-      folder = selected;
-      moduleSettings = selection;
-      ({ protocolCss, meetingTemplate, letterTemplate, signatures } = customizations);
-      return { folder, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
+      return activateFolder(selected);
     });
   });
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));

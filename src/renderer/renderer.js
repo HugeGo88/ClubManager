@@ -189,6 +189,13 @@ function adoptFolderRegistry(registry) {
   folderNameCacheWarning = registry.nameCacheWarning;
 }
 
+async function refreshFolderModules({ onlyIfFolder = false, onReloadError = error => { throw error; } } = {}) {
+  adoptFolderRegistry(await window.club.getFolders());
+  if (onlyIfFolder && !state.folder) return true;
+  const selection = await window.club.reloadModules().catch(onReloadError);
+  return onlyIfFolder && !selection ? true : applyModuleRefresh(selection);
+}
+
 async function adoptActiveFolder(result) {
   state.folder = result.folder;
   adoptModuleSettings(result);
@@ -772,11 +779,7 @@ async function changeView(view) {
   if (!preserveEditor && !confirmDiscard()) return;
   let refreshError;
   if (view === 'settings') {
-    adoptFolderRegistry(await window.club.getFolders());
-    if (state.folder) {
-      const selection = await window.club.reloadModules().catch(error => { refreshError = error; });
-      if (selection && !await applyModuleRefresh(selection)) return;
-    }
+    if (!await refreshFolderModules({ onlyIfFolder: true, onReloadError: error => { refreshError = error; } })) return;
   }
   if (view === 'manual') manual = await window.club.getManual();
   if (!preserveEditor) clearEditor();
@@ -791,8 +794,7 @@ async function run(action, target) {
   switch (action) {
     case 'open-settings': await changeView('settings'); break;
     case 'reload-modules':
-      adoptFolderRegistry(await window.club.getFolders());
-      if (await applyModuleRefresh(await window.club.reloadModules())) setMessage('Modul-Einstellungen wurden neu geladen.');
+      if (await refreshFolderModules()) setMessage('Modul-Einstellungen wurden neu geladen.');
       break;
     case 'settings-tab':
       settingsTab = target.dataset.settingsTab;
