@@ -37,6 +37,11 @@ items are still open, partially implemented, or ongoing design goals.
 - [ ] Remove folders from the app's list without deleting their files.
 - [x] Keep module visibility and sidebar preference app-wide rather than
   changing them with the active folder.
+- [ ] Replace app-wide module visibility with an explicit, shared selection
+  stored in each data folder, while keeping sidebar width app-wide.
+  The [agreed design](docs/adr/0002-folder-local-module-selection.md) covers
+  migration, defaults, unsaved edits, folder switching, and configuration
+  failures; application behavior has not changed yet.
 - [x] Migrate existing global templates, CSS, and signatures into the active
   folder (or the first folder added), preserving existing destination files and
   reporting conflicts.

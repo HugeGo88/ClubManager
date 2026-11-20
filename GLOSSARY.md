@@ -20,6 +20,10 @@ _Avoid_: saved folder
 The editable name ClubManager shows for a data folder, independent of the directory's name.
 _Avoid_: directory name
 
+**Module selection**:
+The explicit choice of enabled ClubManager modules belonging to a data folder.
+_Avoid_: global modules, detected modules
+
 **Document customization**:
 A user-provided HTML template or stylesheet for generated meeting protocols and letters, distinct from the app's interface.
 _Avoid_: app stylesheet

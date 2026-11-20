@@ -1,4 +1,4 @@
-body { margin: 0; color: #24292f; font: 11pt/1.5 sans-serif; overflow-wrap: anywhere; }
+body { margin: 0; color: #24292f; font: 11pt/1.5 "Source Sans Pro", "Source Sans 3", Arial, sans-serif; overflow-wrap: anywhere; }
 .letter-address { min-height: 35mm; white-space: normal; }
 .letter-date { text-align: right; }
 .letter h1 { font-size: 18pt; margin: 1.5em 0 1em; break-after: avoid; }
@@ -7,3 +7,35 @@ body { margin: 0; color: #24292f; font: 11pt/1.5 sans-serif; overflow-wrap: anyw
 .letter-signature { margin: 0; break-inside: avoid; }
 .letter-signature img { display: block; max-width: 55mm; max-height: 25mm; object-fit: contain; object-position: left bottom; }
 .letter-signature figcaption { margin-top: 2mm; }
+
+@page cvjm-letter {
+  size: A4;
+  margin: 20mm 20mm 42mm;
+  @bottom-right { content: none; }
+}
+
+.cvjm-letter { page: cvjm-letter; }
+.cvjm-letter-header { margin: -8mm 0 7mm; }
+.cvjm-logo { display: block; width: auto; height: 27mm; max-width: 100%; margin: 0 0 5mm auto; object-fit: contain; object-position: right center; }
+.cvjm-letter-footer {
+  position: fixed;
+  left: 15mm;
+  right: 20mm;
+  bottom: -34mm;
+  display: grid;
+  grid-template-columns: 67mm 1fr;
+  gap: 10mm;
+  color: #202020;
+  font: 8pt/1.45 "Source Sans Pro", "Source Sans 3", Arial, sans-serif;
+}
+.cvjm-letter-footer strong { color: #ed1746; }
+.cvjm-letter-footer::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  right: -20mm;
+  bottom: -20mm;
+  width: 70mm;
+  height: 59mm;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20140%20118'%3E%3Cpath%20fill='%23e696a4'%20d='M0%20118%2060%20118%2030%2066z'/%3E%3Cpath%20fill='%23c91e39'%20d='M60%20118%20100%20118%2080%2084z'/%3E%3Cpath%20fill='%23e21b3c'%20d='M100%20118%20140%20118%20120%2084z'/%3E%3Cpath%20fill='%23951c2a'%20d='M70%2080%20110%2080%2090%2046z'/%3E%3Cpath%20fill='%23d94f5a'%20d='M110%2080%20140%2080%20140%2046z'/%3E%3Cpath%20fill='%23e696a4'%20d='M110%2042%20140%2042%20140%200z'/%3E%3C/svg%3E") right bottom / contain no-repeat;
+}

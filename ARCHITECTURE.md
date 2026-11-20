@@ -110,6 +110,10 @@ settings.json in userData    user-selected data folder
   its final path component. Existing settings without module selections use the
   Meetings-only defaults. Module visibility and the sidebar preference remain
   app-wide rather than following the active folder.
+- **Proposed, not implemented:** [folder-local module selection](docs/adr/0002-folder-local-module-selection.md)
+  will make module visibility an explicit, portable setting of each data folder,
+  with one-time migration, coordinated switching, and conflict protection.
+  The sidebar width preference remains app-wide.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German
@@ -200,6 +204,9 @@ chair and recorder names and generated attendance, TOP and open-task sections us
 documented placeholders, including `{{chair}}` and `{{recorder}}`;
 template HTML is sanitized and validated both on import and export. Without a
 local template the existing built-in layout is used.
+The optional letter-specific HTML body template places the address, date, title,
+content and signatures using their documented placeholders. The packaged letter
+stylesheet requests Source Sans Pro with system sans-serif fallbacks.
 
 The PDF contains attendance grouped by status, TOPs, decision results and
 tasks, plus the optional chair and recorder names. Its final open-task section groups by responsible person; comma- and
