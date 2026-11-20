@@ -37,7 +37,7 @@ items are still open, partially implemented, or ongoing design goals.
 - [ ] Remove folders from the app's list without deleting their files.
 - [x] Keep module selection with each data folder; keep the sidebar preference
   app-wide. Existing folders inherit the legacy selection once.
-- [ ] Protect drafts when module-setting changes hide an editor (#16).
+- [x] Protect drafts when module-setting changes hide an editor (#16).
 - [ ] Refresh folder selection on Settings entry and reject stale writes (#17).
 - [x] Migrate existing global templates, CSS, and signatures into the active
   folder (or the first folder added), preserving existing destination files and

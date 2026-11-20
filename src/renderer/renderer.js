@@ -98,11 +98,11 @@ function confirmDiscard() {
   return !state.dirty || window.confirm('Ungespeicherte Änderungen verwerfen?');
 }
 
-function confirmFolderSwitch() {
+function confirmFolderSwitch(reason = 'Ordnerwechsel') {
   if (!state.dirty) return Promise.resolve('discard');
   const dialog = document.createElement('dialog');
   dialog.className = 'folder-switch-dialog';
-  dialog.innerHTML = `<form method="dialog"><p>Es gibt ungespeicherte Änderungen. Möchten Sie sie vor dem Ordnerwechsel speichern?</p>
+  dialog.innerHTML = `<form method="dialog"><p>Es gibt ungespeicherte Änderungen. Möchten Sie sie vor dem ${reason} speichern?</p>
     <div class="row"><button class="action primary" value="save">Speichern</button>
     <button class="action" value="discard">Verwerfen</button>
     <button class="action" value="cancel">Abbrechen</button></div></form>`;
@@ -130,6 +130,46 @@ async function saveCurrentDraft() {
   state.dirty = false;
 }
 
+function editedModule() {
+  return state.meeting ? 'meetings' : letterState.letter ? 'letters' : null;
+}
+
+async function guardDraft(reason) {
+  const choice = await confirmFolderSwitch(reason);
+  if (choice === 'cancel') return false;
+  if (choice === 'save') await saveCurrentDraft();
+  return true;
+}
+
+function clearEditor() {
+  closeProtocolPreview();
+  state.meeting = null;
+  letterState.letter = null;
+  letterState.revision = null;
+  letterState.hasPdf = false;
+  state.revision = null;
+  state.hasProtocol = false;
+  includeEarlierTasks = false;
+  state.dirty = false;
+}
+
+function ensureAvailableView() {
+  const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'meetings' : state.view;
+  if (!['settings', 'manual', 'changelog'].includes(state.view) && !state.modules[module]) {
+    state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
+  }
+}
+
+async function transitionModules(nextModules, commit) {
+  const edited = editedModule();
+  const hidesEditor = edited && !nextModules[edited];
+  if (hidesEditor && !await guardDraft('Ändern der Modulauswahl')) return false;
+  state.modules = await commit(nextModules);
+  if (hidesEditor) clearEditor();
+  ensureAvailableView();
+  return true;
+}
+
 let folderNameCacheWarning = null;
 
 function adoptFolderRegistry(registry) {
@@ -140,10 +180,7 @@ function adoptFolderRegistry(registry) {
 async function adoptActiveFolder(result) {
   state.folder = result.folder;
   state.modules = result.modules;
-  const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'meetings' : state.view;
-  if (!['settings', 'manual', 'changelog'].includes(state.view) && !state.modules[module]) {
-    state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
-  }
+  ensureAvailableView();
   const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
     window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
     window.club.getLetterSettings()
@@ -153,14 +190,7 @@ async function adoptActiveFolder(result) {
   state.meetingTemplate = meetingTemplate;
   letterState.template = letterSettings.template;
   letterState.signatures = letterSettings.signatures;
-  closeProtocolPreview();
-  state.meeting = null;
-  letterState.letter = null;
-  letterState.revision = null;
-  letterState.hasPdf = false;
-  state.revision = null;
-  state.hasProtocol = false;
-  state.dirty = false;
+  clearEditor();
   await refresh();
 }
 
@@ -724,17 +754,10 @@ async function changeView(view) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
   }
-  if (!confirmDiscard()) return;
+  const preserveEditor = view === 'settings' || (state.view === 'settings' && view === editedModule());
+  if (!preserveEditor && !confirmDiscard()) return;
   if (view === 'manual') manual = await window.club.getManual();
-  closeProtocolPreview();
-  state.meeting = null;
-  letterState.letter = null;
-  letterState.revision = null;
-  letterState.hasPdf = false;
-  state.revision = null;
-  state.hasProtocol = false;
-  includeEarlierTasks = false;
-  state.dirty = false;
+  if (!preserveEditor) clearEditor();
   state.view = view;
   setMessage('');
   if (view === 'settings') adoptFolderRegistry(await window.club.getFolders());
@@ -751,9 +774,7 @@ async function run(action, target) {
       setMessage('');
       break;
     case 'choose-folder': {
-      const choice = await confirmFolderSwitch();
-      if (choice === 'cancel') break;
-      if (choice === 'save') await saveCurrentDraft();
+      if (!await guardDraft('Ordnerwechsel')) break;
       const result = await window.club.chooseFolder();
       if (result) {
         await adoptActiveFolder(result);
@@ -791,9 +812,11 @@ async function run(action, target) {
         ? `Registrierung entfernen: "${folder.name}"?\n\nDie Registrierung wird entfernt, die Daten bleiben erhalten. Sie müssen einen anderen Ordner auswählen.`
         : `Registrierung entfernen: "${folder.name}"?\n\nDie Registrierung wird entfernt, die Daten bleiben erhalten.`;
       if (!confirm(message)) return;
+      if (isActive && !await guardDraft('Entfernen des Datenordners')) return;
       const result = await window.club.unregisterFolder(folderPath);
       adoptFolderRegistry(result);
       if (isActive) {
+        clearEditor();
         state.folder = null;
         state.modules = {};
         state.meetings = [];
@@ -1149,10 +1172,12 @@ app.addEventListener('change', async event => {
   if (target.hasAttribute('data-module-toggle')) {
     const module = target.dataset.moduleToggle;
     const nextModules = { ...state.modules, [module]: target.checked };
+    target.checked = Boolean(state.modules[module]);
     document.body.inert = true;
     try {
-      state.modules = await window.club.setModules(nextModules);
-      setMessage(`${MODULES.find(([id]) => id === module)[1]} ${target.checked ? 'aktiviert' : 'deaktiviert'}.`);
+      if (await transitionModules(nextModules, modules => window.club.setModules(modules))) {
+        setMessage(`${MODULES.find(([id]) => id === module)[1]} ${nextModules[module] ? 'aktiviert' : 'deaktiviert'}.`);
+      }
     } catch (error) {
       setMessage(error.message, true);
     } finally {
@@ -1280,11 +1305,10 @@ app.addEventListener('change', event => {
     (async () => {
       const selected = target.value;
       if (!selected || selected === state.folder) return;
-      const choice = await confirmFolderSwitch();
-      if (choice === 'cancel') return;
+      target.value = state.folder;
       document.body.inert = true;
       try {
-        if (choice === 'save') await saveCurrentDraft();
+        if (!await guardDraft('Ordnerwechsel')) return;
         const result = await window.club.activateFolder(selected);
         await adoptActiveFolder(result);
         setMessage(result.conflicts.length

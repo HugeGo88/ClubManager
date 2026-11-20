@@ -9,7 +9,7 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
 
-Die Modulauswahl wird beim Öffnen oder Wechseln des Datenordners gelesen. Änderungen durch andere Personen werden beim Öffnen der Einstellungen noch nicht automatisch aktualisiert; gleichzeitige Änderungen werden noch nicht auf Konflikte geprüft. Speichern Sie Entwürfe vor Änderungen an der Modulauswahl.
+Die Modulauswahl wird beim Öffnen oder Wechseln des Datenordners gelesen. Änderungen durch andere Personen werden beim Öffnen der Einstellungen noch nicht automatisch aktualisiert; gleichzeitige Änderungen werden noch nicht auf Konflikte geprüft. Ein geöffneter Sitzungs- oder Briefentwurf bleibt beim Wechsel in die Einstellungen erhalten. Wenn das Deaktivieren sein Modul ausblenden würde, können Sie den Entwurf speichern, verwerfen oder abbrechen. Bei einem Speicherfehler bleiben Entwurf und bisherige Modulauswahl erhalten. Schlägt erst das Speichern der Modulauswahl fehl, bleibt ein zuvor erfolgreich gespeicherter Entwurf gespeichert.
 
 ## Datenordner und Zugriff
 

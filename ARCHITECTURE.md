@@ -124,8 +124,8 @@ settings.json in userData    user-selected data folder
   usable folder. The current module remains selected on a switch if enabled,
   otherwise navigation falls back to the first enabled module or Settings.
   Hiding a module does not delete records and is not an authorization boundary.
-  Draft guards for module-setting transitions (#16), Settings-entry refresh
-  and stale-write conflict handling (#17) are not yet implemented.
+  Settings-entry refresh and stale-write conflict handling (#17) are not yet
+  implemented.
 - [src/shared/changelog.json](src/shared/changelog.json) is the packaged source
   of release notes displayed by the renderer through restricted IPC. New entries
   include the release date as an ISO `YYYY-MM-DD` value, displayed in German
@@ -159,12 +159,20 @@ settings.json in userData    user-selected data folder
   registration), or unregister a folder (remove the registration without changing
   folder contents). Changing folders opens the new location without moving
   existing data. When there are unsaved edits, the renderer offers save, discard or cancel;
-  a failed save prevents switching and preserves the current draft. If the active folder
+  a failed save prevents switching and preserves the current draft. Settings can be
+  opened without abandoning a meeting or letter editor. A module selection that
+  would hide that editor uses the same guard before writing or applying the selection;
+  unrelated changes do not prompt. Cancel or save failure keeps the draft and
+  previous selection. If the selection write fails after a successful draft save,
+  the saved editor and previous selection remain available. The guarded selection
+  transition accepts a commit operation so a future external refresh can apply a
+  loaded selection without writing it back. Settings-entry refresh and stale
+  selection conflict detection are not yet implemented (#17). If the active folder
   becomes unavailable at startup, it is cleared, no folder-backed data loads, the app does
   not silently recreate it, and the user is guided to choose or relink a folder. An
   unavailable folder cannot be activated until it is successfully relinked to an available
   path. Unregistering a folder removes only its registration and never deletes or modifies
-  folder contents. Unregistering the active folder clears the active selection and guides
+  folder contents.   Unregistering the active folder also guards an open draft, clears the active selection and guides
   the user to select another folder without implicitly switching.
 - [src/main/storage.js](src/main/storage.js) stores each meeting in
   `meetings/<UUID>.json` as `{ "version": 1, "meeting": { ... } }` and its last
@@ -263,7 +271,8 @@ verification remain separate operational steps.
   locale so native date controls display German dates and start weeks on Monday.
   The renderer escapes user content inserted into HTML.
   Async button actions make the body inert, handle failures as visible notices
-  and then re-render. Navigation checks for unsaved meeting edits.
+  and then re-render. Navigation checks for unsaved meeting and letter edits;
+  moving between an editor and Settings retains the editor.
 - The meeting editor works on a clone of the selected saved record, tracks a
   revision and dirty flag, and requires a save before exporting. A generated PDF
   is a snapshot, not automatically updated when the meeting changes. A saved
@@ -346,7 +355,8 @@ npm run dist:linux
 
 `npm test` runs Node's test runner. The test scripts check that Node meets the
 minimum version in `.nvmrc` before running. The Electron smoke tests exercise the application through Electron, including
-meeting editing, navigation, settings, lists, conflicts and PDF export. They
+meeting and letter draft decisions for folder and module transitions, navigation,
+settings, lists, conflicts and PDF export. They
 also verify copied customizations, reset/default behavior, and PDF output when
 switching between two folders; separate processes verify unavailable-folder
 and configuration recovery, relinking, non-destructive unregister, a

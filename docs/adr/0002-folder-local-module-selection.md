@@ -10,8 +10,8 @@ visibility with portable, folder-specific settings rather than inferring
 modules from records or adding personal overrides. The design is agreed;
 the first implementation slice provides folder-local persistence, activation,
 navigation and failure recovery. Draft protection for module-setting changes
-(#16), and Settings-entry refresh and stale-write conflict handling (#17),
-remain unimplemented.
+(#16) is implemented. Settings-entry refresh and stale-write conflict handling
+(#17) remain unimplemented.
 
 ## Considered options
 
