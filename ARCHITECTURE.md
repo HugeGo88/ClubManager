@@ -406,7 +406,9 @@ npm run dist:linux
 ```
 
 `npm test` runs Node's test runner. The test scripts check that Node meets the
-minimum version in `.nvmrc` before running. The Electron smoke tests exercise the application through Electron, including
+minimum version in `.nvmrc` before running. Calendar cache-write failure tests
+inject an error at the atomic rename rather than relying on platform-specific
+directory permissions. The Electron smoke tests exercise the application through Electron, including
 meeting and letter draft decisions for folder and module transitions, navigation,
 settings, lists, conflicts and PDF export. They
 also verify copied customizations, reset/default behavior, and PDF output when

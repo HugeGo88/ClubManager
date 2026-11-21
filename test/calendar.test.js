@@ -275,22 +275,30 @@ test('does not publish an in-flight refresh after switching the active data fold
 
 test('reports cache write failures and preserves the previous successful cache', async t => {
   const folder = await fixture(t);
+  let title = 'Shared event';
   const server = http.createServer((request, response) => {
-    response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:shared\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Shared event\r\nEND:VEVENT\r\nEND:VCALENDAR');
+    response.end(`BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:shared\r\nDTSTART:20261121T100000Z\r\nSUMMARY:${title}\r\nEND:VEVENT\r\nEND:VCALENDAR`);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
   const config = await calendar.saveConfig(folder, url);
   const previous = await calendar.refreshCalendar(folder, config);
+  const cacheFile = path.join(folder, 'clubmanager-calendar-cache.json');
+  const original = await fs.readFile(cacheFile);
 
-  await fs.chmod(folder, 0o500);
-  try {
-    await assert.rejects(calendar.refreshCalendar(folder, config), /Datenordner gespeichert/);
-  } finally {
-    await fs.chmod(folder, 0o700);
-  }
+  title = 'Updated event';
+  const rename = fs.rename;
+  const write = t.mock.method(fs, 'rename', (source, target) => {
+    if (target === cacheFile) return Promise.reject(Object.assign(new Error('fixture cache write failure'), { code: 'EIO' }));
+    return rename(source, target);
+  });
+  await assert.rejects(calendar.refreshCalendar(folder, config), /Datenordner gespeichert.*fixture cache write failure/);
+  assert.equal(write.mock.callCount(), 1);
+  write.mock.restore();
+  assert.deepEqual(await fs.readFile(cacheFile), original);
   assert.deepEqual(await calendar.loadCache(folder, url), previous);
+  assert.deepEqual((await fs.readdir(folder)).filter(name => name.endsWith('.tmp')), []);
 });
 
 test('keeps the result of the last completed successful competing refresh', async t => {
