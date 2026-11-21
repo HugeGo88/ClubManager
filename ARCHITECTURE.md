@@ -28,7 +28,7 @@ module, but there is currently no cross-module data-sharing API, plugin system
 or separate service. Modularity and intentional data-sharing interfaces are
 future design goals, not existing guarantees.
 
-The sidebar's C button toggles an icon-only layout with native title tooltips;
+The sidebar's app-icon button toggles an icon-only layout with native title tooltips;
 the setting is persisted. Related module icons share a color. Sidebar Material
 Icons are provided by a locally packaged font, with no network request.
 The sidebar has a collapsible Meetings group with **Offene Aufgaben**,
@@ -273,6 +273,8 @@ PDF also contains the title and date, page header/footer and page numbers.
 
 [package.json](package.json) defines the Electron entry point, dependencies,
 build scripts and electron-builder targets. The
+[build/icon.png](build/icon.png) source and packaged macOS ICNS icon are used for
+application and window branding across platforms.
 [release workflow](.github/workflows/release.yml) runs manually or when a push
 to `main` changes the package version. It checks matching lockfile versions and
 a nonempty changelog entry before generating app assets and building macOS ARM64 DMG/ZIP

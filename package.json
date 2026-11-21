@@ -49,12 +49,14 @@
     "appId": "app.clubmanager.desktop",
     "productName": "ClubManager",
     "artifactName": "ClubManager-${version}-${os}-${arch}.${ext}",
+    "icon": "build/icon.png",
     "files": [
       "src/**/*",
       "package.json"
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"

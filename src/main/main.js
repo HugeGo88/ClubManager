@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
@@ -738,9 +738,12 @@ function registerHandlers() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+  const appIcon = nativeImage.createFromPath(path.join(__dirname, '../../build/icon.png'));
+  if (process.platform === 'darwin' && app.dock) app.dock.setIcon(appIcon);
   splashWindow = new BrowserWindow({
     width: 420, height: 240, frame: false, resizable: false, minimizable: false,
     maximizable: false, fullscreenable: false, show: false, backgroundColor: '#f5f7fa',
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, 'splash-preload.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: true
@@ -773,7 +776,7 @@ app.whenReady().then(async () => {
     ? Promise.all([folderReady, updateReady]).then(() => {})
     : folderReady;
   mainWindow = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false,
+    width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false, icon: appIcon,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   await mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));

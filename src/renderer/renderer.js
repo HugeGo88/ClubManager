@@ -682,6 +682,7 @@ function renderNavigation() {
   updateOverdueBadge();
   const sidebarToggle = document.querySelector('[data-action="toggle-sidebar"]');
   sidebarToggle.setAttribute('aria-pressed', String(state.sidebarCollapsed));
+  sidebarToggle.setAttribute('aria-label', state.sidebarCollapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen');
   sidebarToggle.title = state.sidebarCollapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen';
   document.querySelectorAll('[data-view]').forEach(element => {
     element.classList.toggle('active', element.dataset.view === state.view);
