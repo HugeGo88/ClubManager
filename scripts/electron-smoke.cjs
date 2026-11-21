@@ -11,7 +11,11 @@ const { createHash, randomUUID } = require('node:crypto');
 const http = require('node:http');
 
 async function calendarSmoke(window, port) {
-  await window.webContents.executeJavaScript(`(async () => {
+  const devtools = window.webContents.debugger;
+  devtools.attach('1.3');
+  try {
+    await devtools.sendCommand('Emulation.setTimezoneOverride', { timezoneId: 'America/Los_Angeles' });
+    await window.webContents.executeJavaScript(`(async () => {
     const RealDate = Date;
     class FixedDate extends RealDate {
       constructor(...args) {
@@ -91,8 +95,8 @@ async function calendarSmoke(window, port) {
     await berlinEvent.click();
     await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
     const berlinDialog = document.querySelector('[data-calendar-event-dialog]').textContent;
-    if (!berlinDialog.includes('10:30') || !berlinDialog.includes('11:30')) {
-      throw new Error('The TZID-qualified event was not displayed in Europe/Berlin local time');
+    if (!berlinDialog.includes('01:30') || !berlinDialog.includes('02:30')) {
+      throw new Error('The TZID-qualified event was not displayed in the computer local time zone');
     }
     await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
     await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
@@ -108,6 +112,18 @@ async function calendarSmoke(window, port) {
     if (getComputedStyle(description).whiteSpace !== 'pre-wrap') throw new Error('Calendar description line break was not displayed');
     await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
     await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+
+    const adjacentDayOverflow = document.querySelector('[data-action="calendar-more"][data-date="2026-11-20"]');
+    if (!adjacentDayOverflow) throw new Error('The adjacent-day overflow control is missing');
+    await adjacentDayOverflow.click();
+    await waitFor(() => document.querySelector('[data-calendar-overflow-dialog]'));
+    const adjacentOverflowEvents = [...document.querySelectorAll('[data-calendar-overflow-dialog] [data-calendar-event]')]
+      .map(event => event.dataset.eventTitle);
+    if (adjacentOverflowEvents.length !== 1 || adjacentOverflowEvents[0] !== 'November 20 event 4') {
+      throw new Error('All-day events must not shift into an adjacent day overflow list: ' + JSON.stringify(adjacentOverflowEvents));
+    }
+    await click('[data-calendar-overflow-dialog] [data-action="close-calendar-overflow"]');
+    await waitFor(() => !document.querySelector('[data-calendar-overflow-dialog]'));
 
     const overflow = document.querySelector('[data-action="calendar-more"][data-date="2026-11-21"]');
     if (!overflow) throw new Error('Crowded-day overflow control is missing');
@@ -205,7 +221,14 @@ async function calendarSmoke(window, port) {
     await click('[data-view="calendar"]');
     await waitFor(() => document.querySelector('.empty')?.textContent.includes('noch keine Kalender-URL'));
     if ((await window.club.getCalendarConfig()).url !== null) throw new Error('Clearing the URL must persist');
-  })()`);
+    })()`);
+  } finally {
+    try {
+      await devtools.sendCommand('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Berlin' });
+    } finally {
+      devtools.detach();
+    }
+  }
 }
 
 async function calendarCacheSmoke(window, port, setCalendarAvailable) {
@@ -556,6 +579,20 @@ async function main() {
       'DTEND;VALUE=DATE:20261202',
       'SUMMARY:Konferenz',
       'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:all-day-november-21',
+      'DTSTART;VALUE=DATE:20261121',
+      'DTEND;VALUE=DATE:20261122',
+      'SUMMARY:All-day only November 21',
+      'END:VEVENT',
+      ...[1, 2, 3, 4].flatMap(number => [
+        'BEGIN:VEVENT',
+        `UID:november-20-${number}`,
+        `DTSTART:20261120T${String(160000 + number * 10000)}Z`,
+        `DTEND:20261120T${String(163000 + number * 10000)}Z`,
+        `SUMMARY:November 20 event ${number}`,
+        'END:VEVENT'
+      ]),
       'BEGIN:VEVENT',
       'UID:series',
       'DTSTART:20261121T100000Z',

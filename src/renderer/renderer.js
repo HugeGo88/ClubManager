@@ -193,6 +193,18 @@ function calendarDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function calendarEventsOnDate(dateKey) {
+  const dayStart = new Date(`${dateKey}T00:00:00`);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  return calendarState.events.filter(event => {
+    if (event.allDay) {
+      return event.start.slice(0, 10) <= dateKey && dateKey < event.end.slice(0, 10);
+    }
+    return new Date(event.start) < dayEnd && new Date(event.end) > dayStart;
+  });
+}
+
 function formatCalendarEventTime(event) {
   if (event.allDay) {
     const startDate = new Date(`${event.start.slice(0, 10)}T12:00:00Z`);
@@ -317,18 +329,7 @@ function calendarView() {
     const date = new Date(gridStart);
     date.setDate(gridStart.getDate() + i);
     const key = calendarDateKey(date);
-    const dayEvents = calendarState.events.filter(event => {
-      if (event.allDay) {
-        const startKey = event.start.slice(0, 10);
-        const endKey = event.end.slice(0, 10);
-        return startKey <= key && key < endKey;
-      }
-      const start = new Date(event.start);
-      const end = new Date(event.end);
-      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-      return start < dayEnd && end > dayStart;
-    });
+    const dayEvents = calendarEventsOnDate(key);
     const visibleEvents = dayEvents.slice(0, 3);
     cells.push(`<div class="calendar-day ${date.getMonth() !== month.getMonth() ? 'adjacent' : ''} ${key === today ? 'today' : ''}" data-date="${key}">
       <span class="calendar-day-number">${date.getDate()}</span>
@@ -1169,14 +1170,7 @@ async function run(action, target) {
       break;
     case 'calendar-more': {
       const dateKey = target.dataset.date;
-      const dayEvents = calendarState.events.filter(event => {
-        const start = new Date(event.start);
-        const end = new Date(event.end);
-        const dayStart = new Date(`${dateKey}T00:00:00`);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayEnd.getDate() + 1);
-        return start < dayEnd && end > dayStart;
-      }).slice(3);
+      const dayEvents = calendarEventsOnDate(dateKey).slice(3);
       const dialog = document.createElement('dialog');
       dialog.className = 'calendar-overflow-dialog';
       dialog.setAttribute('data-calendar-overflow-dialog', '');
