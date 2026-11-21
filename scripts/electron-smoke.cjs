@@ -58,13 +58,6 @@ async function calendarSmoke(window, port) {
     await waitFor(() => document.querySelector('.calendar-grid'));
     await waitFor(() => document.querySelector('[data-calendar-fetched-at]'));
     if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
-    const weekdays = [...document.querySelectorAll('.calendar-weekday')].map(day => day.textContent);
-    if (weekdays.join(',') !== 'Mo,Di,Mi,Do,Fr,Sa,So') throw new Error('The calendar week must start on Monday');
-    const gridDays = [...document.querySelectorAll('.calendar-day')];
-    if (gridDays.length !== 42 || gridDays[0].dataset.date !== '2026-10-26' ||
-        gridDays.at(-1).dataset.date !== '2026-12-06') {
-      throw new Error('The month grid must include complete adjacent-month weeks');
-    }
     const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
     for (let step = 0; step < 240; step++) {
       const heading = document.querySelector('.calendar-view h2')?.textContent || '';
@@ -82,29 +75,90 @@ async function calendarSmoke(window, port) {
       if (step === 239) throw new Error('Could not navigate to November 2026');
     }
     await waitFor(() => document.querySelector('[data-calendar-event]'));
-    const conferenceOnNov30 = document.querySelector('[data-date="2026-11-30"] [data-event-title="Konferenz"]');
-    const conferenceOnDec1 = document.querySelector('[data-date="2026-12-01"] [data-event-title="Konferenz"]');
-    if (!conferenceOnNov30 || !conferenceOnDec1) throw new Error('The all-day multi-day event did not cover every inclusive date');
-    if (document.querySelector('[data-date="2026-12-02"] [data-event-title="Konferenz"]')) {
+    const weekdays = [...document.querySelectorAll('.calendar-weekday')].map(day => day.textContent);
+    if (weekdays.join(',') !== 'Mo,Di,Mi,Do,Fr,Sa,So') throw new Error('The calendar week must start on Monday');
+    const gridDays = [...document.querySelectorAll('.calendar-day')];
+    if (gridDays.length !== 42 || gridDays[0].dataset.date !== '2026-10-26' ||
+        gridDays.at(-1).dataset.date !== '2026-12-06') {
+      throw new Error('The month grid must include complete adjacent-month weeks');
+    }
+    const eventOnDate = (title, date) => [...document.querySelectorAll('.calendar-grid-event')]
+      .find(event => event.dataset.eventTitle === title &&
+        event.dataset.startDate <= date && date <= event.dataset.endDate);
+    const conference = eventOnDate('Konferenz', '2026-11-30');
+    if (!conference || conference !== eventOnDate('Konferenz', '2026-12-01')) {
+      throw new Error('The all-day multi-day event must span both dates in one bar');
+    }
+    const coversDay = (event, date) => {
+      const bar = event.getBoundingClientRect();
+      const day = document.querySelector('.calendar-day[data-date="' + date + '"]').getBoundingClientRect();
+      return bar.left < day.right - 5 && bar.right > day.left + 5 && bar.top >= day.top && bar.bottom <= day.bottom;
+    };
+    if (!coversDay(conference, '2026-11-30') || !coversDay(conference, '2026-12-01')) {
+      throw new Error('The conference bar must visually cover both days: ' + JSON.stringify({
+        bar: conference.getBoundingClientRect(),
+        first: document.querySelector('.calendar-day[data-date="2026-11-30"]').getBoundingClientRect(),
+        second: document.querySelector('.calendar-day[data-date="2026-12-01"]').getBoundingClientRect()
+      }));
+    }
+    if (eventOnDate('Konferenz', '2026-12-02')) {
       throw new Error('The exclusive end date of an all-day event must not be included');
     }
-    if (!document.querySelector('[data-date="2026-11-21"] [data-event-title="All-day only November 21"]') ||
-        document.querySelector('[data-date="2026-11-20"] [data-event-title="All-day only November 21"]')) {
+    if (!eventOnDate('All-day only November 21', '2026-11-21') ||
+        eventOnDate('All-day only November 21', '2026-11-20')) {
       throw new Error('An all-day event must render on its ICS date only');
     }
-    const moved = document.querySelector('[data-date="2026-11-23"] [data-event-title="Verschoben"]');
+    const firstWeek = eventOnDate('Mehrtagestermin', '2026-11-12');
+    const nextWeek = eventOnDate('Mehrtagestermin', '2026-11-16');
+    if (!firstWeek || !nextWeek || firstWeek === nextWeek ||
+        firstWeek !== eventOnDate('Mehrtagestermin', '2026-11-15') ||
+        nextWeek !== eventOnDate('Mehrtagestermin', '2026-11-17') ||
+        !coversDay(firstWeek, '2026-11-15') || !coversDay(nextWeek, '2026-11-17') ||
+        eventOnDate('Mehrtagestermin', '2026-11-18')) {
+      throw new Error('A timed multi-day event must wrap into continuous weekly bars');
+    }
+    await nextWeek.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('17. November 2026')) {
+      throw new Error('The multi-day event details must include the end date');
+    }
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+
+    const overlapping = [...document.querySelectorAll('.calendar-grid-event')]
+      .filter(event => event.dataset.eventTitle.startsWith('Gleichzeitig '));
+    if (overlapping.length !== 3 || new Set(overlapping.map(event => event.getBoundingClientRect().top)).size !== 3 ||
+        overlapping.some(event => !coversDay(event, '2026-11-25') || !coversDay(event, '2026-11-29'))) {
+      throw new Error('Overlapping multi-day events must occupy separate continuous rows');
+    }
+    for (const date of ['2026-11-25', '2026-11-29']) {
+      await click('[data-action="calendar-more"][data-date="' + date + '"]');
+      await waitFor(() => document.querySelector('[data-calendar-overflow-dialog]'));
+      const hidden = [...document.querySelectorAll('[data-calendar-overflow-dialog] [data-calendar-event]')];
+      const hiddenMultiDay = hidden.find(event => event.dataset.eventTitle === 'Gleichzeitig 4');
+      if (!hiddenMultiDay || hidden.some(event => overlapping.some(shown => shown.dataset.eventTitle === event.dataset.eventTitle))) {
+        throw new Error('A hidden multi-day event must remain available on every covered day');
+      }
+      await hiddenMultiDay.click();
+      await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+      await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+      await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+      await click('[data-calendar-overflow-dialog] [data-action="close-calendar-overflow"]');
+      await waitFor(() => !document.querySelector('[data-calendar-overflow-dialog]'));
+    }
+    const moved = eventOnDate('Verschoben', '2026-11-23');
     if (!moved) throw new Error('The moved recurrence occurrence did not move to its replacement date');
-    if (document.querySelector('[data-date="2026-11-22"] [data-event-title="Serie"]') ||
-        document.querySelector('[data-date="2026-11-24"] [data-event-title="Serie"]') ||
-        document.querySelector('[data-date="2026-11-23"] [data-event-title="Serie"]')) {
+    if (eventOnDate('Serie', '2026-11-22') ||
+        eventOnDate('Serie', '2026-11-24') ||
+        eventOnDate('Serie', '2026-11-23')) {
       throw new Error('An moved, excluded or cancelled recurrence occurrence appeared at its original date');
     }
-    await conferenceOnNov30.click();
+    await eventOnDate('Konferenz', '2026-11-30').click();
     await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
     if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('ganztägig')) throw new Error('All-day event was rendered as timed');
     await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
     await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
-    const berlinEvent = document.querySelector('[data-date="2026-11-21"] [data-event-title="Berliner Termin"]');
+    const berlinEvent = eventOnDate('Berliner Termin', '2026-11-21');
     if (!berlinEvent) throw new Error('The TZID-qualified timed event did not render');
     await berlinEvent.click();
     await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
@@ -593,6 +647,20 @@ async function main() {
       'DTEND;VALUE=DATE:20261202',
       'SUMMARY:Konferenz',
       'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:multi-day-timed',
+      'DTSTART:20261112T180000Z',
+      'DTEND:20261117T200000Z',
+      'SUMMARY:Mehrtagestermin',
+      'END:VEVENT',
+      ...[1, 2, 3, 4].flatMap(number => [
+        'BEGIN:VEVENT',
+        `UID:overlapping-multi-day-${number}`,
+        'DTSTART;VALUE=DATE:20261125',
+        'DTEND;VALUE=DATE:20261130',
+        `SUMMARY:Gleichzeitig ${number}`,
+        'END:VEVENT'
+      ]),
       'BEGIN:VEVENT',
       'UID:all-day-november-21',
       'DTSTART;VALUE=DATE:20261121',

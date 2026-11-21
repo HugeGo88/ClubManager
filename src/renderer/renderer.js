@@ -205,6 +205,37 @@ function calendarEventsOnDate(dateKey) {
   });
 }
 
+function calendarWeek(start) {
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const key = calendarDateKey(date);
+    return { date, key, events: calendarEventsOnDate(key), hidden: [] };
+  });
+  const segments = new Map();
+  days.forEach((day, index) => {
+    for (const event of day.events) {
+      const segment = segments.get(event);
+      if (segment) segment.last = index;
+      else segments.set(event, { event, first: index, last: index });
+    }
+  });
+  const events = [...segments.values()].sort((a, b) => (b.last - b.first) - (a.last - a.first));
+  const lanes = Array.from({ length: 3 }, () => Array(7).fill(false));
+  const visible = [];
+  for (const segment of events) {
+    const lane = lanes.findIndex(occupied =>
+      occupied.slice(segment.first, segment.last + 1).every(day => !day));
+    if (lane === -1) {
+      for (let day = segment.first; day <= segment.last; day++) days[day].hidden.push(segment.event);
+      continue;
+    }
+    for (let day = segment.first; day <= segment.last; day++) lanes[lane][day] = true;
+    visible.push({ ...segment, lane });
+  }
+  return { days, visible };
+}
+
 function formatCalendarEventTime(event) {
   if (event.allDay) {
     const startDate = new Date(`${event.start.slice(0, 10)}T12:00:00Z`);
@@ -218,9 +249,12 @@ function formatCalendarEventTime(event) {
   const start = new Date(event.start);
   const end = new Date(event.end);
   const date = start.toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+  const endDate = end.toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
   const startTime = start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const endTime = end.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  return `${date}, ${startTime}–${endTime}`;
+  return date === endDate
+    ? `${date}, ${startTime}–${endTime}`
+    : `${date}, ${startTime} – ${endDate}, ${endTime}`;
 }
 
 async function loadCalendarConfig(folder = state.folder) {
@@ -324,17 +358,17 @@ function calendarView() {
   const gridStart = new Date(month);
   gridStart.setDate(month.getDate() - mondayIndex);
   const today = calendarDateKey(new Date());
-  const cells = [];
-  for (let i = 0; i < 42; i++) {
-    const date = new Date(gridStart);
-    date.setDate(gridStart.getDate() + i);
-    const key = calendarDateKey(date);
-    const dayEvents = calendarEventsOnDate(key);
-    const visibleEvents = dayEvents.slice(0, 3);
-    cells.push(`<div class="calendar-day ${date.getMonth() !== month.getMonth() ? 'adjacent' : ''} ${key === today ? 'today' : ''}" data-date="${key}">
-      <span class="calendar-day-number">${date.getDate()}</span>
-      ${visibleEvents.map(event => `<button type="button" class="calendar-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-title="${escape(event.title)}" title="${escape(event.description)}">${escape(event.title)}</button>`).join('')}
-      ${dayEvents.length > visibleEvents.length ? `<button type="button" class="calendar-more" data-action="calendar-more" data-date="${key}">+${dayEvents.length - visibleEvents.length} weitere</button>` : ''}
+  const weeks = [];
+  for (let i = 0; i < 42; i += 7) {
+    const start = new Date(gridStart);
+    start.setDate(gridStart.getDate() + i);
+    const { days, visible } = calendarWeek(start);
+    weeks.push(`<div class="calendar-week" role="row">
+      ${days.map(({ date, key }, index) => `<div class="calendar-day ${date.getMonth() !== month.getMonth() ? 'adjacent' : ''} ${key === today ? 'today' : ''}" data-date="${key}" data-column="${index + 1}" role="gridcell">
+        <span class="calendar-day-number">${date.getDate()}</span>
+      </div>`).join('')}
+      ${visible.map(({ event, first, last, lane }) => `<button type="button" class="calendar-event calendar-grid-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-title="${escape(event.title)}" data-start-date="${days[first].key}" data-end-date="${days[last].key}" data-column="${first + 1}" data-span="${last - first + 1}" data-lane="${lane + 1}" aria-label="${escape(`${event.title}, ${formatCalendarEventTime(event)}`)}" title="${escape(event.description)}">${escape(event.title)}</button>`).join('')}
+      ${days.map(({ date, key, hidden }, index) => hidden.length ? `<button type="button" class="calendar-more" data-action="calendar-more" data-date="${key}" data-column="${index + 1}" aria-label="${escape(`${hidden.length} weitere Termine am ${date.toLocaleDateString('de-DE')}`)}">+${hidden.length} weitere</button>` : '').join('')}
     </div>`);
   }
   return `<div class="calendar-view">
@@ -353,7 +387,7 @@ function calendarView() {
     <h2>${escape(title)}</h2>
     <div class="calendar-grid" role="grid" aria-label="${escape(title)}">
       ${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(day => `<div class="calendar-weekday" role="columnheader">${day}</div>`).join('')}
-      ${cells.join('')}
+      ${weeks.join('')}
     </div>
   </div>`;
 }
@@ -1170,7 +1204,9 @@ async function run(action, target) {
       break;
     case 'calendar-more': {
       const dateKey = target.dataset.date;
-      const dayEvents = calendarEventsOnDate(dateKey).slice(3);
+      const date = new Date(`${dateKey}T00:00:00`);
+      date.setDate(date.getDate() - (date.getDay() + 6) % 7);
+      const dayEvents = calendarWeek(date).days.find(day => day.key === dateKey).hidden;
       const dialog = document.createElement('dialog');
       dialog.className = 'calendar-overflow-dialog';
       dialog.setAttribute('data-calendar-overflow-dialog', '');

@@ -21,9 +21,9 @@ every tool or contributor.
 ## Product and module boundaries
 
 ClubManager is a local Electron desktop application with German user-facing
-text. Meetings and single-recipient Letters are implemented. Members and Invoices
-currently have sidebar entries, settings toggles and placeholder views,
-not independent business implementations. Separate data folders exist for each
+text. Meetings and single-recipient Letters are implemented. Members is a
+placeholder; Invoices includes a read-only calendar but no invoice records.
+Separate data folders exist for each
 module, but there is currently no cross-module data-sharing API, plugin system
 or separate service. Modularity and intentional data-sharing interfaces are
 future design goals, not existing guarantees.
@@ -95,7 +95,10 @@ settings.json in userData    user-selected data folder
   month grid with the last successful fetch time. Subscription
   titles, locations and descriptions are escaped text, never HTML. Event buttons
   open read-only native dialogs; crowded days show only a bounded grid selection
-  and expose the remaining events through a separate overflow dialog. Enabling
+  and expose the remaining events through a separate overflow dialog. Multi-day
+  events occupy continuous, non-overlapping bars within each week and wrap to
+  the next week; a segment without a free row is available in the overflow for
+  each day it covers. Enabling
   Rechnungen exposes Kalender as a submodule; disabling Rechnungen hides both
   Rechnung views and rejects navigation to them.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
