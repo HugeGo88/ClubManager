@@ -58,6 +58,13 @@ async function calendarSmoke(window, port) {
     await waitFor(() => document.querySelector('.calendar-grid'));
     await waitFor(() => document.querySelector('[data-calendar-fetched-at]'));
     if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
+    const weekdays = [...document.querySelectorAll('.calendar-weekday')].map(day => day.textContent);
+    if (weekdays.join(',') !== 'Mo,Di,Mi,Do,Fr,Sa,So') throw new Error('The calendar week must start on Monday');
+    const gridDays = [...document.querySelectorAll('.calendar-day')];
+    if (gridDays.length !== 42 || gridDays[0].dataset.date !== '2026-10-26' ||
+        gridDays.at(-1).dataset.date !== '2026-12-06') {
+      throw new Error('The month grid must include complete adjacent-month weeks');
+    }
     const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
     for (let step = 0; step < 240; step++) {
       const heading = document.querySelector('.calendar-view h2')?.textContent || '';
@@ -78,6 +85,13 @@ async function calendarSmoke(window, port) {
     const conferenceOnNov30 = document.querySelector('[data-date="2026-11-30"] [data-event-title="Konferenz"]');
     const conferenceOnDec1 = document.querySelector('[data-date="2026-12-01"] [data-event-title="Konferenz"]');
     if (!conferenceOnNov30 || !conferenceOnDec1) throw new Error('The all-day multi-day event did not cover every inclusive date');
+    if (document.querySelector('[data-date="2026-12-02"] [data-event-title="Konferenz"]')) {
+      throw new Error('The exclusive end date of an all-day event must not be included');
+    }
+    if (!document.querySelector('[data-date="2026-11-21"] [data-event-title="All-day only November 21"]') ||
+        document.querySelector('[data-date="2026-11-20"] [data-event-title="All-day only November 21"]')) {
+      throw new Error('An all-day event must render on its ICS date only');
+    }
     const moved = document.querySelector('[data-date="2026-11-23"] [data-event-title="Verschoben"]');
     if (!moved) throw new Error('The moved recurrence occurrence did not move to its replacement date');
     if (document.querySelector('[data-date="2026-11-22"] [data-event-title="Serie"]') ||
