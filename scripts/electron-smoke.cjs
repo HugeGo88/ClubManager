@@ -1,3 +1,5 @@
+process.env.TZ = 'Europe/Berlin';
+
 const { app, BrowserWindow, dialog, Menu, shell } = require('electron');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -10,6 +12,16 @@ const http = require('node:http');
 
 async function calendarSmoke(window, port) {
   await window.webContents.executeJavaScript(`(async () => {
+    const RealDate = Date;
+    class FixedDate extends RealDate {
+      constructor(...args) {
+        super(...(args.length ? args : ['2026-11-21T12:00:00Z']));
+      }
+      static now() {
+        return new RealDate('2026-11-21T12:00:00Z').getTime();
+      }
+    }
+    window.Date = FixedDate;
     const waitFor = async test => {
       for (let i = 0; i < 200; i++) {
         const value = await test();
@@ -42,7 +54,48 @@ async function calendarSmoke(window, port) {
     await waitFor(() => document.querySelector('.calendar-grid'));
     await waitFor(() => document.querySelector('[data-calendar-fetched-at]'));
     if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
+    const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    for (let step = 0; step < 240; step++) {
+      const heading = document.querySelector('.calendar-view h2')?.textContent || '';
+      if (heading.toLowerCase().includes('november') && heading.includes('2026')) break;
+      const match = heading.match(/^(\\w+)\\s+(\\d{4})$/);
+      if (!match) throw new Error('Could not determine the calendar month');
+      const month = monthNames.indexOf(match[1]);
+      const year = Number(match[2]);
+      if (month < 0) throw new Error('Unknown calendar month: ' + match[1]);
+      const current = year * 12 + month;
+      const target = 2026 * 12 + 10;
+      const selector = current < target ? '[data-action="calendar-next"]' : '[data-action="calendar-prev"]';
+      document.querySelector(selector).click();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      if (step === 239) throw new Error('Could not navigate to November 2026');
+    }
     await waitFor(() => document.querySelector('[data-calendar-event]'));
+    const conferenceOnNov30 = document.querySelector('[data-date="2026-11-30"] [data-event-title="Konferenz"]');
+    const conferenceOnDec1 = document.querySelector('[data-date="2026-12-01"] [data-event-title="Konferenz"]');
+    if (!conferenceOnNov30 || !conferenceOnDec1) throw new Error('The all-day multi-day event did not cover every inclusive date');
+    const moved = document.querySelector('[data-date="2026-11-23"] [data-event-title="Verschoben"]');
+    if (!moved) throw new Error('The moved recurrence occurrence did not move to its replacement date');
+    if (document.querySelector('[data-date="2026-11-22"] [data-event-title="Serie"]') ||
+        document.querySelector('[data-date="2026-11-24"] [data-event-title="Serie"]') ||
+        document.querySelector('[data-date="2026-11-23"] [data-event-title="Serie"]')) {
+      throw new Error('An moved, excluded or cancelled recurrence occurrence appeared at its original date');
+    }
+    await conferenceOnNov30.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('ganztägig')) throw new Error('All-day event was rendered as timed');
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+    const berlinEvent = document.querySelector('[data-date="2026-11-21"] [data-event-title="Berliner Termin"]');
+    if (!berlinEvent) throw new Error('The TZID-qualified timed event did not render');
+    await berlinEvent.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    const berlinDialog = document.querySelector('[data-calendar-event-dialog]').textContent;
+    if (!berlinDialog.includes('10:30') || !berlinDialog.includes('11:30')) {
+      throw new Error('The TZID-qualified event was not displayed in Europe/Berlin local time');
+    }
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
     const agendaEvent = document.querySelector('[data-calendar-event][data-event-title="Tagesordnung"]');
     if (!agendaEvent) throw new Error('The first calendar event did not render');
     await agendaEvent.click();
@@ -111,6 +164,10 @@ async function calendarSmoke(window, port) {
     await waitFor(() => !document.body.inert && document.querySelector('.calendar-grid'));
     await click('[data-action="calendar-next"]');
     await click('[data-action="calendar-today"]');
+    await waitFor(() => document.querySelector('[data-date="2026-11-21"].today'));
+    if (!document.querySelector('.calendar-view h2')?.textContent.includes('November 2026')) {
+      throw new Error('The deterministic today clock did not restore November 2026');
+    }
     await click('[data-action="calendar-refresh"]');
 
     await click('[data-view="settings"]');
@@ -438,6 +495,27 @@ async function main() {
     }
     response.end([
       'BEGIN:VCALENDAR',
+      'BEGIN:VTIMEZONE',
+      'TZID:Europe/Berlin',
+      'BEGIN:STANDARD',
+      'DTSTART:19701025T030000',
+      'TZOFFSETFROM:+0200',
+      'TZOFFSETTO:+0100',
+      'TZNAME:CET',
+      'END:STANDARD',
+      'BEGIN:DAYLIGHT',
+      'DTSTART:19700329T020000',
+      'TZOFFSETFROM:+0100',
+      'TZOFFSETTO:+0200',
+      'TZNAME:CEST',
+      'END:DAYLIGHT',
+      'END:VTIMEZONE',
+      'BEGIN:VEVENT',
+      'UID:berlin',
+      'DTSTART;TZID=Europe/Berlin:20261121T103000',
+      'DTEND;TZID=Europe/Berlin:20261121T113000',
+      'SUMMARY:Berliner Termin',
+      'END:VEVENT',
       'BEGIN:VEVENT',
       'UID:a',
       'DTSTART:20261121T100000Z',
@@ -471,6 +549,34 @@ async function main() {
       'DTSTART:20261121T160000Z',
       'SUMMARY:<img src=x onerror=window.calendarXss=1>',
       'DESCRIPTION:<script>window.calendarXss=1</script>',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:conference',
+      'DTSTART;VALUE=DATE:20261130',
+      'DTEND;VALUE=DATE:20261202',
+      'SUMMARY:Konferenz',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:series',
+      'DTSTART:20261121T100000Z',
+      'DTEND:20261121T110000Z',
+      'RRULE:FREQ=DAILY;COUNT=5',
+      'EXDATE:20261124T100000Z',
+      'SUMMARY:Serie',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:series',
+      'RECURRENCE-ID:20261122T100000Z',
+      'DTSTART:20261123T120000Z',
+      'DTEND:20261123T130000Z',
+      'SUMMARY:Verschoben',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:series',
+      'RECURRENCE-ID:20261123T100000Z',
+      'DTSTART:20261123T100000Z',
+      'DTEND:20261123T110000Z',
+      'STATUS:CANCELLED',
       'END:VEVENT',
       'END:VCALENDAR'
     ].join('\r\n'));

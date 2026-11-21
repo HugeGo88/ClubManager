@@ -37,6 +37,7 @@
     "@lezer/css": "^1.3.9",
     "@material-design-icons/font": "^0.14.15",
     "electron-updater": "^6.8.11",
+    "ical.js": "^2.2.1",
     "marked": "^12.0.2",
     "sanitize-html": "^2.18.1"
   },

@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const https = require('node:https');
+const ICAL = require('ical.js');
 const { atomicWrite } = require('./storage');
 
 const fileFor = folder => path.join(folder, 'clubmanager-calendar.json');
@@ -132,59 +133,164 @@ function parseIcsDate(value) {
   return new Date(+year, +month - 1, +day, +hour, +minute, +second);
 }
 
+function zonedWallTimeToIso(time, tzid) {
+  const wall = Date.UTC(time.year, time.month - 1, time.day, time.hour, time.minute, time.second);
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tzid,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23'
+    });
+    let guess = wall;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const parts = Object.fromEntries(formatter.formatToParts(new Date(guess))
+        .filter(part => part.type !== 'literal')
+        .map(part => [part.type, Number(part.value)]));
+      const representedAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+      const correction = representedAsUtc - guess;
+      guess -= correction;
+      if (correction === 0) break;
+    }
+    return new Date(guess).toISOString();
+  } catch {
+    return new Date(wall).toISOString();
+  }
+}
+
+function timeToIso(property, time) {
+  if (property && property.getParameter('tzid')) {
+    const tzid = property.getParameter('tzid');
+    if (!time.zone || time.zone.tzid !== tzid) {
+      return zonedWallTimeToIso(time, tzid);
+    }
+  }
+  return time.toJSDate().toISOString();
+}
+
+function allDayIso(time) {
+  return new Date(Date.UTC(time.year, time.month - 1, time.day)).toISOString();
+}
+
 function parseIcs(content) {
-  const lines = unfoldIcs(content);
-  const calendarStarts = lines.flatMap((line, index) => line.toUpperCase() === 'BEGIN:VCALENDAR' ? [index] : []);
-  const calendarEnds = lines.flatMap((line, index) => line.toUpperCase() === 'END:VCALENDAR' ? [index] : []);
-  if (calendarStarts.length !== 1 || calendarEnds.length !== 1 ||
-      calendarEnds[0] <= calendarStarts[0]) {
+  let jcal;
+  try {
+    jcal = ICAL.parse(String(content));
+  } catch {
     throw new Error('Ungültige ICS-Kalenderdaten.');
   }
-  let eventOpen = false;
-  for (const line of lines.slice(calendarStarts[0] + 1, calendarEnds[0])) {
-    if (line.toUpperCase() === 'BEGIN:VEVENT') {
-      if (eventOpen) throw new Error('Ungültige ICS-Kalenderdaten.');
-      eventOpen = true;
-    } else if (line.toUpperCase() === 'END:VEVENT') {
-      if (!eventOpen) throw new Error('Ungültige ICS-Kalenderdaten.');
-      eventOpen = false;
+  const calendar = new ICAL.Component(jcal);
+  if (calendar.name !== 'vcalendar') throw new Error('Ungültige ICS-Kalenderdaten.');
+
+  for (const timezone of calendar.getAllSubcomponents('vtimezone')) {
+    try {
+      ICAL.TimezoneService.register(new ICAL.Timezone(timezone));
+    } catch {
+      // Unknown or malformed timezone components are left to the fallback parser.
     }
   }
-  if (eventOpen) throw new Error('Ungültige ICS-Kalenderdaten.');
+
   const events = [];
-  let inEvent = false;
-  let fields = {};
-  for (const line of lines.slice(calendarStarts[0] + 1, calendarEnds[0])) {
-    if (line === 'BEGIN:VEVENT') {
-      inEvent = true;
-      fields = {};
+  for (const component of calendar.getAllSubcomponents('vevent')) {
+    if (component.getFirstProperty('recurrence-id') ||
+        component.getFirstPropertyValue('status') === 'CANCELLED') continue;
+    const startProperty = component.getFirstProperty('dtstart');
+    if (!startProperty) continue;
+    let startValue;
+    try {
+      startValue = startProperty.getFirstValue();
+    } catch {
       continue;
     }
-    if (line === 'END:VEVENT') {
-      if (inEvent) {
-        const start = parseIcsDate(fields.DTSTART);
-        const end = parseIcsDate(fields.DTEND);
-        if (start && fields.STATUS !== 'CANCELLED' && fields.TRANSP !== 'TRANSPARENT') {
-          events.push({
-            id: unescapeIcs(fields.UID || crypto.randomUUID()),
-            title: unescapeIcs(fields.SUMMARY || 'Ohne Titel'),
-            description: unescapeIcs(fields.DESCRIPTION || ''),
-            location: unescapeIcs(fields.LOCATION || ''),
-            start: start.toISOString(),
-            end: (end || new Date(start.getTime() + 60 * 60 * 1000)).toISOString()
-          });
+    if (!startValue) continue;
+    const uid = component.getFirstPropertyValue('uid') || crypto.randomUUID();
+    const append = (startTime, endTime, item, occurrenceKey) => {
+      if (!startTime) return;
+      const status = item?.component?.getFirstPropertyValue('status');
+      if (status === 'CANCELLED') return;
+
+      const startProperty = item?.component?.getFirstProperty('dtstart') ||
+        component.getFirstProperty('dtstart');
+      const endProperty = item?.component?.getFirstProperty('dtend') ||
+        component.getFirstProperty('dtend');
+      const allDay = Boolean(startTime.isDate);
+      let start;
+      let end;
+      if (allDay) {
+        start = allDayIso(startTime);
+        end = endTime ? allDayIso(endTime) : allDayIso(startTime);
+        if (!endTime) {
+          const next = startTime.clone();
+          next.day++;
+          end = allDayIso(next);
+        }
+      } else {
+        start = timeToIso(startProperty, startTime);
+        if (endTime) {
+          end = timeToIso(endProperty, endTime);
+        } else {
+          const durationProperty = item?.component?.getFirstProperty('duration') ||
+            component.getFirstProperty('duration');
+          if (durationProperty) {
+            try {
+              const next = startTime.clone();
+              next.addDuration(durationProperty.getFirstValue());
+              end = timeToIso(startProperty, next);
+            } catch {
+              end = new Date(new Date(start).getTime() + 3600000).toISOString();
+            }
+          } else {
+          const next = new Date(start);
+          end = new Date(next.getTime() + (allDay ? 86400000 : 3600000)).toISOString();
+          }
         }
       }
-      inEvent = false;
-      fields = {};
-      continue;
+
+      const titleProperty = item?.component?.getFirstProperty('summary') ||
+        component.getFirstProperty('summary');
+      const descriptionProperty = item?.component?.getFirstProperty('description') ||
+        component.getFirstProperty('description');
+      const locationProperty = item?.component?.getFirstProperty('location') ||
+        component.getFirstProperty('location');
+      events.push({
+        id: `${uid}${occurrenceKey ? `@${occurrenceKey}` : ''}`,
+        title: titleProperty?.getFirstValue() || 'Ohne Titel',
+        description: descriptionProperty?.getFirstValue() || '',
+        location: locationProperty?.getFirstValue() || '',
+        start,
+        end,
+        allDay
+      });
+    };
+
+    if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
+      let event;
+      try {
+        event = new ICAL.Event(component);
+      } catch {
+        continue;
+      }
+      const iterator = event.iterator();
+      let occurrence;
+      let count = 0;
+      while ((occurrence = iterator.next()) && count < 10000) {
+        count++;
+        if (occurrence.year > 2100) break;
+        const details = event.getOccurrenceDetails(occurrence);
+        const item = details.item;
+        const status = item?.component?.getFirstPropertyValue('status');
+        if (status === 'CANCELLED') continue;
+        append(details.startDate, details.endDate, item, details.recurrenceId?.toString() || null);
+      }
+    } else {
+      const endProperty = component.getFirstProperty('dtend');
+      const endTime = endProperty?.getFirstValue() || null;
+      append(startValue, endTime, { component }, null);
     }
-    if (!inEvent || !line) continue;
-    const colon = line.indexOf(':');
-    if (colon < 0) continue;
-    const left = line.slice(0, colon);
-    const name = left.split(';')[0].toUpperCase();
-    fields[name] = line.slice(colon + 1);
   }
   return events.sort((a, b) => a.start.localeCompare(b.start));
 }
@@ -356,6 +462,7 @@ async function loadCacheRecord(folder) {
       cache.events.some(event =>
     !event || typeof event.id !== 'string' || typeof event.title !== 'string' ||
     typeof event.description !== 'string' || typeof event.location !== 'string' ||
+    (event.allDay !== undefined && typeof event.allDay !== 'boolean') ||
     !Number.isFinite(Date.parse(event.start)) || !Number.isFinite(Date.parse(event.end)))) {
     throw new Error('Der gespeicherte Kalender enthält ungültige Daten.');
   }

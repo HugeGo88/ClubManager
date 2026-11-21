@@ -125,6 +125,8 @@ items are still open, partially implemented, or ongoing design goals.
   in an overflow view under Rechnungen (#22).
 - [x] Share the last successful calendar fetch through the data folder, with its
   fetch time, source-specific offline fallback and stale warning (#23).
+- [x] Show timed, all-day, multi-day and recurring ICS events with timezone
+  conversion, moved occurrences and cancellations under Rechnungen (#24).
 - [ ] Provide an invoice module for creating/writing invoices.
 - [ ] Use a master-detail view: show a list of invoices and display the selected
   invoice's details alongside or in a detail pane.

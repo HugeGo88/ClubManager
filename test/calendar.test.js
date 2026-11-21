@@ -70,6 +70,111 @@ test('normal timed VEVENT records are parsed and external text is kept as text',
   assert.equal(events[0].location, 'Clubhaus');
 });
 
+test('converts zoned timed events to UTC and preserves all-day and multi-day dates', () => {
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VTIMEZONE',
+    'TZID:Europe/Berlin',
+    'BEGIN:STANDARD',
+    'DTSTART:19701025T030000',
+    'TZOFFSETFROM:+0200',
+    'TZOFFSETTO:+0100',
+    'TZNAME:CET',
+    'END:STANDARD',
+    'BEGIN:DAYLIGHT',
+    'DTSTART:19700329T020000',
+    'TZOFFSETFROM:+0100',
+    'TZOFFSETTO:+0200',
+    'TZNAME:CEST',
+    'END:DAYLIGHT',
+    'END:VTIMEZONE',
+    'BEGIN:VEVENT',
+    'UID:timed',
+    'DTSTART;TZID=Europe/Berlin:20261121T100000',
+    'DTEND;TZID=Europe/Berlin:20261121T113000',
+    'SUMMARY:Termin',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'UID:allday',
+    'DTSTART;VALUE=DATE:20261130',
+    'DTEND;VALUE=DATE:20261202',
+    'SUMMARY:Konferenz',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const events = calendar.parseIcs(ics);
+  const timed = events.find(event => event.id === 'timed');
+  const allDay = events.find(event => event.id === 'allday');
+
+  assert.equal(timed.start, '2026-11-21T09:00:00.000Z');
+  assert.equal(timed.end, '2026-11-21T10:30:00.000Z');
+  assert.equal(timed.allDay, false);
+  assert.equal(allDay.start, '2026-11-30T00:00:00.000Z');
+  assert.equal(allDay.end, '2026-12-02T00:00:00.000Z');
+  assert.equal(allDay.allDay, true);
+});
+
+test('expands recurring events and applies moved, cancelled and excluded occurrences', () => {
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'UID:series',
+    'DTSTART:20261121T100000Z',
+    'DTEND:20261121T110000Z',
+    'RRULE:FREQ=DAILY;COUNT=5',
+    'EXDATE:20261124T100000Z',
+    'SUMMARY:Serie',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'UID:series',
+    'RECURRENCE-ID:20261122T100000Z',
+    'DTSTART:20261123T120000Z',
+    'DTEND:20261123T130000Z',
+    'SUMMARY:Verschoben',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'UID:series',
+    'RECURRENCE-ID:20261123T100000Z',
+    'DTSTART:20261123T100000Z',
+    'DTEND:20261123T110000Z',
+    'STATUS:CANCELLED',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const events = calendar.parseIcs(ics);
+  const starts = events.map(event => event.start);
+
+  assert.equal(events.length, 3);
+  assert.ok(starts.includes('2026-11-21T10:00:00.000Z'));
+  assert.ok(starts.includes('2026-11-23T12:00:00.000Z'));
+  assert.ok(starts.includes('2026-11-25T10:00:00.000Z'));
+  assert.ok(!starts.includes('2026-11-22T10:00:00.000Z'));
+  assert.ok(!starts.includes('2026-11-24T10:00:00.000Z'));
+  assert.equal(events.find(event => event.start === '2026-11-23T12:00:00.000Z').title, 'Verschoben');
+});
+
+test('uses VEVENT duration and shows transparent events', () => {
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'UID:duration',
+    'DTSTART:20261121T100000Z',
+    'DURATION:PT90M',
+    'TRANSP:TRANSPARENT',
+    'SUMMARY:Offener Termin',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const events = calendar.parseIcs(ics);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].title, 'Offener Termin');
+  assert.equal(events[0].start, '2026-11-21T10:00:00.000Z');
+  assert.equal(events[0].end, '2026-11-21T11:30:00.000Z');
+});
+
 test('fetches HTTPS and HTTP sources and reports unavailable services explicitly', async t => {
   const server = http.createServer((request, response) => {
     if (request.url === '/slow') {

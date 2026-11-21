@@ -194,6 +194,15 @@ function calendarDateKey(date) {
 }
 
 function formatCalendarEventTime(event) {
+  if (event.allDay) {
+    const startDate = new Date(`${event.start.slice(0, 10)}T12:00:00Z`);
+    const endKey = event.end.slice(0, 10);
+    const endDate = new Date(`${endKey}T12:00:00Z`);
+    endDate.setUTCDate(endDate.getUTCDate() - 1);
+    const startText = startDate.toLocaleDateString('de-DE', { timeZone: 'UTC', day: '2-digit', month: 'long', year: 'numeric' });
+    const endText = endDate.toLocaleDateString('de-DE', { timeZone: 'UTC', day: '2-digit', month: 'long', year: 'numeric' });
+    return startText === endText ? `${startText}, ganztägig` : `${startText}–${endText}, ganztägig`;
+  }
   const start = new Date(event.start);
   const end = new Date(event.end);
   const date = start.toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -309,6 +318,11 @@ function calendarView() {
     date.setDate(gridStart.getDate() + i);
     const key = calendarDateKey(date);
     const dayEvents = calendarState.events.filter(event => {
+      if (event.allDay) {
+        const startKey = event.start.slice(0, 10);
+        const endKey = event.end.slice(0, 10);
+        return startKey <= key && key < endKey;
+      }
       const start = new Date(event.start);
       const end = new Date(event.end);
       const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());

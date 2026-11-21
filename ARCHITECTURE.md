@@ -87,8 +87,12 @@ settings.json in userData    user-selected data folder
   preserve the previous cache. The restricted preload exposes loading, saving
   and fetching; the main process validates URLs and performs privileged HTTP(S)
   requests, rejects stale folder or source results, and falls back to a
-  matching cache with an explicit stale warning. The renderer keeps only parsed text and renders the read-only
-  Monday-first month grid with the last successful fetch time. Subscription
+  matching cache with an explicit stale warning. ICS parsing uses `ical.js`
+  for VEVENT date, timezone, recurrence and exception handling; timed values
+  are stored as UTC ISO timestamps for computer-local display, while all-day
+  values keep date-only boundaries and are not shifted across time zones.
+  The renderer keeps only parsed text and renders the read-only Monday-first
+  month grid with the last successful fetch time. Subscription
   titles, locations and descriptions are escaped text, never HTML. Event buttons
   open read-only native dialogs; crowded days show only a bounded grid selection
   and expose the remaining events through a separate overflow dialog. Enabling
