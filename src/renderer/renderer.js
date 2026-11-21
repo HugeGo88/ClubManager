@@ -14,6 +14,7 @@ const topView = { search: '', type: '', meeting: '', expanded: '' };
 let includeEarlierTasks = false;
 const taskCollator = new Intl.Collator('de', { sensitivity: 'base', numeric: true });
 let meetingNavExpanded = true;
+let invoiceNavExpanded = true;
 let settingsTab = 'general';
 let moduleRevision = null;
 let moduleConflict = null;
@@ -685,6 +686,9 @@ function renderNavigation() {
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
   document.querySelector('#meeting-subnav').hidden = !meetingNavExpanded;
+  document.querySelector('[data-view="invoices"]').classList.toggle('parent-active', state.view === 'calendar');
+  document.querySelector('[data-action="toggle-invoice-nav"]').setAttribute('aria-expanded', String(invoiceNavExpanded));
+  document.querySelector('#invoice-subnav').hidden = !invoiceNavExpanded;
 }
 
 function updateOverdueBadge() {
@@ -1384,8 +1388,10 @@ document.addEventListener('click', async event => {
     }
     return;
   }
-  if (target.dataset.action === 'toggle-meeting-nav' && state.view === 'meetings') {
-    meetingNavExpanded = !meetingNavExpanded;
+  if ((target.dataset.action === 'toggle-meeting-nav' && state.view === 'meetings') ||
+      (target.dataset.action === 'toggle-invoice-nav' && state.view === 'invoices')) {
+    if (state.view === 'meetings') meetingNavExpanded = !meetingNavExpanded;
+    else invoiceNavExpanded = !invoiceNavExpanded;
     renderNavigation();
     return;
   }
@@ -1394,6 +1400,8 @@ document.addEventListener('click', async event => {
     if (target.dataset.view) await changeView(target.dataset.view);
     if (target.dataset.action === 'toggle-meeting-nav') {
       if (state.view === 'meetings') meetingNavExpanded = !meetingNavExpanded;
+    } else if (target.dataset.action === 'toggle-invoice-nav') {
+      if (state.view === 'invoices') invoiceNavExpanded = !invoiceNavExpanded;
     } else if (target.dataset.action && (await run(target.dataset.action, target)) === false) return;
   } catch (error) {
     setMessage(error.message, true);

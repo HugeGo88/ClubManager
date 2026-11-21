@@ -10,7 +10,7 @@ button { cursor: pointer; }
 .activity button { display: flex; align-items: center; width: 100%; min-height: 52px; padding: 0 10px; text-align: left; border: 0; border-left: 3px solid transparent; background: none; color: inherit; font-size: 14px; }
 .activity .brand { justify-content: center; min-height: 66px; padding: 0 10px; color: white; font-size: 19px; font-weight: 800; }
 .activity.collapsed { width: 58px; }
-.activity.collapsed .meeting-subnav { padding-left: 0; }
+.activity.collapsed .meeting-subnav, .activity.collapsed .invoice-subnav { padding-left: 0; }
 .activity.collapsed button:not(.brand) { justify-content: center; }
 .activity .nav-icon { flex: 0 0 30px; text-align: center; font-size: 24px; }
 .activity .task-nav-icon { position: relative; flex: 0 0 30px; text-align: center; }
@@ -32,14 +32,15 @@ button { cursor: pointer; }
 .activity.collapsed .nav-chevron { width: 0; flex-basis: 0; opacity: 0; visibility: hidden; }
 .activity.sidebar-transition .nav-chevron { transition: width 180ms ease, flex-basis 180ms ease, opacity 120ms ease, visibility 0s linear 180ms; }
 .activity.sidebar-transition:not(.collapsed) .nav-chevron { transition: width 180ms ease, flex-basis 180ms ease, opacity 180ms ease, visibility 0s; }
-.activity .meeting-nav-heading[aria-expanded="false"] .nav-chevron { transform: rotate(-90deg); }
+.activity .meeting-nav-heading[aria-expanded="false"] .nav-chevron,
+.activity .invoice-nav-heading[aria-expanded="false"] .nav-chevron { transform: rotate(-90deg); }
 .activity .meeting-subnav { padding-left: 16px; }
 .activity .meeting-subnav[hidden] { display: none; }
 .activity .meeting-subnav button { min-height: 42px; border-left-width: 2px; }
 .activity .invoice-subnav { padding-left: 16px; }
 .activity .invoice-subnav button { min-height: 42px; border-left-width: 2px; }
-.activity .meeting-subnav .nav-icon { font-size: 19px; }
-.activity .meeting-nav-heading.parent-active { color: white; }
+.activity .meeting-subnav .nav-icon, .activity .invoice-subnav .nav-icon { font-size: 19px; }
+.activity .meeting-nav-heading.parent-active, .activity .invoice-nav-heading.parent-active { color: white; }
 .activity .manual-nav { margin-top: auto; }
 .activity .settings-nav { margin-bottom: 12px; }
 @media (prefers-reduced-motion: reduce) {

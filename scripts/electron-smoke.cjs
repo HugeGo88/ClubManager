@@ -41,6 +41,27 @@ async function calendarSmoke(window, port) {
     await click('[data-view="calendar"]');
     await waitFor(() => document.querySelector('.calendar-grid'));
     if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
+    const invoiceToggle = document.querySelector('[data-action="toggle-invoice-nav"]');
+    const assertInvoiceExpanded = expanded => {
+      if (invoiceToggle.getAttribute('aria-expanded') !== String(expanded) ||
+          document.querySelector('#invoice-subnav').hidden === expanded) {
+        throw new Error('Invoice heading did not toggle its subnavigation');
+      }
+    };
+    if (!invoiceToggle.querySelector('.nav-chevron') || invoiceToggle.getAttribute('aria-controls') !== 'invoice-subnav' ||
+        !invoiceToggle.classList.contains('parent-active')) throw new Error('Invoice navigation must indicate its active calendar and expandable group');
+    assertInvoiceExpanded(true);
+    invoiceToggle.querySelector('.nav-chevron').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await waitFor(() => !document.body.inert && invoiceToggle.classList.contains('active'));
+    assertInvoiceExpanded(false);
+    invoiceToggle.querySelector('.nav-label').click();
+    assertInvoiceExpanded(true);
+    invoiceToggle.querySelector('.nav-icon').click();
+    assertInvoiceExpanded(false);
+    invoiceToggle.click();
+    assertInvoiceExpanded(true);
+    await click('[data-view="calendar"]');
+    await waitFor(() => !document.body.inert && document.querySelector('.calendar-grid'));
     await click('[data-action="calendar-next"]');
     await click('[data-action="calendar-today"]');
     await click('[data-action="calendar-refresh"]');

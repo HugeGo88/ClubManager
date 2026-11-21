@@ -32,12 +32,14 @@ The sidebar's C button toggles an icon-only layout with native title tooltips;
 the setting is persisted. Related module icons share a color. Sidebar Material
 Icons are provided by a locally packaged font, with no network request.
 The sidebar has a collapsible Meetings group with **Offene Aufgaben**,
-**Entscheidungen**, **Alle TOPs** and **Statistiken**, plus Settings. Each module has a Settings
+**Entscheidungen**, **Alle TOPs** and **Statistiken**, and a collapsible Invoices
+group with **Kalender**, plus Settings. Each module has a Settings
 tab and can be disabled; only Meetings is enabled by default. A disabled module
 and its navigation entries are hidden, and the renderer rejects navigation into
 it. The entire Meetings heading toggles its subnavigation and opens the meeting
 view when necessary; toggling while already editing a meeting preserves unsaved
-edits. Handbuch, Settings and Versionsverlauf remain available even if all modules are disabled.
+edits. The Invoices heading likewise toggles its subnavigation and opens the
+Invoices view when necessary. Handbuch, Settings and Versionsverlauf remain available even if all modules are disabled.
 The version history opens on first launch of each version, including fresh
 installs and legacy settings without a version marker.
 

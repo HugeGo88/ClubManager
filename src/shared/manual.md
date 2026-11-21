@@ -9,6 +9,8 @@ Dieses Handbuch beschreibt die in dieser Version verfügbaren Funktionen. ClubMa
 3. Wählen Sie ein Modul in der Seitenleiste. Mit **C** können Sie die Beschriftungen ein- oder ausblenden; die Einstellung bleibt gespeichert. In der schmalen Seitenleiste zeigt ein Tooltip den Namen.
 4. **Handbuch**, **Versionsverlauf** und **Einstellungen** sind auch ohne aktivierte Module erreichbar. Der Versionsverlauf öffnet sich beim ersten Start einer neuen Version und zeigt bei datierten Einträgen das Veröffentlichungsdatum.
 
+Die Überschriften **Sitzungen** und **Rechnungen** öffnen ihre jeweilige Modulansicht und klappen die zugehörigen Unterpunkte ein oder aus.
+
 ClubManager liest die Modulauswahl beim Öffnen oder Wechseln eines Datenordners, beim Aufrufen der Einstellungen und über **Modul-Einstellungen neu laden**. Änderungen auf anderen Computern werden nicht laufend übernommen. Erkennt die letzte Prüfung vor dem Ersetzen der Datei eine Änderung seit dem Laden, lehnt ClubManager das Speichern mit einem Konflikt ab. Laden Sie die Modul-Einstellungen neu, prüfen Sie die Auswahl und nehmen Sie Ihre Änderung erneut vor. Eine Änderung, die erst nach dieser Prüfung und vor dem Ersetzen der Datei geschrieben wird, ist nicht geschützt und kann überschrieben werden.
 
 Ein geöffneter Sitzungs- oder Briefentwurf bleibt beim Aufrufen der Einstellungen erhalten, sofern sein Modul sichtbar bleibt. Würde eine Änderung oder Aktualisierung das bearbeitete Modul ausblenden, können Sie den Entwurf speichern, verwerfen oder abbrechen. Ein Abbruch oder ein Fehler beim Speichern des Entwurfs lässt den Editor und die bisherige Auswahl unverändert. Beim Abbrechen einer Aktualisierung bleiben auch die neueren Einstellungen auf dem Datenträger unverändert.

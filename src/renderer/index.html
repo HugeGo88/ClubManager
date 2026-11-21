@@ -23,8 +23,8 @@
       </div>
       <button data-view="members" data-module-view="members" title="Mitglieder" aria-label="Mitglieder"><span class="nav-icon material-icons" aria-hidden="true">groups</span><span class="nav-label">Mitglieder</span></button>
       <div class="invoice-nav" data-module-nav="invoices">
-        <button data-view="invoices" data-module-view="invoices" title="Rechnungen" aria-label="Rechnungen"><span class="nav-icon material-icons" aria-hidden="true">receipt_long</span><span class="nav-label">Rechnungen</span></button>
-        <div class="invoice-subnav">
+        <button class="invoice-nav-heading" data-view="invoices" data-module-view="invoices" data-action="toggle-invoice-nav" title="Rechnungen" aria-label="Rechnungen" aria-expanded="true" aria-controls="invoice-subnav"><span class="nav-icon material-icons" aria-hidden="true">receipt_long</span><span class="nav-label">Rechnungen</span><svg class="nav-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <div id="invoice-subnav" class="invoice-subnav">
           <button data-view="calendar" data-module-view="invoices" title="Kalender" aria-label="Kalender"><span class="nav-icon material-icons" aria-hidden="true">calendar_month</span><span class="nav-label">Kalender</span></button>
         </div>
       </div>
