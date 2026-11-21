@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.1.10",
+    "date": "2026-11-21",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Die App-Symbole wurden aktualisiert.",
+          "Ein Dreieck kennzeichnet Einträge in der Seitenleiste."
+        ]
+      },
+      {
+        "title": "Kalender",
+        "changes": [
+          "Ein Online-Kalender kann unter Rechnungen über eine ICS-Adresse eingebunden werden.",
+          "Termine werden in einem Monatsraster angezeigt und können als Details geöffnet werden.",
+          "Wiederkehrende, ganztägige und mehrtägige Termine werden unterstützt.",
+          "An dichten Tagen werden weitere Termine über eine Auswahl erreichbar.",
+          "Erfolgreich geladene Kalenderdaten bleiben offline verfügbar und werden bei einem Aktualisierungsfehler mit Hinweis angezeigt."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.9",
     "date": "2026-11-20",
     "sections": [
