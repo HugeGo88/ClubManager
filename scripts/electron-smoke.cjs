@@ -561,6 +561,9 @@ async function main() {
         assert.equal(window.isVisible(), true, 'The splash screen appears after its page loads');
         assert.match(await window.webContents.executeJavaScript('document.body.textContent'), /ClubManager[\s\S]*Wird gestartet/,
           'The splash screen identifies the app and indicates that it is starting');
+        assert.equal(await window.webContents.executeJavaScript(
+          'document.querySelector(".brand")?.complete && document.querySelector(".brand")?.naturalWidth > 0'),
+          true, 'The splash screen displays the packaged app icon');
       } catch (error) {
         console.error(error);
         clearTimeout(timeout);

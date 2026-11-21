@@ -750,7 +750,7 @@ function registerHandlers() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
-  const appIcon = nativeImage.createFromPath(path.join(__dirname, '../../build/icon.png'));
+  const appIcon = nativeImage.createFromPath(path.join(__dirname, '../renderer/assets/app-icon.png'));
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(appIcon);
   splashWindow = new BrowserWindow({
     width: 420, height: 240, frame: false, resizable: false, minimizable: false,
