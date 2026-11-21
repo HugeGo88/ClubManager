@@ -191,6 +191,15 @@ function calendarDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function formatCalendarEventTime(event) {
+  const start = new Date(event.start);
+  const end = new Date(event.end);
+  const date = start.toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+  const startTime = start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const endTime = end.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return `${date}, ${startTime}–${endTime}`;
+}
+
 async function loadCalendarConfig() {
   if (!state.folder) {
     calendarState.config = null;
@@ -258,9 +267,11 @@ function calendarView() {
       const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
       return start < dayEnd && end > dayStart;
     });
+    const visibleEvents = dayEvents.slice(0, 3);
     cells.push(`<div class="calendar-day ${date.getMonth() !== month.getMonth() ? 'adjacent' : ''} ${key === today ? 'today' : ''}" data-date="${key}">
       <span class="calendar-day-number">${date.getDate()}</span>
-      ${dayEvents.map(event => `<span class="calendar-event" title="${escape(event.description)}">${escape(event.title)}</span>`).join('')}
+      ${visibleEvents.map(event => `<button type="button" class="calendar-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-title="${escape(event.title)}" title="${escape(event.description)}">${escape(event.title)}</button>`).join('')}
+      ${dayEvents.length > visibleEvents.length ? `<button type="button" class="calendar-more" data-action="calendar-more" data-date="${key}">+${dayEvents.length - visibleEvents.length} weitere</button>` : ''}
     </div>`);
   }
   return `<div class="calendar-view">
@@ -1061,6 +1072,53 @@ async function run(action, target) {
       break;
     case 'calendar-refresh':
       await fetchCalendarEvents();
+      break;
+    case 'open-calendar-event': {
+      const event = calendarState.events.find(item => item.id === target.dataset.eventId);
+      if (!event) break;
+      const location = event.location ? `<dt>Ort</dt><dd data-calendar-location>${escape(event.location)}</dd>` : '';
+      const description = event.description ? `<dt>Beschreibung</dt><dd>${escape(event.description)}</dd>` : '';
+      const dialog = document.createElement('dialog');
+      dialog.className = 'calendar-event-dialog';
+      dialog.setAttribute('data-calendar-event-dialog', '');
+      dialog.innerHTML = `<form method="dialog">
+        <h2>${escape(event.title)}</h2>
+        <dl><dt>Zeit</dt><dd>${escape(formatCalendarEventTime(event))}</dd>${location}${description}</dl>
+        <div class="row"><button type="submit" class="action primary" data-action="close-calendar-event">Schließen</button></div>
+      </form>`;
+      document.body.append(dialog);
+      dialog.showModal();
+      break;
+    }
+    case 'close-calendar-event':
+      target.closest('[data-calendar-event-dialog]')?.remove();
+      break;
+    case 'calendar-more': {
+      const dateKey = target.dataset.date;
+      const dayEvents = calendarState.events.filter(event => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        const dayStart = new Date(`${dateKey}T00:00:00`);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        return start < dayEnd && end > dayStart;
+      }).slice(3);
+      const dialog = document.createElement('dialog');
+      dialog.className = 'calendar-overflow-dialog';
+      dialog.setAttribute('data-calendar-overflow-dialog', '');
+      dialog.innerHTML = `<form method="dialog">
+        <h2>Weitere Termine am ${escape(dateKey)}</h2>
+        <div class="calendar-overflow-list">
+          ${dayEvents.map(event => `<button type="button" class="calendar-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-title="${escape(event.title)}">${escape(event.title)}</button>`).join('')}
+        </div>
+        <div class="row"><button type="submit" class="action primary" data-action="close-calendar-overflow">Schließen</button></div>
+      </form>`;
+      document.body.append(dialog);
+      dialog.showModal();
+      break;
+    }
+    case 'close-calendar-overflow':
+      target.closest('[data-calendar-overflow-dialog]')?.remove();
       break;
     case 'choose-folder': {
       if (!await guardDraft('Ordnerwechsel')) break;

@@ -41,6 +41,49 @@ async function calendarSmoke(window, port) {
     await click('[data-view="calendar"]');
     await waitFor(() => document.querySelector('.calendar-grid'));
     if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
+    await waitFor(() => document.querySelector('[data-calendar-event]'));
+    const agendaEvent = document.querySelector('[data-calendar-event][data-event-title="Tagesordnung"]');
+    if (!agendaEvent) throw new Error('The first calendar event did not render');
+    await agendaEvent.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    if (!document.querySelector('[data-calendar-event-dialog]').open) throw new Error('The event detail dialog did not open');
+    if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('21. November 2026')) throw new Error('Event time is missing');
+    if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('Clubhaus')) throw new Error('Event location is missing');
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+
+    const overflow = document.querySelector('[data-action="calendar-more"][data-date="2026-11-21"]');
+    if (!overflow) throw new Error('Crowded-day overflow control is missing');
+    await overflow.click();
+    await waitFor(() => document.querySelector('[data-calendar-overflow-dialog]'));
+    const overflowEvent = document.querySelector('[data-calendar-overflow-dialog] [data-calendar-event][data-event-title="Dritter Termin"]');
+    if (!overflowEvent) throw new Error('The remaining event is missing from overflow');
+    await overflowEvent.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+
+    const missingEvent = document.querySelector('[data-calendar-overflow-dialog] [data-calendar-event][data-event-title="Ohne Angaben"]');
+    if (!missingEvent) throw new Error('An event without optional details is missing');
+    await missingEvent.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    if (document.querySelector('[data-calendar-event-dialog]').querySelector('[data-calendar-location]')?.textContent.trim()) throw new Error('Missing location should stay absent');
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+
+    const maliciousEvent = document.querySelector('[data-calendar-overflow-dialog] [data-calendar-event][data-event-title="<img src=x onerror=window.calendarXss=1>"]');
+    if (!maliciousEvent) throw new Error('Malicious event title is missing');
+    await maliciousEvent.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    const dialog = document.querySelector('[data-calendar-event-dialog]');
+    if (dialog.querySelector('img, script, iframe, [onerror]')) throw new Error('Subscription text created executable markup');
+    if (!dialog.textContent.includes('<img src=x onerror=window.calendarXss=1>')) throw new Error('Malicious title was not rendered as text');
+    if (window.calendarXss) throw new Error('Malicious subscription text executed');
+    await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+
+    await click('[data-calendar-overflow-dialog] [data-action="close-calendar-overflow"]');
+    await waitFor(() => !document.querySelector('[data-calendar-overflow-dialog]'));
     const invoiceToggle = document.querySelector('[data-action="toggle-invoice-nav"]');
     const assertInvoiceExpanded = expanded => {
       if (invoiceToggle.getAttribute('aria-expanded') !== String(expanded) ||
@@ -284,7 +327,44 @@ async function main() {
       response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:b\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Schnell\r\nEND:VEVENT\r\nEND:VCALENDAR');
       return;
     }
-    response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Tagesordnung\r\nEND:VEVENT\r\nEND:VCALENDAR');
+    response.end([
+      'BEGIN:VCALENDAR',
+      'BEGIN:VEVENT',
+      'UID:a',
+      'DTSTART:20261121T100000Z',
+      'DTEND:20261121T113000Z',
+      'SUMMARY:Tagesordnung',
+      'LOCATION:Clubhaus',
+      'DESCRIPTION:Ordentliche Jahreshauptversammlung',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:overflow1',
+      'DTSTART:20261121T120000Z',
+      'SUMMARY:Zusatztermin',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:overflow2',
+      'DTSTART:20261121T130000Z',
+      'SUMMARY:Weiterer Termin',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:overflow3',
+      'DTSTART:20261121T140000Z',
+      'SUMMARY:Dritter Termin',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:missing',
+      'DTSTART:20261121T150000Z',
+      'SUMMARY:Ohne Angaben',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:xss',
+      'DTSTART:20261121T160000Z',
+      'SUMMARY:<img src=x onerror=window.calendarXss=1>',
+      'DESCRIPTION:<script>window.calendarXss=1</script>',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n'));
   });
   await new Promise(resolve => calendarServer.listen(0, '127.0.0.1', resolve));
   const calendarPort = calendarServer.address().port;

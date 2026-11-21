@@ -121,6 +121,8 @@ items are still open, partially implemented, or ongoing design goals.
 
 - [x] Subscribe to one ICS calendar URL for the active data folder and show
   ordinary timed events in a read-only month view under Rechnungen (#21).
+- [x] Open read-only event details and show remaining events from crowded days
+  in an overflow view under Rechnungen (#22).
 - [ ] Provide an invoice module for creating/writing invoices.
 - [ ] Use a master-detail view: show a list of invoices and display the selected
   invoice's details alongside or in a detail pane.

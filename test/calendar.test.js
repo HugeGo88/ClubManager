@@ -52,6 +52,7 @@ test('normal timed VEVENT records are parsed and external text is kept as text',
     'DTSTART:20261121T100000Z',
     'DTEND:20261121T113000Z',
     'SUMMARY:Team\\; Planung',
+    'LOCATION:Clubhaus',
     'DESCRIPTION:<b>readable text</b>',
     'END:VEVENT',
     'BEGIN:VEVENT',
@@ -66,6 +67,7 @@ test('normal timed VEVENT records are parsed and external text is kept as text',
   assert.equal(events.length, 1);
   assert.equal(events[0].title, 'Team; Planung');
   assert.equal(events[0].description, '<b>readable text</b>');
+  assert.equal(events[0].location, 'Clubhaus');
 });
 
 test('fetches HTTPS and HTTP sources and reports unavailable services explicitly', async t => {

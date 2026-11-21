@@ -135,6 +135,7 @@ function parseIcs(content) {
             id: unescapeIcs(fields.UID || crypto.randomUUID()),
             title: unescapeIcs(fields.SUMMARY || 'Ohne Titel'),
             description: unescapeIcs(fields.DESCRIPTION || ''),
+            location: unescapeIcs(fields.LOCATION || ''),
             start: start.toISOString(),
             end: (end || new Date(start.getTime() + 60 * 60 * 1000)).toISOString()
           });
