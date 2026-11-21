@@ -69,7 +69,9 @@ async function saveConfig(folder, input, expectedRevision) {
   } catch (error) {
     throw new Error(`Die Kalender-Einstellungen konnten nicht gespeichert werden: ${error.message}`);
   }
+  let lock;
   try {
+    lock = await acquireCacheLock(folder);
     const file = fileFor(folder);
     if (expectedRevision !== undefined) {
       const current = await loadConfig(folder);
@@ -78,10 +80,12 @@ async function saveConfig(folder, input, expectedRevision) {
       }
     }
     const content = encode({ url });
-    await atomicWrite(file, content);
+    await atomicWrite(file, content, () => lock.assert());
     return { url, revision: revision(content) };
   } catch (error) {
     throw new Error(`Die Kalender-Einstellungen konnten nicht gespeichert werden: ${error.message}`);
+  } finally {
+    await lock?.release();
   }
 }
 
@@ -129,13 +133,28 @@ function parseIcsDate(value) {
 }
 
 function parseIcs(content) {
-  if (!/(^|\n)BEGIN:VCALENDAR\b/i.test(String(content).replace(/\r/g, ''))) {
+  const lines = unfoldIcs(content);
+  const calendarStarts = lines.flatMap((line, index) => line.toUpperCase() === 'BEGIN:VCALENDAR' ? [index] : []);
+  const calendarEnds = lines.flatMap((line, index) => line.toUpperCase() === 'END:VCALENDAR' ? [index] : []);
+  if (calendarStarts.length !== 1 || calendarEnds.length !== 1 ||
+      calendarEnds[0] <= calendarStarts[0]) {
     throw new Error('Ungültige ICS-Kalenderdaten.');
   }
+  let eventOpen = false;
+  for (const line of lines.slice(calendarStarts[0] + 1, calendarEnds[0])) {
+    if (line.toUpperCase() === 'BEGIN:VEVENT') {
+      if (eventOpen) throw new Error('Ungültige ICS-Kalenderdaten.');
+      eventOpen = true;
+    } else if (line.toUpperCase() === 'END:VEVENT') {
+      if (!eventOpen) throw new Error('Ungültige ICS-Kalenderdaten.');
+      eventOpen = false;
+    }
+  }
+  if (eventOpen) throw new Error('Ungültige ICS-Kalenderdaten.');
   const events = [];
   let inEvent = false;
   let fields = {};
-  for (const line of unfoldIcs(content)) {
+  for (const line of lines.slice(calendarStarts[0] + 1, calendarEnds[0])) {
     if (line === 'BEGIN:VEVENT') {
       inEvent = true;
       fields = {};
@@ -241,29 +260,41 @@ const delay = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 
 async function acquireCacheLock(folder) {
   const lockPath = cacheLockFor(folder);
+  const ownerFile = path.join(lockPath, 'owner.json');
   const reclaimPath = `${lockPath}.reclaim`;
   const timeout = Date.now() + 120000;
 
   while (Date.now() < timeout) {
     try {
       await fs.mkdir(lockPath);
-      let heartbeatError;
-      const heartbeat = setInterval(() => {
-        const now = new Date();
-        fs.utimes(lockPath, now, now).catch(error => {
-          heartbeatError = error;
-        });
-      }, 10000);
-      heartbeat.unref();
+      const token = crypto.randomUUID();
+      try {
+        await fs.writeFile(ownerFile, JSON.stringify({ token }));
+      } catch (error) {
+        await fs.rm(lockPath, { recursive: true, force: true });
+        throw error;
+      }
       return {
-        assert: () => {
-          if (heartbeatError) {
-            throw new Error(`Die gemeinsame Kalender-Sperre konnte nicht gehalten werden: ${heartbeatError.message}`);
+        assert: async () => {
+          let owner;
+          try {
+            owner = JSON.parse(await fs.readFile(ownerFile, 'utf8'));
+          } catch (error) {
+            throw new Error(`Die gemeinsame Kalender-Sperre konnte nicht geprüft werden: ${error.message}`);
+          }
+          if (owner?.token !== token) {
+            throw new Error('Die gemeinsame Kalender-Sperre wurde von einem anderen Vorgang übernommen.');
           }
         },
         release: async () => {
-          clearInterval(heartbeat);
-          await fs.rm(lockPath, { recursive: true, force: true });
+          let owner;
+          try {
+            owner = JSON.parse(await fs.readFile(ownerFile, 'utf8'));
+          } catch (error) {
+            if (error.code === 'ENOENT') return;
+            throw new Error(`Die gemeinsame Kalender-Sperre konnte nicht freigegeben werden: ${error.message}`);
+          }
+          if (owner?.token === token) await fs.rm(lockPath, { recursive: true, force: true });
         }
       };
     } catch (error) {
@@ -301,9 +332,7 @@ async function acquireCacheLock(folder) {
   throw new Error('Das Aktualisieren des Kalenders dauert zu lange, weil ein anderer Vorgang den gemeinsamen Cache verwendet.');
 }
 
-async function loadCache(folder, input) {
-  const url = normalizeUrl(input);
-  if (!url) return null;
+async function loadCacheRecord(folder) {
   let content;
   try {
     content = await fs.readFile(cacheFileFor(folder), 'utf8');
@@ -321,19 +350,36 @@ async function loadCache(folder, input) {
       typeof cache.fetchedAt !== 'string' || !Array.isArray(cache.events)) {
     throw new Error('Der gespeicherte Kalender hat ein ungültiges oder nicht unterstütztes Format.');
   }
-  if (cache.sourceUrl !== url) return null;
-  if (!Number.isFinite(Date.parse(cache.fetchedAt)) || cache.events.some(event =>
+  if (!Number.isFinite(Date.parse(cache.fetchedAt)) ||
+      (cache.completedAt !== undefined && !Number.isFinite(cache.completedAt)) ||
+      (cache.completionId !== undefined && typeof cache.completionId !== 'string') ||
+      cache.events.some(event =>
     !event || typeof event.id !== 'string' || typeof event.title !== 'string' ||
     typeof event.description !== 'string' || typeof event.location !== 'string' ||
     !Number.isFinite(Date.parse(event.start)) || !Number.isFinite(Date.parse(event.end)))) {
     throw new Error('Der gespeicherte Kalender enthält ungültige Daten.');
   }
-  return { events: cache.events, fetchedAt: cache.fetchedAt };
+  return cache;
+}
+
+async function loadCache(folder, input) {
+  const url = normalizeUrl(input);
+  if (!url) return null;
+  const cache = await loadCacheRecord(folder);
+  return cache?.sourceUrl === url ? { events: cache.events, fetchedAt: cache.fetchedAt } : null;
 }
 
 async function refreshCalendar(folder, config, isCurrent = async () => true) {
   const url = normalizeUrl(config?.url);
   if (!url) throw new Error('Für diesen Datenordner ist keine Kalender-URL eingerichtet.');
+  if (!await isCurrent()) return { stale: true };
+  const beforeFetch = await loadConfig(folder);
+  if (beforeFetch.url !== url || beforeFetch.revision !== config.revision) return { stale: true };
+  const result = await fetchIcs(url);
+  const completedAt = performance.timeOrigin + performance.now();
+  const completionId = crypto.randomUUID();
+  if (!await isCurrent()) return { stale: true };
+
   let lock;
   try {
     lock = await acquireCacheLock(folder);
@@ -341,26 +387,33 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
     throw new Error(`Der Kalender konnte nicht im Datenordner gespeichert werden: ${error.message}`);
   }
   try {
-    if (!await isCurrent()) return { stale: true };
-    const beforeFetch = await loadConfig(folder);
-    if (beforeFetch.url !== url || beforeFetch.revision !== config.revision) return { stale: true };
-    const result = await fetchIcs(url);
-    lock.assert();
-    if (!await isCurrent()) return { stale: true };
+    await lock.assert();
     const current = await loadConfig(folder);
-    if (current.url !== url || current.revision !== config.revision) return { stale: true };
+    if (current.url !== url || current.revision !== config.revision || !await isCurrent()) return { stale: true };
 
-    const refreshed = { events: result.events, fetchedAt: new Date().toISOString() };
+    const previous = await loadCacheRecord(folder);
+    if (previous?.sourceUrl === url &&
+        (previous.completedAt > completedAt ||
+         (previous.completedAt === completedAt && previous.completionId > completionId))) {
+      return { events: previous.events, fetchedAt: previous.fetchedAt };
+    }
+
+    const refreshed = { events: result.events, fetchedAt: new Date(completedAt).toISOString() };
     const content = JSON.stringify({
       version: 1,
       sourceUrl: url,
+      completedAt,
+      completionId,
       ...refreshed
     }, null, 2) + '\n';
     try {
-      lock.assert();
-      await atomicWrite(cacheFileFor(folder), content);
+      await atomicWrite(cacheFileFor(folder), content, () => lock.assert());
     } catch (error) {
       throw new Error(`Der Kalender konnte nicht im Datenordner gespeichert werden: ${error.message}`);
+    }
+    const afterWrite = await loadConfig(folder);
+    if (afterWrite.url !== url || afterWrite.revision !== config.revision || !await isCurrent()) {
+      return { stale: true };
     }
     return refreshed;
   } finally {

@@ -81,12 +81,13 @@ settings.json in userData    user-selected data folder
 - Online calendar configuration is folder-local in `clubmanager-calendar.json`;
   the last successful response is atomically stored beside it in
   `clubmanager-calendar-cache.json`, bound to its normalized source URL and
-  including its fetch time. A folder-local lock serializes refreshes across app
-  processes, and failed requests or writes preserve the previous cache. The
-  restricted preload exposes loading, saving and fetching; the main process
-  validates URLs, performs privileged HTTP(S) requests, rejects stale folder or
-  source results, and falls back to a matching cache with an explicit stale
-  warning. The renderer keeps only parsed text and renders the read-only
+  including its fetch time. A folder-local lock serializes configuration and
+  cache commits across app processes; completion timestamps ensure that the
+  last successful concurrent refresh wins. Failed requests or cache writes
+  preserve the previous cache. The restricted preload exposes loading, saving
+  and fetching; the main process validates URLs and performs privileged HTTP(S)
+  requests, rejects stale folder or source results, and falls back to a
+  matching cache with an explicit stale warning. The renderer keeps only parsed text and renders the read-only
   Monday-first month grid with the last successful fetch time. Subscription
   titles, locations and descriptions are escaped text, never HTML. Event buttons
   open read-only native dialogs; crowded days show only a bounded grid selection

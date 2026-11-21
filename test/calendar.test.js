@@ -105,7 +105,7 @@ test('persists successful refreshes for offline reuse without replacing them on 
     }
     response.setHeader('Content-Type', 'text/calendar');
     response.end(responseMode === 'invalid'
-      ? 'This is not a calendar'
+      ? 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:truncated\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Truncated'
       : 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:shared\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Shared event\r\nEND:VEVENT\r\nEND:VCALENDAR');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -188,7 +188,7 @@ test('reports cache write failures and preserves the previous successful cache',
   assert.deepEqual(await calendar.loadCache(folder, url), previous);
 });
 
-test('serializes competing refreshes so the last successful completion is cached', async t => {
+test('keeps the result of the last completed successful competing refresh', async t => {
   const folder = await fixture(t);
   let requests = 0;
   let releaseFirst;
@@ -221,12 +221,10 @@ test('serializes competing refreshes so the last successful completion is cached
   const first = calendar.refreshCalendar(folder, config);
   await waitForRequests(1);
   const second = calendar.refreshCalendar(folder, config);
-  await new Promise(resolve => setTimeout(resolve, 30));
-  assert.equal(requests, 1, 'a concurrent refresh must wait for the in-flight cache update');
-
-  releaseFirst();
-  await first;
   await waitForRequests(2);
-  const last = await second;
-  assert.equal((await calendar.loadCache(folder, url)).events[0].title, last.events[0].title);
+  const completedFirst = await second;
+  releaseFirst();
+  const completedLast = await first;
+  assert.notEqual(completedFirst.events[0].title, completedLast.events[0].title);
+  assert.equal((await calendar.loadCache(folder, url)).events[0].title, completedLast.events[0].title);
 });
