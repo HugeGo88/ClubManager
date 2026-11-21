@@ -6,6 +6,82 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
+const http = require('node:http');
+
+async function calendarSmoke(window, port) {
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for calendar scenario');
+    };
+    const click = async selector => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error('Missing calendar control: ' + selector);
+      element.click();
+    };
+    await click('[data-view="settings"]');
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    await click('[data-settings-tab="invoices"]');
+    await waitFor(() => document.querySelector('[data-module-toggle="invoices"]'));
+    const url = 'http://127.0.0.1:${port}/a.ics';
+    const input = document.querySelector('[data-calendar-url]');
+    input.value = url;
+    const initial = await window.club.getCalendarConfig();
+    await window.club.setCalendarConfig(url, { folder: await window.club.getFolder(), revision: initial.revision });
+    await waitFor(async () => (await window.club.getCalendarConfig()).url === url);
+    const initialConfig = await window.club.getCalendarConfig();
+    const initialFetch = await window.club.fetchCalendar({ folder: await window.club.getFolder(), revision: initialConfig.revision });
+    if (!initialFetch.events?.some(event => event.title.toLocaleLowerCase('de').includes('ordnung'))) {
+      throw new Error('The ICS source was not fetched: ' + JSON.stringify(initialFetch));
+    }
+    await click('[data-view="calendar"]');
+    await waitFor(() => document.querySelector('.calendar-grid'));
+    if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
+    await click('[data-action="calendar-next"]');
+    await click('[data-action="calendar-today"]');
+    await click('[data-action="calendar-refresh"]');
+
+    await click('[data-view="settings"]');
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    await click('[data-settings-tab="invoices"]');
+    await waitFor(() => document.querySelector('[data-calendar-url]'));
+    document.querySelector('[data-calendar-url]').value = 'http://127.0.0.1:${port}/slow.ics';
+    const slowConfig = await window.club.getCalendarConfig();
+    await window.club.setCalendarConfig('http://127.0.0.1:${port}/slow.ics', { folder: await window.club.getFolder(), revision: slowConfig.revision });
+    await waitFor(async () => (await window.club.getCalendarConfig()).url === 'http://127.0.0.1:${port}/slow.ics');
+    const oldFetch = window.club.fetchCalendar({ folder: await window.club.getFolder(), revision: (await window.club.getCalendarConfig()).revision });
+    document.querySelector('[data-calendar-url]');
+    await click('[data-view="settings"]');
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    await click('[data-settings-tab="invoices"]');
+    await waitFor(() => document.querySelector('[data-calendar-url]'));
+    document.querySelector('[data-calendar-url]').value = 'http://127.0.0.1:${port}/b.ics';
+    const bConfig = await window.club.getCalendarConfig();
+    await window.club.setCalendarConfig('http://127.0.0.1:${port}/b.ics', { folder: await window.club.getFolder(), revision: bConfig.revision });
+    await waitFor(async () => (await window.club.getCalendarConfig()).url === 'http://127.0.0.1:${port}/b.ics');
+    await click('[data-view="calendar"]');
+    await waitFor(() => document.querySelector('.calendar-grid'));
+    const slowResult = await oldFetch;
+    if (!slowResult.stale) throw new Error('The slow source was not rejected as stale');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    if (document.body.textContent.includes('Langsam')) throw new Error('An old in-flight request published stale events');
+
+    await click('[data-view="settings"]');
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    await click('[data-settings-tab="invoices"]');
+    await waitFor(() => document.querySelector('[data-action="clear-calendar-url"]'));
+    const clearConfig = await window.club.getCalendarConfig();
+    await window.club.setCalendarConfig(null, { folder: await window.club.getFolder(), revision: clearConfig.revision });
+    await waitFor(async () => (await window.club.getCalendarConfig()).url === null);
+    await click('[data-view="calendar"]');
+    await waitFor(() => document.querySelector('.empty')?.textContent.includes('noch keine Kalender-URL'));
+    if ((await window.club.getCalendarConfig()).url !== null) throw new Error('Clearing the URL must persist');
+  })()`);
+}
 
 async function previewSelectionSmoke(window) {
   window.setSize(1100, 800);
@@ -177,6 +253,20 @@ async function main() {
   let selectedSignature = signaturePng;
   let selectedCssFile = cssFile;
   let selectedDataFolder = data;
+  const calendarServer = http.createServer((request, response) => {
+    response.setHeader('Content-Type', 'text/calendar');
+    if (request.url === '/slow.ics') {
+      setTimeout(() => response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:slow\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Langsam\r\nEND:VEVENT\r\nEND:VCALENDAR'), 700);
+      return;
+    }
+    if (request.url === '/b.ics') {
+      response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:b\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Schnell\r\nEND:VEVENT\r\nEND:VCALENDAR');
+      return;
+    }
+    response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Tagesordnung\r\nEND:VEVENT\r\nEND:VCALENDAR');
+  });
+  await new Promise(resolve => calendarServer.listen(0, '127.0.0.1', resolve));
+  const calendarPort = calendarServer.address().port;
   await fs.writeFile(cssFile, 'body { color: rgb(65, 43, 21); }');
   await fs.writeFile(templateFile, '<main><h1>Vorlage {{title}}</h1>{{attendance}}{{points}}{{open_tasks}}</main>');
   await fs.writeFile(letterTemplateFile, '<main class="letter"><h1>Briefvorlage {{title}}</h1><p>{{club_name}}</p>{{date}}{{address}}{{content}}{{signatures}}</main>');
@@ -873,7 +963,7 @@ async function main() {
         assert.deepEqual(result.tasksBefore, [false, true]);
         assert.deepEqual(result.persistedChecks, [true, true]);
         assert.ok(result.absentBeforeExport);
-        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Briefe', 'Handbuch', 'Versionsverlauf', 'Einstellungen']);
+        assert.deepEqual(result.navigation, ['Sitzungen', 'Offene Aufgaben', 'Entscheidungen', 'Alle TOPs', 'Statistiken', 'Mitglieder', 'Rechnungen', 'Kalender', 'Briefe', 'Handbuch', 'Versionsverlauf', 'Einstellungen']);
         assert.deepEqual(result.visibleNavigation.map(item => item.text), result.navigation);
         assert.ok(result.visibleNavigation.every(item => item.visible), 'Navigation labels must be visible next to their icons');
         assert.deepEqual(result.attendanceOptions, ['Anwesend', 'Entschuldigt abwesend', 'Unentschuldigt abwesend']);
@@ -2607,6 +2697,7 @@ async function main() {
           { path: secondData, name: 'Verein B', available: true, moduleSettingsKnown: true }
         ]);
         assert.equal(folderSettings.activeFolder, data);
+        await calendarSmoke(window, calendarPort);
         await previewSelectionSmoke(window);
         await runFolderRecoverySmoke();
         await runFolderRecoverySmoke('configuration');
@@ -2616,6 +2707,7 @@ async function main() {
         await runFolderRecoverySmoke('restart-missing');
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
+        await new Promise(resolve => calendarServer.close(resolve));
         window.destroy();
         app.exit(0);
       } catch (error) {

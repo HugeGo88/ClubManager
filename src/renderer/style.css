@@ -36,6 +36,8 @@ button { cursor: pointer; }
 .activity .meeting-subnav { padding-left: 16px; }
 .activity .meeting-subnav[hidden] { display: none; }
 .activity .meeting-subnav button { min-height: 42px; border-left-width: 2px; }
+.activity .invoice-subnav { padding-left: 16px; }
+.activity .invoice-subnav button { min-height: 42px; border-left-width: 2px; }
 .activity .meeting-subnav .nav-icon { font-size: 19px; }
 .activity .meeting-nav-heading.parent-active { color: white; }
 .activity .manual-nav { margin-top: auto; }
@@ -48,6 +50,14 @@ button { cursor: pointer; }
 .settings-tab:hover, .settings-tab.selected { color: #215fb8; }
 .settings-tab.selected { border-bottom-color: #2867c7; font-weight: 700; }
 .settings-tab:focus-visible { outline: 2px solid #2867c7; outline-offset: -2px; }
+.calendar-view { max-width: 1100px; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); border-top: 1px solid #d5dbe2; border-left: 1px solid #d5dbe2; background: white; }
+.calendar-weekday { padding: 8px; text-align: center; background: #f5f7fa; border-right: 1px solid #d5dbe2; border-bottom: 1px solid #d5dbe2; color: #667487; font-size: 12px; font-weight: 700; }
+.calendar-day { min-height: 105px; padding: 7px; border-right: 1px solid #d5dbe2; border-bottom: 1px solid #d5dbe2; overflow: hidden; }
+.calendar-day.adjacent { background: #f7f8fa; color: #9aa5b3; }
+.calendar-day.today { box-shadow: inset 0 0 0 2px #2867c7; }
+.calendar-day-number { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 700; }
+.calendar-event { display: block; margin: 3px 0; padding: 3px 5px; border-radius: 4px; background: #eaf2fe; color: #215fb8; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .module-toggle { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .letter-placeholder-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(180px, 2fr) auto; align-items: end; gap: 10px; padding: 10px 0; border-top: 1px solid #e1e6ed; }
 .letter-placeholder-row .row, .letter-placeholder-actions { flex-wrap: wrap; }

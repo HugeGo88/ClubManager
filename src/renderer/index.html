@@ -22,7 +22,12 @@
         </div>
       </div>
       <button data-view="members" data-module-view="members" title="Mitglieder" aria-label="Mitglieder"><span class="nav-icon material-icons" aria-hidden="true">groups</span><span class="nav-label">Mitglieder</span></button>
-      <button data-view="invoices" data-module-view="invoices" title="Rechnungen" aria-label="Rechnungen"><span class="nav-icon material-icons" aria-hidden="true">receipt_long</span><span class="nav-label">Rechnungen</span></button>
+      <div class="invoice-nav" data-module-nav="invoices">
+        <button data-view="invoices" data-module-view="invoices" title="Rechnungen" aria-label="Rechnungen"><span class="nav-icon material-icons" aria-hidden="true">receipt_long</span><span class="nav-label">Rechnungen</span></button>
+        <div class="invoice-subnav">
+          <button data-view="calendar" data-module-view="invoices" title="Kalender" aria-label="Kalender"><span class="nav-icon material-icons" aria-hidden="true">calendar_month</span><span class="nav-label">Kalender</span></button>
+        </div>
+      </div>
       <button data-view="letters" data-module-view="letters" title="Briefe" aria-label="Briefe"><span class="nav-icon material-icons" aria-hidden="true">mail</span><span class="nav-label">Briefe</span></button>
     </nav>
     <button class="manual-nav" data-view="manual" title="Handbuch" aria-label="Handbuch"><span class="nav-icon material-icons" aria-hidden="true">menu_book</span><span class="nav-label">Handbuch</span></button>

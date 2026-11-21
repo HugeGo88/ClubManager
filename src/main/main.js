@@ -15,6 +15,7 @@ let loadManual;
 let documentCustomizations;
 let folderName;
 let folderModules;
+let calendar;
 let mainWindow;
 let splashWindow;
 let folder;
@@ -480,6 +481,36 @@ function registerHandlers() {
       throw error;
     }
   }));
+  ipcMain.handle('calendar:config:get', () => folder ? calendar.loadConfig(folder) : { url: null, revision: null });
+  ipcMain.handle('calendar:config:set', (event, url, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) return { conflict: 'Der aktive Datenordner hat sich geändert. Bitte die Kalendereinstellungen neu laden.' };
+    try {
+      return await calendar.saveConfig(active, url, base.revision);
+    } catch (error) {
+      if (/geändert/.test(error.message)) return { conflict: error.message };
+      throw error;
+    }
+  }));
+  ipcMain.handle('calendar:fetch', async (event, base) => {
+    const active = requireFolder();
+    if (!base || base.folder !== active) return { stale: true };
+    const config = await calendar.loadConfig(active);
+    if (base.revision !== undefined && base.revision !== config.revision) return { stale: true };
+    if (!config.url) return { missing: true };
+    try {
+      const result = await calendar.fetchIcs(config.url);
+      if (requireFolder() !== active) return { stale: true };
+      const current = await calendar.loadConfig(active);
+      if (current.url !== config.url || current.revision !== config.revision) return { stale: true };
+      return { events: result.events };
+    } catch (error) {
+      if (requireFolder() !== active) return { stale: true };
+      const current = await calendar.loadConfig(active);
+      if (current.url !== config.url || current.revision !== config.revision) return { stale: true };
+      throw error;
+    }
+  });
   ipcMain.handle('sidebar:get', () => {
     if (!settingsLoaded) throw new Error('Die Seitenleisten-Einstellung konnte nicht geladen werden.');
     return sidebarCollapsed;
@@ -727,6 +758,7 @@ app.whenReady().then(async () => {
   documentCustomizations = require('./document-customizations');
   folderName = require('./folder-name');
   folderModules = require('./folder-modules');
+  calendar = require('./calendar');
   ({ loadManual } = require('./manual'));
 
   let updateReady;

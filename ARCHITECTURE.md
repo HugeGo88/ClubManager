@@ -76,6 +76,13 @@ settings.json in userData    user-selected data folder
   and letter PDFs for their resizable in-app previews and update installation.
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
+- Online calendar configuration is folder-local in `clubmanager-calendar.json`.
+  The restricted preload exposes loading, saving and fetching; the main process
+  validates URLs, performs privileged HTTP(S) requests, rejects stale folder or
+  source results, and parses ordinary timed VEVENT records. The renderer keeps
+  only parsed text and renders the read-only Monday-first month grid. Enabling
+  Rechnungen exposes Kalender as a submodule; disabling Rechnungen hides both
+  Rechnung views and rejects navigation to them.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
   same width when selecting another saved item from the list. It replaces the
   PDF with that item's export or shows a missing/unreadable message. Selection

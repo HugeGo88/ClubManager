@@ -6,6 +6,7 @@ const letterState = {
   placeholders: [], placeholdersRevision: null, placeholdersDirty: false
 };
 const listSearch = { meetings: '', letters: '' };
+const calendarState = { config: null, events: [], loading: false, error: '', request: 0, month: new Date() };
 let manual = null;
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '', showCompleted: false };
 const decisionView = { search: '', result: '', expanded: '' };
@@ -179,9 +180,105 @@ function clearEditor() {
 
 function ensureAvailableView() {
   const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'meetings' : state.view;
-  if (!['settings', 'manual', 'changelog'].includes(state.view) && !state.modules[module]) {
+  const availableModule = state.view === 'calendar' ? 'invoices' : module;
+  if (!['settings', 'manual', 'changelog'].includes(state.view) && !state.modules[availableModule]) {
     state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
   }
+}
+
+function calendarDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+async function loadCalendarConfig() {
+  if (!state.folder) {
+    calendarState.config = null;
+    calendarState.events = [];
+    calendarState.error = '';
+    return;
+  }
+  calendarState.config = await window.club.getCalendarConfig();
+}
+
+async function fetchCalendarEvents() {
+  const request = ++calendarState.request;
+  calendarState.loading = true;
+  calendarState.error = '';
+  calendarState.events = [];
+  render();
+  if (!state.folder) {
+    calendarState.loading = false;
+    return;
+  }
+  if (!calendarState.config) await loadCalendarConfig();
+  if (!calendarState.config?.url) {
+    calendarState.loading = false;
+    render();
+    return;
+  }
+  try {
+    const result = await window.club.fetchCalendar({ folder: state.folder, revision: calendarState.config.revision });
+    if (request !== calendarState.request || result.stale) return;
+    if (result.missing) {
+      calendarState.events = [];
+    } else {
+      calendarState.events = result.events;
+    }
+  } catch (error) {
+    if (request === calendarState.request) calendarState.error = error.message;
+  } finally {
+    if (request === calendarState.request) {
+      calendarState.loading = false;
+      render();
+    }
+  }
+}
+
+function calendarView() {
+  if (!calendarState.config) return `<div class="empty"><h1>Kalender</h1><p>Die Kalendereinstellungen werden geladen …</p></div>`;
+  if (!calendarState.config.url) return `<div class="empty"><h1>Kalender</h1><p>Für diesen Datenordner ist noch keine Kalender-URL eingerichtet.</p>
+    ${button('open-invoice-calendar-settings', 'Rechnungs-Einstellungen öffnen', 'primary')}
+  </div>`;
+  const month = new Date(calendarState.month.getFullYear(), calendarState.month.getMonth(), 1);
+  const title = month.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const mondayIndex = (month.getDay() + 6) % 7;
+  const gridStart = new Date(month);
+  gridStart.setDate(month.getDate() - mondayIndex);
+  const today = calendarDateKey(new Date());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + i);
+    const key = calendarDateKey(date);
+    const dayEvents = calendarState.events.filter(event => {
+      const start = new Date(event.start);
+      const end = new Date(event.end);
+      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+      return start < dayEnd && end > dayStart;
+    });
+    cells.push(`<div class="calendar-day ${date.getMonth() !== month.getMonth() ? 'adjacent' : ''} ${key === today ? 'today' : ''}" data-date="${key}">
+      <span class="calendar-day-number">${date.getDate()}</span>
+      ${dayEvents.map(event => `<span class="calendar-event" title="${escape(event.description)}">${escape(event.title)}</span>`).join('')}
+    </div>`);
+  }
+  return `<div class="calendar-view">
+    <div class="topline"><div><h1>Kalender</h1><p>${escape(calendarState.config.url)}</p></div>
+      <div class="row">
+        <button class="action" data-action="calendar-prev" aria-label="Vorheriger Monat">‹</button>
+        <button class="action" data-action="calendar-today">Heute</button>
+        <button class="action" data-action="calendar-next" aria-label="Nächster Monat">›</button>
+        <button class="action" data-action="calendar-refresh" ${calendarState.loading ? 'disabled' : ''}>Neu laden</button>
+      </div>
+    </div>
+    ${calendarState.loading ? '<p role="status">Kalender wird geladen …</p>' : ''}
+    ${calendarState.error ? `<p role="alert" class="notice error">${escape(calendarState.error)}</p>` : ''}
+    <h2>${escape(title)}</h2>
+    <div class="calendar-grid" role="grid" aria-label="${escape(title)}">
+      ${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(day => `<div class="calendar-weekday" role="columnheader">${day}</div>`).join('')}
+      ${cells.join('')}
+    </div>
+  </div>`;
 }
 
 async function transitionModules(nextModules, commit) {
@@ -222,6 +319,10 @@ async function adoptActiveFolder(result) {
   state.folder = result.folder;
   adoptModuleSettings(result);
   ensureAvailableView();
+  calendarState.request++;
+  calendarState.config = null;
+  calendarState.events = [];
+  calendarState.error = '';
   const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
     window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
     window.club.getLetterSettings()
@@ -235,6 +336,7 @@ async function adoptActiveFolder(result) {
   letterState.placeholdersRevision = letterSettings.placeholdersRevision;
   letterState.placeholdersDirty = false;
   clearEditor();
+  await loadCalendarConfig();
   await refresh();
 }
 
@@ -578,6 +680,7 @@ function renderNavigation() {
     element.hidden = !state.modules[element.dataset.moduleView];
   });
   document.querySelector('[data-module-nav="meetings"]').hidden = !state.modules.meetings;
+  document.querySelector('[data-module-nav="invoices"]').hidden = !state.modules.invoices;
   document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view));
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
@@ -647,6 +750,15 @@ function settingsView() {
         <h2>Unterschriften</h2><p>Importierte Unterschriften werden im Anpassungsordner dieses Datenordners gespeichert.</p>
         ${letterState.signatures.map(item => `<div class="row"><span>${escape(item.name)} — <span class="path">${escape(item.path)}</span></span><button class="action" data-action="remove-signature" data-id="${escape(item.id)}" aria-label="Unterschrift ${escape(item.name)} entfernen">Entfernen</button></div>`).join('')}
         <button class="action" data-action="choose-signature" ${state.folder ? '' : 'disabled'}>Unterschrift hinzufügen</button>` : ''}
+      ${selected[0] === 'invoices' ? `<h2>Online-Kalender</h2>
+        <p>Eine ICS-Abonnementadresse wird mit diesem Datenordner gespeichert und gilt für alle Benutzer dieses Ordners.</p>
+        <label>ICS-URL<input type="url" data-calendar-url value="${escape(calendarState.config?.url || '')}" ${state.folder ? '' : 'disabled'} placeholder="https://.../calendar.ics"></label>
+        ${calendarState.config?.url?.startsWith('http://') ? '<p role="alert" class="notice error">Sicherheitshinweis: Diese Kalenderadresse verwendet unverschlüsseltes HTTP. Die Verbindung kann ausgelesen oder verändert werden.</p>' : ''}
+        <p class="muted">HTTPS- und webcal-Adressen werden unterstützt. Bei webcal wird automatisch HTTPS verwendet. HTTP funktioniert nur mit diesem sichtbaren Warnhinweis. Die URL kann einschließlich eines Zugangstokens für alle Personen sichtbar sein, die Zugriff auf diesen Datenordner haben.</p>
+        <div class="row">
+          <button class="action primary" data-action="save-calendar-url" ${state.folder ? '' : 'disabled'}>URL speichern</button>
+          <button class="action" data-action="clear-calendar-url" ${state.folder && calendarState.config?.url ? '' : 'disabled'}>URL löschen</button>
+        </div>` : ''}
     </section>` : `<section role="tabpanel" aria-labelledby="settings-tab-general">
       <div class="card"><h2>Datenordner</h2>
         <p>Wählen Sie, wo ClubManager seine Daten speichert. Jedes Modul hat einen eigenen Unterordner.</p>
@@ -724,6 +836,8 @@ function render() {
     content = statisticsView();
   } else if (state.view === 'letters') {
     content = letterState.letter ? letterEditor(letterState.letter) : '<div class="empty"><h1>Briefe</h1><p>Erstellen Sie einen Brief oder wählen Sie einen aus der Liste aus.</p></div>';
+  } else if (state.view === 'calendar') {
+    content = calendarView();
   } else {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
@@ -854,7 +968,8 @@ function refreshTopResults() {
 async function changeView(view) {
   if (view === state.view) return;
   const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(view) ? 'meetings' : view;
-  if (!['settings', 'changelog', 'manual'].includes(view) && !state.modules[module]) {
+  const availableModule = view === 'calendar' ? 'invoices' : module;
+  if (!['settings', 'changelog', 'manual'].includes(view) && !state.modules[availableModule]) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
   }
@@ -868,6 +983,11 @@ async function changeView(view) {
   if (!preserveEditor) clearEditor();
   state.view = view;
   setMessage(refreshError?.message ?? '', Boolean(refreshError));
+  if (view === 'settings') await loadCalendarConfig();
+  if (view === 'calendar') {
+    await loadCalendarConfig();
+    await fetchCalendarEvents();
+  }
   if (!['changelog', 'manual'].includes(view)) await refresh();
 }
 
@@ -882,6 +1002,61 @@ async function run(action, target) {
     case 'settings-tab':
       settingsTab = target.dataset.settingsTab;
       setMessage('');
+      break;
+    case 'open-invoice-calendar-settings':
+      await changeView('settings');
+      settingsTab = 'invoices';
+      break;
+    case 'save-calendar-url': {
+      const input = app.querySelector('[data-calendar-url]');
+      if (!input) break;
+      const result = await window.club.setCalendarConfig(input.value, {
+        folder: state.folder,
+        revision: calendarState.config?.revision
+      });
+      if (result.conflict) {
+        setMessage(result.conflict, true);
+      } else {
+        calendarState.request++;
+        calendarState.config = result;
+        calendarState.events = [];
+        calendarState.error = '';
+        setMessage(result.url ? 'Kalender-URL gespeichert.' : 'Kalender-URL gelöscht.');
+        render();
+      }
+      break;
+    }
+    case 'clear-calendar-url': {
+      const result = await window.club.setCalendarConfig(null, {
+        folder: state.folder,
+        revision: calendarState.config?.revision
+      });
+      if (result.conflict) {
+        setMessage(result.conflict, true);
+      } else {
+        calendarState.config = result;
+        calendarState.request++;
+        calendarState.events = [];
+        calendarState.error = '';
+        setMessage('Kalender-URL gelöscht.');
+        render();
+      }
+      break;
+    }
+    case 'calendar-prev':
+      calendarState.month = new Date(calendarState.month.getFullYear(), calendarState.month.getMonth() - 1, 1);
+      render();
+      break;
+    case 'calendar-next':
+      calendarState.month = new Date(calendarState.month.getFullYear(), calendarState.month.getMonth() + 1, 1);
+      render();
+      break;
+    case 'calendar-today':
+      calendarState.month = new Date();
+      render();
+      break;
+    case 'calendar-refresh':
+      await fetchCalendarEvents();
       break;
     case 'choose-folder': {
       if (!await guardDraft('Ordnerwechsel')) break;
@@ -1546,13 +1721,14 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, folders, protocolCss, meetingTemplate, sidebarCollapsed, letterSettings] = await Promise.all([
+    const [folder, folders, protocolCss, meetingTemplate, sidebarCollapsed, letterSettings, calendarConfig] = await Promise.all([
       window.club.getFolder(),
       window.club.getFolders(),
       window.club.getProtocolCss(),
       window.club.getMeetingTemplate(),
       window.club.getSidebarCollapsed(),
-      window.club.getLetterSettings()
+      window.club.getLetterSettings(),
+      window.club.getCalendarConfig().catch(() => null)
     ]);
     state.folder = folder;
     adoptFolderRegistry(folders);
@@ -1565,6 +1741,7 @@ window.club.onPrepareUpdate(async () => {
     letterState.placeholders = letterSettings.placeholders;
     letterState.placeholdersRevision = letterSettings.placeholdersRevision;
     letterState.placeholdersDirty = false;
+    calendarState.config = calendarConfig;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
     state.meetings = state.folder ? await window.club.listMeetings() : [];
     letterState.letters = state.folder && state.view === 'letters' ? await window.club.listLetters() : [];
