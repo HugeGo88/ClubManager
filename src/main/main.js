@@ -496,19 +496,31 @@ function registerHandlers() {
     const active = requireFolder();
     if (!base || base.folder !== active) return { stale: true };
     const config = await calendar.loadConfig(active);
-    if (base.revision !== undefined && base.revision !== config.revision) return { stale: true };
+    if (base.revision !== undefined && base.revision !== config.revision) {
+      return { stale: true, config };
+    }
     if (!config.url) return { missing: true };
     try {
-      const result = await calendar.fetchIcs(config.url);
-      if (requireFolder() !== active) return { stale: true };
-      const current = await calendar.loadConfig(active);
-      if (current.url !== config.url || current.revision !== config.revision) return { stale: true };
-      return { events: result.events };
+      const result = await calendar.refreshCalendar(active, config, () => folder === active);
+      if (result.stale) {
+        if (folder !== active) return { stale: true };
+        return { stale: true, config: await calendar.loadConfig(active) };
+      }
+      return { ...result, stale: false };
     } catch (error) {
-      if (requireFolder() !== active) return { stale: true };
+      if (folder !== active) return { stale: true };
       const current = await calendar.loadConfig(active);
-      if (current.url !== config.url || current.revision !== config.revision) return { stale: true };
-      throw error;
+      if (current.url !== config.url || current.revision !== config.revision) {
+        return { stale: true, config: current };
+      }
+      let cached;
+      try {
+        cached = await calendar.loadCache(active, config.url);
+      } catch (cacheError) {
+        throw new Error(`${error.message} Der gespeicherte Kalender konnte nicht verwendet werden: ${cacheError.message}`);
+      }
+      if (!cached) throw error;
+      return { ...cached, stale: true, error: error.message };
     }
   });
   ipcMain.handle('sidebar:get', () => {

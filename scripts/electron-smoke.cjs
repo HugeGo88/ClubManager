@@ -40,6 +40,7 @@ async function calendarSmoke(window, port) {
     }
     await click('[data-view="calendar"]');
     await waitFor(() => document.querySelector('.calendar-grid'));
+    await waitFor(() => document.querySelector('[data-calendar-fetched-at]'));
     if (!document.querySelector('.calendar-grid')) throw new Error('Calendar month grid did not render');
     await waitFor(() => document.querySelector('[data-calendar-event]'));
     const agendaEvent = document.querySelector('[data-calendar-event][data-event-title="Tagesordnung"]');
@@ -147,6 +148,100 @@ async function calendarSmoke(window, port) {
     await click('[data-view="calendar"]');
     await waitFor(() => document.querySelector('.empty')?.textContent.includes('noch keine Kalender-URL'));
     if ((await window.club.getCalendarConfig()).url !== null) throw new Error('Clearing the URL must persist');
+  })()`);
+}
+
+async function calendarCacheSmoke(window, port, setCalendarAvailable) {
+  const configure = async url => {
+    await window.webContents.executeJavaScript(`(async () => {
+      const waitFor = async test => {
+        for (let i = 0; i < 200; i++) {
+          const value = await test();
+          if (value) return value;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        throw new Error('Timed out waiting for calendar configuration');
+      };
+      const click = selector => {
+        const element = document.querySelector(selector);
+        if (!element) throw new Error('Missing calendar control: ' + selector);
+        element.click();
+      };
+      await click('[data-view="settings"]');
+      await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+      await click('[data-settings-tab="invoices"]');
+      await waitFor(() => document.querySelector('[data-calendar-url]'));
+      document.querySelector('[data-calendar-url]').value = ${JSON.stringify(url)};
+      click('[data-action="save-calendar-url"]');
+      await waitFor(async () => (await window.club.getCalendarConfig()).url === ${JSON.stringify(url)});
+    })()`);
+  };
+  await configure(`http://127.0.0.1:${port}/cache.ics`);
+  setCalendarAvailable(true);
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for cached calendar');
+    };
+    document.querySelector('[data-view="calendar"]').click();
+    await waitFor(() => document.querySelector('[data-event-title="Gemeinsamer Termin"]') &&
+      document.querySelector('[data-calendar-fetched-at]'));
+    document.querySelector('[data-action="calendar-refresh"]').click();
+    await waitFor(() => document.querySelector('[data-calendar-fetched-at]'));
+  })()`);
+
+  setCalendarAvailable(false);
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for stale calendar state');
+    };
+    document.querySelector('[data-action="calendar-refresh"]').click();
+    await waitFor(() => document.querySelector('[data-calendar-stale]') &&
+      document.querySelector('[data-event-title="Gemeinsamer Termin"]'));
+  })()`);
+
+  await configure(`http://127.0.0.1:${port}/missing-cache.ics`);
+  setCalendarAvailable(false);
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for calendar fetch error');
+    };
+    document.querySelector('[data-view="calendar"]').click();
+    await waitFor(() => document.querySelector('.calendar-grid') &&
+      document.querySelector('[role="alert"]')?.textContent.includes('503'));
+    if (document.querySelector('[data-calendar-fetched-at]')) {
+      throw new Error('A source without a matching cache must not show a fetch time');
+    }
+  })()`);
+
+  setCalendarAvailable(true);
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for calendar recovery');
+    };
+    document.querySelector('[data-action="calendar-refresh"]').click();
+    await waitFor(() => document.querySelector('[data-event-title="Wiederhergestellter Termin"]') &&
+      document.querySelector('[data-calendar-fetched-at]') &&
+      !document.querySelector('[data-calendar-stale]'));
   })()`);
 }
 
@@ -320,8 +415,19 @@ async function main() {
   let selectedSignature = signaturePng;
   let selectedCssFile = cssFile;
   let selectedDataFolder = data;
+  let calendarAvailable = true;
   const calendarServer = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'text/calendar');
+    if (request.url === '/cache.ics' || request.url === '/missing-cache.ics') {
+      if (!calendarAvailable) {
+        response.statusCode = 503;
+        response.end('unavailable');
+        return;
+      }
+      const title = request.url === '/cache.ics' ? 'Gemeinsamer Termin' : 'Wiederhergestellter Termin';
+      response.end(`BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:${title}\r\nDTSTART:20261121T100000Z\r\nSUMMARY:${title}\r\nEND:VEVENT\r\nEND:VCALENDAR`);
+      return;
+    }
     if (request.url === '/slow.ics') {
       setTimeout(() => response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:slow\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Langsam\r\nEND:VEVENT\r\nEND:VCALENDAR'), 700);
       return;
@@ -2802,6 +2908,7 @@ async function main() {
         ]);
         assert.equal(folderSettings.activeFolder, data);
         await calendarSmoke(window, calendarPort);
+        await calendarCacheSmoke(window, calendarPort, available => { calendarAvailable = available; });
         await previewSelectionSmoke(window);
         await runFolderRecoverySmoke();
         await runFolderRecoverySmoke('configuration');

@@ -6,7 +6,9 @@ const letterState = {
   placeholders: [], placeholdersRevision: null, placeholdersDirty: false
 };
 const listSearch = { meetings: '', letters: '' };
-const calendarState = { config: null, events: [], loading: false, error: '', request: 0, month: new Date() };
+const calendarState = {
+  config: null, events: [], fetchedAt: null, stale: false, loading: false, error: '', request: 0, month: new Date()
+};
 let manual = null;
 const taskView = { search: '', responsible: '', sort: 'date', direction: 'descending', expanded: '', showCompleted: false };
 const decisionView = { search: '', result: '', expanded: '' };
@@ -200,44 +202,90 @@ function formatCalendarEventTime(event) {
   return `${date}, ${startTime}–${endTime}`;
 }
 
-async function loadCalendarConfig() {
-  if (!state.folder) {
+async function loadCalendarConfig(folder = state.folder) {
+  if (!folder) {
     calendarState.config = null;
     calendarState.events = [];
+    calendarState.fetchedAt = null;
+    calendarState.stale = false;
     calendarState.error = '';
-    return;
+    return null;
   }
-  calendarState.config = await window.club.getCalendarConfig();
+  const config = await window.club.getCalendarConfig();
+  if (state.folder !== folder) return null;
+  if (calendarState.config &&
+      (calendarState.config.url !== config.url || calendarState.config.revision !== config.revision)) {
+    calendarState.events = [];
+    calendarState.fetchedAt = null;
+    calendarState.stale = false;
+    calendarState.loading = false;
+    calendarState.error = '';
+  }
+  calendarState.config = config;
+  return config;
 }
 
 async function fetchCalendarEvents() {
   const request = ++calendarState.request;
+  const folder = state.folder;
   calendarState.loading = true;
-  calendarState.error = '';
-  calendarState.events = [];
   render();
-  if (!state.folder) {
-    calendarState.loading = false;
-    return;
-  }
-  if (!calendarState.config) await loadCalendarConfig();
-  if (!calendarState.config?.url) {
-    calendarState.loading = false;
-    render();
-    return;
-  }
   try {
-    const result = await window.club.fetchCalendar({ folder: state.folder, revision: calendarState.config.revision });
-    if (request !== calendarState.request || result.stale) return;
+    if (!folder) {
+      calendarState.events = [];
+      calendarState.fetchedAt = null;
+      calendarState.stale = false;
+      calendarState.error = '';
+      return;
+    }
+    if (!calendarState.config && !await loadCalendarConfig(folder)) return;
+    if (request !== calendarState.request || state.folder !== folder) return;
+    if (!calendarState.config?.url) {
+      calendarState.events = [];
+      calendarState.fetchedAt = null;
+      calendarState.stale = false;
+      calendarState.error = '';
+      return;
+    }
+    const config = calendarState.config;
+    const result = await window.club.fetchCalendar({ folder, revision: config.revision });
+    if (request !== calendarState.request || state.folder !== folder) return;
+    if (result.stale) {
+      if (result.config) {
+        calendarState.config = result.config;
+        if (result.config.url !== config.url || result.config.revision !== config.revision) {
+          calendarState.events = [];
+          calendarState.fetchedAt = null;
+          calendarState.stale = false;
+          calendarState.error = 'Die Kalender-URL wurde geändert. Laden Sie den Kalender erneut.';
+        }
+      }
+      if (result.events) {
+        calendarState.events = result.events;
+        calendarState.fetchedAt = result.fetchedAt;
+        calendarState.stale = true;
+        calendarState.error = result.error || '';
+      }
+      return;
+    }
     if (result.missing) {
       calendarState.events = [];
+      calendarState.fetchedAt = null;
+      calendarState.stale = false;
+      calendarState.error = '';
     } else {
       calendarState.events = result.events;
+      calendarState.fetchedAt = result.fetchedAt;
+      calendarState.stale = false;
+      calendarState.error = '';
     }
   } catch (error) {
-    if (request === calendarState.request) calendarState.error = error.message;
+    if (request === calendarState.request && state.folder === folder) {
+      calendarState.error = error.message;
+      calendarState.stale = Boolean(calendarState.fetchedAt);
+    }
   } finally {
-    if (request === calendarState.request) {
+    if (request === calendarState.request && state.folder === folder) {
       calendarState.loading = false;
       render();
     }
@@ -284,6 +332,8 @@ function calendarView() {
       </div>
     </div>
     ${calendarState.loading ? '<p role="status">Kalender wird geladen …</p>' : ''}
+    ${calendarState.fetchedAt ? `<p class="muted" data-calendar-fetched-at>Zuletzt erfolgreich abgerufen: ${escape(new Date(calendarState.fetchedAt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }))}</p>` : ''}
+    ${calendarState.stale ? `<p role="status" class="notice error" data-calendar-stale>Die Aktualisierung ist fehlgeschlagen. Es werden gespeicherte Kalenderdaten angezeigt. ${escape(calendarState.error)}</p>` : ''}
     ${calendarState.error ? `<p role="alert" class="notice error">${escape(calendarState.error)}</p>` : ''}
     <h2>${escape(title)}</h2>
     <div class="calendar-grid" role="grid" aria-label="${escape(title)}">
@@ -334,6 +384,9 @@ async function adoptActiveFolder(result) {
   calendarState.request++;
   calendarState.config = null;
   calendarState.events = [];
+  calendarState.fetchedAt = null;
+  calendarState.stale = false;
+  calendarState.loading = false;
   calendarState.error = '';
   const [folders, protocolCss, meetingTemplate, letterSettings] = await Promise.all([
     window.club.getFolders(), window.club.getProtocolCss(), window.club.getMeetingTemplate(),
@@ -1036,6 +1089,9 @@ async function run(action, target) {
         calendarState.request++;
         calendarState.config = result;
         calendarState.events = [];
+        calendarState.fetchedAt = null;
+        calendarState.stale = false;
+        calendarState.loading = false;
         calendarState.error = '';
         setMessage(result.url ? 'Kalender-URL gespeichert.' : 'Kalender-URL gelöscht.');
         render();
@@ -1053,6 +1109,9 @@ async function run(action, target) {
         calendarState.config = result;
         calendarState.request++;
         calendarState.events = [];
+        calendarState.fetchedAt = null;
+        calendarState.stale = false;
+        calendarState.loading = false;
         calendarState.error = '';
         setMessage('Kalender-URL gelöscht.');
         render();

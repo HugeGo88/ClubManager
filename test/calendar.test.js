@@ -93,3 +93,140 @@ test('fetches HTTPS and HTTP sources and reports unavailable services explicitly
   assert.equal(result.events[0].title, 'HTTP-Test');
   await assert.rejects(calendar.fetchIcs(`http://127.0.0.1:${address.port}/missing`), /nicht verfügbar|404/i);
 });
+
+test('persists successful refreshes for offline reuse without replacing them on failure', async t => {
+  const folder = await fixture(t);
+  let responseMode = 'online';
+  const server = http.createServer((request, response) => {
+    if (responseMode === 'unavailable') {
+      response.statusCode = 503;
+      response.end('unavailable');
+      return;
+    }
+    response.setHeader('Content-Type', 'text/calendar');
+    response.end(responseMode === 'invalid'
+      ? 'This is not a calendar'
+      : 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:shared\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Shared event\r\nEND:VEVENT\r\nEND:VCALENDAR');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+
+  const refreshed = await calendar.refreshCalendar(folder, config);
+  assert.equal(refreshed.events[0].title, 'Shared event');
+  assert.ok(Number.isFinite(Date.parse(refreshed.fetchedAt)));
+
+  const reopened = await calendar.loadCache(folder, url);
+  assert.deepEqual(reopened, refreshed);
+  assert.equal(await calendar.loadCache(folder, 'https://other.example/calendar.ics'), null);
+
+  responseMode = 'unavailable';
+  await assert.rejects(calendar.refreshCalendar(folder, config), /503|nicht verfügbar/i);
+  assert.deepEqual(await calendar.loadCache(folder, url), refreshed);
+  responseMode = 'invalid';
+  await assert.rejects(calendar.refreshCalendar(folder, config), /Ungültige ICS/i);
+  assert.deepEqual(await calendar.loadCache(folder, url), refreshed);
+});
+
+test('does not publish an in-flight refresh after its source becomes stale', async t => {
+  const folder = await fixture(t);
+  let respond;
+  const server = http.createServer((request, response) => {
+    respond = () => response.end('BEGIN:VCALENDAR\r\nEND:VCALENDAR');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  const oldRefresh = calendar.refreshCalendar(folder, config);
+  while (!respond) await new Promise(resolve => setTimeout(resolve, 5));
+
+  await calendar.saveConfig(folder, 'https://other.example/calendar.ics', config.revision);
+  respond();
+  assert.deepEqual(await oldRefresh, { stale: true });
+  assert.equal(await calendar.loadCache(folder, url), null);
+});
+
+test('does not publish an in-flight refresh after switching the active data folder', async t => {
+  const folder = await fixture(t);
+  let respond;
+  const server = http.createServer((request, response) => {
+    respond = () => response.end('BEGIN:VCALENDAR\r\nEND:VCALENDAR');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  let active = true;
+  const oldRefresh = calendar.refreshCalendar(folder, config, () => active);
+  while (!respond) await new Promise(resolve => setTimeout(resolve, 5));
+
+  active = false;
+  respond();
+  assert.deepEqual(await oldRefresh, { stale: true });
+  assert.equal(await calendar.loadCache(folder, url), null);
+});
+
+test('reports cache write failures and preserves the previous successful cache', async t => {
+  const folder = await fixture(t);
+  const server = http.createServer((request, response) => {
+    response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:shared\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Shared event\r\nEND:VEVENT\r\nEND:VCALENDAR');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  const previous = await calendar.refreshCalendar(folder, config);
+
+  await fs.chmod(folder, 0o500);
+  try {
+    await assert.rejects(calendar.refreshCalendar(folder, config), /Datenordner gespeichert/);
+  } finally {
+    await fs.chmod(folder, 0o700);
+  }
+  assert.deepEqual(await calendar.loadCache(folder, url), previous);
+});
+
+test('serializes competing refreshes so the last successful completion is cached', async t => {
+  const folder = await fixture(t);
+  let requests = 0;
+  let releaseFirst;
+  const firstRequest = new Promise(resolve => {
+    releaseFirst = resolve;
+  });
+  const server = http.createServer((request, response) => {
+    requests++;
+    const number = requests;
+    if (number === 1) {
+      firstRequest.then(() => response.end('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:first\r\nDTSTART:20261121T100000Z\r\nSUMMARY:First refresh\r\nEND:VEVENT\r\nEND:VCALENDAR'));
+      return;
+    }
+    response.end(`BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:${number}\r\nDTSTART:20261121T100000Z\r\nSUMMARY:Refresh ${number}\r\nEND:VEVENT\r\nEND:VCALENDAR`);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    releaseFirst();
+    await new Promise(resolve => server.close(resolve));
+  });
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  const waitForRequests = async count => {
+    for (let attempt = 0; attempt < 100 && requests < count; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(requests, count);
+  };
+
+  const first = calendar.refreshCalendar(folder, config);
+  await waitForRequests(1);
+  const second = calendar.refreshCalendar(folder, config);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(requests, 1, 'a concurrent refresh must wait for the in-flight cache update');
+
+  releaseFirst();
+  await first;
+  await waitForRequests(2);
+  const last = await second;
+  assert.equal((await calendar.loadCache(folder, url)).events[0].title, last.events[0].title);
+});

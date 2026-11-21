@@ -123,6 +123,8 @@ items are still open, partially implemented, or ongoing design goals.
   ordinary timed events in a read-only month view under Rechnungen (#21).
 - [x] Open read-only event details and show remaining events from crowded days
   in an overflow view under Rechnungen (#22).
+- [x] Share the last successful calendar fetch through the data folder, with its
+  fetch time, source-specific offline fallback and stale warning (#23).
 - [ ] Provide an invoice module for creating/writing invoices.
 - [ ] Use a master-detail view: show a list of invoices and display the selected
   invoice's details alongside or in a detail pane.
