@@ -99,9 +99,24 @@ function unfoldIcs(content) {
 }
 
 function unescapeIcs(value) {
-  return value.replace(/\\\\([nN])/g, '\n')
-    .replace(/\\([,;])/g, '$1')
-    .replace(/\\([\\])/g, '$1');
+  let result = '';
+  for (let index = 0; index < value.length; index++) {
+    if (value[index] !== '\\' || index + 1 === value.length) {
+      result += value[index];
+      continue;
+    }
+    const escaped = value[index + 1];
+    if (escaped === 'n' || escaped === 'N') {
+      result += '\n';
+      index++;
+    } else if (escaped === ',' || escaped === ';' || escaped === '\\') {
+      result += escaped;
+      index++;
+    } else {
+      result += '\\';
+    }
+  }
+  return result;
 }
 
 function parseIcsDate(value) {

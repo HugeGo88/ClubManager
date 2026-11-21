@@ -1077,7 +1077,7 @@ async function run(action, target) {
       const event = calendarState.events.find(item => item.id === target.dataset.eventId);
       if (!event) break;
       const location = event.location ? `<dt>Ort</dt><dd data-calendar-location>${escape(event.location)}</dd>` : '';
-      const description = event.description ? `<dt>Beschreibung</dt><dd>${escape(event.description)}</dd>` : '';
+      const description = event.description ? `<dt>Beschreibung</dt><dd data-calendar-description>${escape(event.description)}</dd>` : '';
       const dialog = document.createElement('dialog');
       dialog.className = 'calendar-event-dialog';
       dialog.setAttribute('data-calendar-event-dialog', '');

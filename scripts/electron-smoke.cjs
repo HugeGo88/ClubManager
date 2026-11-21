@@ -49,6 +49,9 @@ async function calendarSmoke(window, port) {
     if (!document.querySelector('[data-calendar-event-dialog]').open) throw new Error('The event detail dialog did not open');
     if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('21. November 2026')) throw new Error('Event time is missing');
     if (!document.querySelector('[data-calendar-event-dialog]').textContent.includes('Clubhaus')) throw new Error('Event location is missing');
+    const description = document.querySelector('[data-calendar-description]');
+    if (!description || description.textContent !== 'Ordentliche Jahreshauptversammlung\\nWeitere Informationen') throw new Error('Calendar description line break was not preserved');
+    if (getComputedStyle(description).whiteSpace !== 'pre-wrap') throw new Error('Calendar description line break was not displayed');
     await click('[data-calendar-event-dialog] [data-action="close-calendar-event"]');
     await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
 
@@ -335,7 +338,7 @@ async function main() {
       'DTEND:20261121T113000Z',
       'SUMMARY:Tagesordnung',
       'LOCATION:Clubhaus',
-      'DESCRIPTION:Ordentliche Jahreshauptversammlung',
+      'DESCRIPTION:Ordentliche Jahreshauptversammlung\\nWeitere Informationen',
       'END:VEVENT',
       'BEGIN:VEVENT',
       'UID:overflow1',

@@ -53,7 +53,7 @@ test('normal timed VEVENT records are parsed and external text is kept as text',
     'DTEND:20261121T113000Z',
     'SUMMARY:Team\\; Planung',
     'LOCATION:Clubhaus',
-    'DESCRIPTION:<b>readable text</b>',
+    'DESCRIPTION:First line\\nSecond line\\\\nLiteral text',
     'END:VEVENT',
     'BEGIN:VEVENT',
     'UID:2',
@@ -66,7 +66,7 @@ test('normal timed VEVENT records are parsed and external text is kept as text',
   const events = calendar.parseIcs(ics);
   assert.equal(events.length, 1);
   assert.equal(events[0].title, 'Team; Planung');
-  assert.equal(events[0].description, '<b>readable text</b>');
+  assert.equal(events[0].description, 'First line\nSecond line\\nLiteral text');
   assert.equal(events[0].location, 'Clubhaus');
 });
 
