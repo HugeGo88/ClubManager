@@ -29,7 +29,7 @@ function normalizeUrl(input) {
 }
 
 function encode(config) {
-  return JSON.stringify({ version: 1, url: config.url }, null, 2) + '\n';
+  return JSON.stringify({ version: 1, url: config.url, generation: crypto.randomUUID() }, null, 2) + '\n';
 }
 
 function revision(content) {
@@ -176,7 +176,7 @@ function allDayIso(time) {
   return new Date(Date.UTC(time.year, time.month - 1, time.day)).toISOString();
 }
 
-function parseIcs(content) {
+function parseCalendar(content) {
   let jcal;
   try {
     jcal = ICAL.parse(String(content));
@@ -195,9 +195,17 @@ function parseIcs(content) {
   }
 
   const events = [];
+  const standalone = [];
+  const cancellations = [];
   for (const component of calendar.getAllSubcomponents('vevent')) {
-    if (component.getFirstProperty('recurrence-id') ||
-        component.getFirstPropertyValue('status') === 'CANCELLED') continue;
+    const identified = component.getFirstPropertyValue('uid');
+    const recurring = component.hasProperty('rrule') || component.hasProperty('rdate') ||
+      component.hasProperty('recurrence-id');
+    if (component.getFirstPropertyValue('status') === 'CANCELLED') {
+      if (identified && !recurring) cancellations.push(identified);
+      continue;
+    }
+    if (component.getFirstProperty('recurrence-id')) continue;
     const startProperty = component.getFirstProperty('dtstart');
     if (!startProperty) continue;
     let startValue;
@@ -265,6 +273,7 @@ function parseIcs(content) {
         end,
         allDay
       });
+      if (identified && !recurring) standalone.push(events[events.length - 1]);
     };
 
     if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
@@ -292,7 +301,12 @@ function parseIcs(content) {
       append(startValue, endTime, { component }, null);
     }
   }
-  return events.sort((a, b) => a.start.localeCompare(b.start));
+  events.sort((a, b) => a.start.localeCompare(b.start));
+  return { events, standalone, cancellations };
+}
+
+function parseIcs(content) {
+  return parseCalendar(content).events;
 }
 
 async function fetchIcs(input, redirects = 0) {
@@ -335,7 +349,8 @@ async function fetchIcs(input, redirects = 0) {
         if (tooLarge) reject(new Error('Die Kalender-Quelle ist größer als 10 MB.'));
         else {
           try {
-            resolve({ events: parseIcs(text), sourceUrl: url.protocol + '//' + url.host });
+            const parsed = parseCalendar(text);
+            resolve({ ...parsed, sourceUrl: url.protocol + '//' + url.host });
           } catch (error) {
             reject(new Error(`Die Kalender-Daten konnten nicht gelesen werden: ${error.message}`));
           }
@@ -452,28 +467,99 @@ async function loadCacheRecord(folder) {
   } catch {
     throw new Error('Der gespeicherte Kalender enthält ungültiges JSON.');
   }
-  if (!cache || cache.version !== 1 || typeof cache.sourceUrl !== 'string' ||
-      typeof cache.fetchedAt !== 'string' || !Array.isArray(cache.events)) {
+  if (!cache || ![1, 2].includes(cache.version)) {
     throw new Error('Der gespeicherte Kalender hat ein ungültiges oder nicht unterstütztes Format.');
   }
-  if (!Number.isFinite(Date.parse(cache.fetchedAt)) ||
-      (cache.completedAt !== undefined && !Number.isFinite(cache.completedAt)) ||
-      (cache.completionId !== undefined && typeof cache.completionId !== 'string') ||
-      cache.events.some(event =>
-    !event || typeof event.id !== 'string' || typeof event.title !== 'string' ||
-    typeof event.description !== 'string' || typeof event.location !== 'string' ||
-    (event.allDay !== undefined && typeof event.allDay !== 'boolean') ||
-    !Number.isFinite(Date.parse(event.start)) || !Number.isFinite(Date.parse(event.end)))) {
+  const sources = cache.version === 1 ? [cache] : cache.sources;
+  const validEvent = event => event && typeof event.id === 'string' &&
+    typeof event.title === 'string' && typeof event.description === 'string' &&
+    typeof event.location === 'string' &&
+    (event.allDay === undefined || typeof event.allDay === 'boolean') &&
+    Number.isFinite(Date.parse(event.start)) && Number.isFinite(Date.parse(event.end));
+  if (!Array.isArray(sources) || sources.some(source => !source ||
+      typeof source.sourceUrl !== 'string' || typeof source.fetchedAt !== 'string' ||
+      !Number.isFinite(Date.parse(source.fetchedAt)) ||
+      (source.completedAt !== undefined && !Number.isFinite(source.completedAt)) ||
+      (source.completionId !== undefined && typeof source.completionId !== 'string') ||
+      (source.hasLiveSnapshot !== undefined && typeof source.hasLiveSnapshot !== 'boolean') ||
+      !Array.isArray(source.events) || source.events.some(event => !validEvent(event)) ||
+      (cache.version === 2 && (!Array.isArray(source.history) ||
+        source.history.some(event => !validEvent(event)) ||
+        !Array.isArray(source.tombstones) || source.tombstones.some(uid => typeof uid !== 'string'))))) {
     throw new Error('Der gespeicherte Kalender enthält ungültige Daten.');
   }
   return cache;
 }
 
+function upgradeCache(cache) {
+  if (!cache) return { version: 2, sources: [] };
+  if (cache.version === 2) return cache;
+  // Legacy IDs do not record whether they were generated or expanded occurrences.
+  const history = cache.events.filter(event =>
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event.id) &&
+    !/@(?:\d{8}(?:T\d{6}Z?)?|\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}Z?)?)$/.test(event.id));
+  return { version: 2, sources: [{ ...cache, history, tombstones: [], hasLiveSnapshot: true, version: undefined }] };
+}
+
+function eligible(event, now) {
+  const expiry = new Date(event.end);
+  expiry.setUTCFullYear(expiry.getUTCFullYear() + 2);
+  return now < expiry.getTime();
+}
+
+function visible(source, now = Date.now()) {
+  const liveIds = new Set(source.events.map(event => event.id));
+  return {
+    events: [...source.events, ...source.history.filter(event => !liveIds.has(event.id) && eligible(event, now))]
+      .sort((a, b) => a.start.localeCompare(b.start)),
+    fetchedAt: source.fetchedAt
+  };
+}
+
+class StaleRefresh extends Error {}
+
+async function writeCache(folder, cache, lock, isCurrent = async () => true) {
+  try {
+    await atomicWrite(cacheFileFor(folder), JSON.stringify(cache, null, 2) + '\n', async () => {
+      await lock.assert();
+      if (!await isCurrent()) throw new StaleRefresh();
+    });
+  } catch (error) {
+    if (error instanceof StaleRefresh) throw error;
+    throw new Error(`Der Kalender konnte nicht im Datenordner gespeichert werden: ${error.message}`);
+  }
+}
+
 async function loadCache(folder, input) {
   const url = normalizeUrl(input);
   if (!url) return null;
-  const cache = await loadCacheRecord(folder);
-  return cache?.sourceUrl === url ? { events: cache.events, fetchedAt: cache.fetchedAt } : null;
+  let cache = await loadCacheRecord(folder);
+  if (cache?.version === 1 && cache.sourceUrl === url) {
+    let lock;
+    try {
+      lock = await acquireCacheLock(folder);
+    } catch (error) {
+      return { events: cache.events, fetchedAt: cache.fetchedAt, migrationError: error.message };
+    }
+    try {
+      cache = await loadCacheRecord(folder);
+      if (cache?.version === 1 && cache.sourceUrl === url) {
+        const upgraded = upgradeCache(cache);
+        try {
+          await writeCache(folder, upgraded, lock);
+          cache = upgraded;
+        } catch (error) {
+          return { events: cache.events, fetchedAt: cache.fetchedAt, migrationError: error.message };
+        }
+      }
+    } finally {
+      await lock.release();
+    }
+  }
+  const source = upgradeCache(cache).sources.find(item => item.sourceUrl === url);
+  if (!source) return null;
+  const result = visible(source);
+  return source.hasLiveSnapshot === false && !result.events.length ? null : result;
 }
 
 async function refreshCalendar(folder, config, isCurrent = async () => true) {
@@ -498,31 +584,53 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
     const current = await loadConfig(folder);
     if (current.url !== url || current.revision !== config.revision || !await isCurrent()) return { stale: true };
 
-    const previous = await loadCacheRecord(folder);
-    if (previous?.sourceUrl === url &&
+    const cache = upgradeCache(await loadCacheRecord(folder));
+    const previous = cache.sources.find(item => item.sourceUrl === url);
+    if (previous &&
         (previous.completedAt > completedAt ||
          (previous.completedAt === completedAt && previous.completionId > completionId))) {
-      return { events: previous.events, fetchedAt: previous.fetchedAt };
+      return await isCurrent() ? visible(previous) : { stale: true };
     }
 
-    const refreshed = { events: result.events, fetchedAt: new Date(completedAt).toISOString() };
-    const content = JSON.stringify({
-      version: 1,
+    const history = new Map((previous?.history || []).map(event => [event.id, event]));
+    const tombstones = new Set(previous?.tombstones || []);
+    for (const uid of result.cancellations) {
+      history.delete(uid);
+      tombstones.add(uid);
+    }
+    for (const event of result.standalone) {
+      history.set(event.id, event);
+      tombstones.delete(event.id);
+    }
+    const now = Date.now();
+    const active = new Set(result.standalone.map(event => event.id));
+    for (const [uid, event] of history) {
+      if (!active.has(uid) && !eligible(event, now)) history.delete(uid);
+    }
+    const source = {
       sourceUrl: url,
       completedAt,
       completionId,
-      ...refreshed
-    }, null, 2) + '\n';
+      events: result.events,
+      hasLiveSnapshot: true,
+      fetchedAt: new Date(completedAt).toISOString(),
+      history: [...history.values()],
+      tombstones: [...tombstones]
+    };
+    cache.sources = cache.sources.filter(item => item.sourceUrl !== url)
+      .map(item => ({ ...item, events: [], hasLiveSnapshot: false }));
+    cache.sources.push(source);
     try {
-      await atomicWrite(cacheFileFor(folder), content, () => lock.assert());
+      await writeCache(folder, cache, lock, isCurrent);
     } catch (error) {
-      throw new Error(`Der Kalender konnte nicht im Datenordner gespeichert werden: ${error.message}`);
+      if (error instanceof StaleRefresh) return { stale: true };
+      throw error;
     }
     const afterWrite = await loadConfig(folder);
     if (afterWrite.url !== url || afterWrite.revision !== config.revision || !await isCurrent()) {
       return { stale: true };
     }
-    return refreshed;
+    return visible(source, now);
   } finally {
     await lock.release();
   }

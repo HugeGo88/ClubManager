@@ -393,6 +393,60 @@ async function calendarCacheSmoke(window, port, setCalendarAvailable) {
   })()`);
 }
 
+async function calendarRetentionSmoke(window, port, setFeed) {
+  const url = `http://127.0.0.1:${port}/retention.ics`;
+  await window.webContents.executeJavaScript(`(async () => {
+    const folder = await window.club.getFolder();
+    const config = await window.club.getCalendarConfig();
+    const saved = await window.club.setCalendarConfig(${JSON.stringify(url)}, { folder, revision: config.revision });
+    const result = await window.club.fetchCalendar({ folder, revision: saved.revision });
+    if (result.events.length !== 4) throw new Error('Retention fixture was not fetched');
+  })()`);
+  setFeed('empty');
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        if (test()) return;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for retained calendar events');
+    };
+    document.querySelector('[data-view="settings"]').click();
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    document.querySelector('[data-view="calendar"]').click();
+    await waitFor(() => document.querySelector('[data-event-title="Retained 1"]'));
+    const bar = document.querySelector('[data-event-title="Retained 1"]');
+    if (bar.dataset.startDate !== '2026-11-25' || bar.dataset.endDate !== '2026-11-29') {
+      throw new Error('Retained multi-day event did not span the week');
+    }
+    bar.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    const detail = document.querySelector('[data-calendar-event-dialog]');
+    if (!detail.open || !detail.textContent.includes('Clubhaus') || detail.querySelector('input, textarea')) {
+      throw new Error('Retained event details are not read-only');
+    }
+    detail.querySelector('[data-action="close-calendar-event"]').click();
+    await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+    document.querySelector('[data-action="calendar-more"][data-date="2026-11-25"]').click();
+    await waitFor(() => document.querySelector('[data-calendar-overflow-dialog]'));
+    const hidden = document.querySelector('[data-calendar-overflow-dialog] [data-event-title="Retained 4"]');
+    if (!hidden) throw new Error('Retained event missing from crowded-day overflow');
+    hidden.click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    document.querySelector('[data-calendar-event-dialog] [data-action="close-calendar-event"]').click();
+    document.querySelector('[data-calendar-overflow-dialog] [data-action="close-calendar-overflow"]').click();
+  })()`);
+  setFeed('offline');
+  await window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('[data-action="calendar-refresh"]').click();
+    for (let i = 0; i < 200; i++) {
+      if (document.querySelector('[data-calendar-stale]') && document.querySelector('[data-event-title="Retained 1"]')) return;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    throw new Error('Retained events or offline warning missing');
+  })()`);
+}
+
 async function previewSelectionSmoke(window) {
   window.setSize(1100, 800);
   for (const module of ['meetings', 'letters']) {
@@ -564,8 +618,21 @@ async function main() {
   let selectedCssFile = cssFile;
   let selectedDataFolder = data;
   let calendarAvailable = true;
+  let retentionFeed = 'full';
   const calendarServer = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'text/calendar');
+    if (request.url === '/retention.ics') {
+      if (retentionFeed === 'offline') {
+        response.statusCode = 503;
+        response.end('unavailable');
+      } else {
+        response.end(['BEGIN:VCALENDAR', ...(retentionFeed === 'full' ? [1, 2, 3, 4].flatMap(number => [
+          'BEGIN:VEVENT', `UID:retained-${number}`, 'DTSTART;VALUE=DATE:20261125',
+          'DTEND;VALUE=DATE:20261130', `SUMMARY:Retained ${number}`, 'LOCATION:Clubhaus', 'END:VEVENT'
+        ]) : []), 'END:VCALENDAR'].join('\r\n'));
+      }
+      return;
+    }
     if (request.url === '/cache.ics' || request.url === '/missing-cache.ics') {
       if (!calendarAvailable) {
         response.statusCode = 503;
@@ -3137,6 +3204,7 @@ async function main() {
         assert.equal(folderSettings.activeFolder, data);
         await calendarSmoke(window, calendarPort);
         await calendarCacheSmoke(window, calendarPort, available => { calendarAvailable = available; });
+        await calendarRetentionSmoke(window, calendarPort, mode => { retentionFeed = mode; });
         await previewSelectionSmoke(window);
         await runFolderRecoverySmoke();
         await runFolderRecoverySmoke('configuration');

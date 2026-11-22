@@ -80,9 +80,23 @@ settings.json in userData    user-selected data folder
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Online calendar configuration is folder-local in `clubmanager-calendar.json`;
-  the last successful response is atomically stored beside it in
-  `clubmanager-calendar-cache.json`, bound to its normalized source URL and
-  including its fetch time. A folder-local lock serializes configuration and
+  the last successful response and standalone UID-bearing event history are
+  atomically stored together in `clubmanager-calendar-cache.json`; history is
+  separate for each normalized source URL and records its fetch time, while
+  only the latest source's response retains non-history events. Missing
+  standalone events are retained until two years after their end; active feed
+  entries remain visible regardless of age, replace matching history, and
+  explicit cancellations remove and tombstone entries until reinstated.
+  Recurring and UID-less events are cached as live results but are not retained
+  after omission. Version 1 caches are migrated on refresh or offline load;
+  their IDs did not record provenance, so UUID-v4-shaped IDs and
+  occurrence-shaped IDs cannot safely be distinguished from generated IDs or
+  recurrence instances and are not seeded as history. Other legacy IDs are
+  treated as standalone, which can be ambiguous for unusual UID values.
+  Events absent from that cache cannot be recovered. Each configuration save
+  changes its revision even when a URL is restored, and the active-folder epoch
+  also rejects in-flight results after a folder switch away and back. A
+  folder-local lock serializes configuration and
   cache commits across app processes; completion timestamps ensure that the
   last successful concurrent refresh wins. Failed requests or cache writes
   preserve the previous cache. The restricted preload exposes loading, saving
