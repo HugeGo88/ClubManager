@@ -38,6 +38,7 @@ let lastSeenVersion = null;
 let legacyDocumentCustomizations = { protocolCss: null, meetingTemplate: null, letterTemplate: null, signatures: [] };
 let settingsLoaded = false;
 let startupError;
+let startupErrorIsFatal = false;
 let startupComplete = false;
 let startupReady = Promise.resolve();
 let writeQueue = Promise.resolve();
@@ -373,6 +374,18 @@ function registerHandlers() {
         }).catch(error => console.error('Fehlerdialog konnte nicht angezeigt werden:', error));
       }
     } else if (!mainWindow.isDestroyed()) mainWindow.show();
+  });
+  ipcMain.on('splash:error-acknowledged', () => {
+    if (startupErrorIsFatal) {
+      // Fatal error (e.g., update install failed): quit the app
+      app.quit();
+    } else {
+      // Non-fatal error (e.g., folder missing): close splash and let app continue in read-only mode
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.close();
+      }
+      // App will continue loading in read-only mode (implemented in ticket #31)
+    }
   });
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('manual:get', () => loadManual(path.join(__dirname, '../shared/generated/manual.json'), app.getVersion()));
@@ -971,6 +984,8 @@ app.whenReady().then(async () => {
         splashWindow.webContents.send('splash:error-message', { code, message });
       }
       startupError = message;
+      // Fatal errors: update install failed
+      startupErrorIsFatal = code === 'UPDATE_INSTALL_FAILED';
     }
   };
 

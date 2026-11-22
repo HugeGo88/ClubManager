@@ -39,6 +39,47 @@
     @media (prefers-reduced-motion: reduce) {
       .spinner { animation: none; }
     }
+    .error-display {
+      display: none;
+      text-align: center;
+      padding: 16px;
+      background: #fef3f2;
+      border: 1px solid #fecfc9;
+      border-radius: 8px;
+      max-width: 350px;
+      margin: 0 auto;
+    }
+    .error-display.show {
+      display: block;
+    }
+    #error-message {
+      font-size: 13px;
+      color: #c51a1a;
+      margin: 0 0 12px 0;
+      line-height: 1.4;
+    }
+    #ok-button {
+      display: none;
+      padding: 8px 16px;
+      background: #c51a1a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    #ok-button.show {
+      display: block;
+    }
+    #ok-button:hover {
+      background: #a01515;
+    }
+    #ok-button:focus {
+      outline: 2px solid #2867c7;
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>
@@ -47,6 +88,10 @@
     <div class="name">ClubManager</div>
     <div class="status" role="status"><span class="spinner" aria-hidden="true"></span>Wird gestartet …</div>
     <div class="message" id="message"></div>
+    <div class="error-display" id="error-display">
+      <div id="error-message"></div>
+      <button id="ok-button">OK</button>
+    </div>
   </main>
 </body>
 </html>
