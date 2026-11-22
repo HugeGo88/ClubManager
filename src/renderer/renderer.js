@@ -372,7 +372,7 @@ function calendarView() {
       ${days.map(({ date, key }, index) => `<div class="calendar-day ${date.getMonth() !== month.getMonth() ? 'adjacent' : ''} ${key === today ? 'today' : ''}" data-date="${key}" data-column="${index + 1}" role="gridcell">
         <span class="calendar-day-number">${date.getDate()}</span>
       </div>`).join('')}
-      ${visible.map(({ event, first, last, lane }) => `<button type="button" class="calendar-event calendar-grid-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-title="${escape(event.title)}" data-start-date="${days[first].key}" data-end-date="${days[last].key}" data-column="${first + 1}" data-span="${last - first + 1}" data-lane="${lane + 1}" aria-label="${escape(`${event.title}, ${formatCalendarEventTime(event)}`)}" title="${escape(event.description)}">${escape(event.title)}</button>`).join('')}
+      ${visible.map(({ event, first, last, lane }) => `<button type="button" class="calendar-event calendar-grid-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-uidless="${Boolean(event.uidless)}" data-event-title="${escape(event.title)}" data-start-date="${days[first].key}" data-end-date="${days[last].key}" data-column="${first + 1}" data-span="${last - first + 1}" data-lane="${lane + 1}" aria-label="${escape(`${event.title}, ${formatCalendarEventTime(event)}`)}" title="${escape(event.description)}">${escape(event.title)}</button>`).join('')}
       ${days.map(({ date, key, hidden }, index) => hidden.length ? `<button type="button" class="calendar-more" data-action="calendar-more" data-date="${key}" data-column="${index + 1}" aria-label="${escape(`${hidden.length} weitere Termine am ${date.toLocaleDateString('de-DE')}`)}">+${hidden.length} weitere</button>` : '').join('')}
     </div>`);
   }
@@ -1201,7 +1201,8 @@ async function run(action, target) {
       await fetchCalendarEvents();
       break;
     case 'open-calendar-event': {
-      const event = calendarState.events.find(item => item.id === target.dataset.eventId);
+      const event = calendarState.events.find(item => item.id === target.dataset.eventId &&
+        Boolean(item.uidless) === (target.dataset.eventUidless === 'true'));
       if (!event) break;
       const location = event.location ? `<dt>Ort</dt><dd data-calendar-location>${escape(event.location)}</dd>` : '';
       const description = event.description ? `<dt>Beschreibung</dt><dd data-calendar-description>${escape(event.description)}</dd>` : '';
@@ -1231,7 +1232,7 @@ async function run(action, target) {
       dialog.innerHTML = `<form method="dialog">
         <h2>Weitere Termine am ${escape(dateKey)}</h2>
         <div class="calendar-overflow-list">
-          ${dayEvents.map(event => `<button type="button" class="calendar-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-title="${escape(event.title)}">${escape(event.title)}</button>`).join('')}
+          ${dayEvents.map(event => `<button type="button" class="calendar-event" data-calendar-event data-action="open-calendar-event" data-event-id="${escape(event.id)}" data-event-uidless="${Boolean(event.uidless)}" data-event-title="${escape(event.title)}">${escape(event.title)}</button>`).join('')}
         </div>
         <div class="row"><button type="submit" class="action primary" data-action="close-calendar-overflow">Schließen</button></div>
       </form>`;

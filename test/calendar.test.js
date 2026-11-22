@@ -249,6 +249,132 @@ test('retains an omitted identified standalone event across refresh and reload',
   assert.equal((await calendar.loadCache(folder, url)).events[0].title, 'Remember me');
 });
 
+test('matches unchanged UID-less standalone content and retains it after omission and reload', async t => {
+  const folder = await fixture(t);
+  let feed = 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20991121T100000Z\r\nSUMMARY:Remember me\r\nEND:VEVENT\r\nEND:VCALENDAR';
+  const server = http.createServer((request, response) => response.end(feed));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title), ['Remember me']);
+  feed = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title), ['Remember me']);
+  assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title), ['Remember me']);
+});
+
+test('seeds a version 2 UID-less snapshot while offline without losing identified or recurring events', async t => {
+  const folder = await fixture(t);
+  const server = http.createServer((request, response) => response.end('BEGIN:VCALENDAR\r\nEND:VCALENDAR'));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  const event = (id, title) => ({ id, title, description: '', location: '',
+    start: '2099-01-01T10:00:00.000Z', end: '2099-01-01T11:00:00.000Z' });
+  const events = [event(randomUUID(), 'No UID'), event('known', 'Identified'),
+    event('series@2099-01-01T10:00:00Z', 'Recurring')];
+  await fs.writeFile(path.join(folder, 'clubmanager-calendar-cache.json'), JSON.stringify({
+    version: 2, sources: [{ sourceUrl: url, fetchedAt: '2026-01-01T00:00:00.000Z',
+      events, history: [events[1]], tombstones: [], hasLiveSnapshot: true }]
+  }));
+  assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title), ['No UID', 'Identified', 'Recurring']);
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title).sort(), ['Identified', 'No UID']);
+  assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title).sort(), ['Identified', 'No UID']);
+});
+
+test('keeps changed UID-less contents as separate events instead of guessing an identity', async t => {
+  const folder = await fixture(t);
+  let description = 'First';
+  const server = http.createServer((request, response) => response.end(
+    `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20990101T100000Z\r\nSUMMARY:Meeting\r\nDESCRIPTION:${description}\r\nEND:VEVENT\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  description = 'Second';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.description).sort(), ['First', 'Second']);
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.description).sort(), ['First', 'Second']);
+});
+
+test('does not equate UID-less events when an unrendered ICS property changes', async t => {
+  const folder = await fixture(t);
+  let transparency = 'OPAQUE';
+  const server = http.createServer((request, response) => response.end(
+    `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20990101T100000Z\r\nSUMMARY:Meeting\r\nTRANSP:${transparency}\r\nEND:VEVENT\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  transparency = 'TRANSPARENT';
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 2);
+});
+
+test('reports version 2 offline migration failures without discarding live or retained events', async t => {
+  const folder = await fixture(t);
+  const url = 'https://example.test/legacy.ics';
+  const event = (id, title) => ({ id, title, description: '', location: '',
+    start: '2099-01-01T10:00:00.000Z', end: '2099-01-01T11:00:00.000Z' });
+  const file = path.join(folder, 'clubmanager-calendar-cache.json');
+  const original = JSON.stringify({ version: 2, sources: [{ sourceUrl: url,
+    fetchedAt: '2026-01-01T00:00:00.000Z', events: [event(randomUUID(), 'Live')],
+    history: [event('known', 'Retained')], tombstones: [] }] });
+  await fs.writeFile(file, original);
+  const rename = fs.rename;
+  t.mock.method(fs, 'rename', (source, target) => target === file
+    ? Promise.reject(new Error('offline migration failed')) : rename(source, target));
+  const cached = await calendar.loadCache(folder, url);
+  assert.deepEqual(cached.events.map(e => e.title).sort(), ['Live', 'Retained']);
+  assert.match(cached.migrationError, /offline migration failed/);
+  assert.equal(await fs.readFile(file, 'utf8'), original);
+});
+
+test('expires missing UID-less timed and all-day events at their end boundary while keeping old live events', async t => {
+  const folder = await fixture(t);
+  let feed = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT', 'DTSTART:20240101T090000Z', 'DTEND:20240101T100000Z', 'SUMMARY:Timed', 'END:VEVENT',
+    'BEGIN:VEVENT', 'DTSTART;VALUE=DATE:20240101', 'DTEND;VALUE=DATE:20240103', 'SUMMARY:All day', 'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+  const server = http.createServer((request, response) => response.end(feed));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-01-01T09:59:59Z') });
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 2);
+  feed = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR';
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 2);
+  t.mock.timers.setTime(new Date('2026-01-01T10:00:00Z').getTime());
+  assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title), ['All day']);
+  t.mock.timers.setTime(new Date('2026-01-03T00:00:00Z').getTime());
+  assert.deepEqual((await calendar.loadCache(folder, url)).events, []);
+  feed = 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20240101T090000Z\r\nSUMMARY:Old live\r\nEND:VEVENT\r\nEND:VCALENDAR';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title), ['Old live']);
+});
+
+test('isolates UID-less history by source and data folder when switching back', async t => {
+  const first = await fixture(t);
+  const second = await fixture(t);
+  const server = http.createServer((request, response) => response.end(request.url === '/a'
+    ? 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART:20990101T100000Z\r\nSUMMARY:Source A\r\nEND:VEVENT\r\nEND:VCALENDAR'
+    : 'BEGIN:VCALENDAR\r\nEND:VCALENDAR'));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  let config = await calendar.saveConfig(first, `${base}/a`);
+  await calendar.refreshCalendar(first, config);
+  config = await calendar.saveConfig(first, `${base}/b`, config.revision);
+  assert.deepEqual((await calendar.refreshCalendar(first, config)).events, []);
+  await calendar.saveConfig(first, `${base}/a`, config.revision);
+  assert.deepEqual((await calendar.loadCache(first, `${base}/a`)).events.map(e => e.title), ['Source A']);
+  assert.equal(await calendar.loadCache(second, `${base}/a`), null);
+});
+
 test('expires missing timed, all-day and multi-day events at two years after their ends but keeps live old events', async t => {
   const folder = await fixture(t);
   let feed = [
@@ -335,7 +461,7 @@ test('switching sources retains standalone history but does not restore an older
   assert.deepEqual((await calendar.loadCache(folder, `${base}/a`)).events.map(e => e.title), ['Standalone']);
 });
 
-test('migrates the last successful cache offline and seeds identifiable standalone history without retaining recurrence or generated IDs', async t => {
+test('migrates the version 1 cache offline and retains possible UID-less events without retaining recurrence', async t => {
   const folder = await fixture(t);
   let feed = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR';
   const server = http.createServer((request, response) => response.end(feed));
@@ -352,8 +478,8 @@ test('migrates the last successful cache offline and seeds identifiable standalo
     version: 1, sourceUrl: url, fetchedAt: '2026-01-01T00:00:00.000Z', events
   }));
   assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title), ['Identified', 'Recurring', 'No UID']);
-  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title), ['Identified']);
-  assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title), ['Identified']);
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title), ['Identified', 'No UID']);
+  assert.deepEqual((await calendar.loadCache(folder, url)).events.map(e => e.title), ['Identified', 'No UID']);
 });
 
 test('keeps the legacy cache usable and reports a failed offline migration', async t => {
@@ -373,7 +499,7 @@ test('keeps the legacy cache usable and reports a failed offline migration', asy
   assert.equal(await fs.readFile(file, 'utf8'), original);
 });
 
-test('recurring and UID-less events remain available in the live cache but are not retained after omission', async t => {
+test('recurring events remain live-only while UID-less standalone events survive omission', async t => {
   const folder = await fixture(t);
   let feed = [
     'BEGIN:VCALENDAR',
@@ -389,7 +515,7 @@ test('recurring and UID-less events remain available in the live cache but are n
   assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 3);
   assert.equal((await calendar.loadCache(folder, url)).events.length, 3);
   feed = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR';
-  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events, []);
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.title), ['No UID']);
 });
 
 test('does not publish an in-flight refresh after its source becomes stale', async t => {

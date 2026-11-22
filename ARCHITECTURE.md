@@ -80,19 +80,23 @@ settings.json in userData    user-selected data folder
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Online calendar configuration is folder-local in `clubmanager-calendar.json`;
-  the last successful response and standalone UID-bearing event history are
+  the last successful response and standalone event history are
   atomically stored together in `clubmanager-calendar-cache.json`; history is
   separate for each normalized source URL and records its fetch time, while
   only the latest source's response retains non-history events. Missing
   standalone events are retained until two years after their end; active feed
   entries remain visible regardless of age, replace matching history, and
   explicit cancellations remove and tombstone entries until reinstated.
-  Recurring and UID-less events are cached as live results but are not retained
-  after omission. Version 1 caches are migrated on refresh or offline load;
-  their IDs did not record provenance, so UUID-v4-shaped IDs and
-  occurrence-shaped IDs cannot safely be distinguished from generated IDs or
-  recurrence instances and are not seeded as history. Other legacy IDs are
-  treated as standalone, which can be ambiguous for unusual UID values.
+  Standalone events without UIDs use a content-derived identifier based on the
+  complete parsed VEVENT, not a guessed identity; changed content can therefore
+  leave both versions visible. UID-less cancellations cannot reliably identify
+  an earlier event. Recurring events remain live-only. Version 1 and earlier
+  version 2 caches are migrated on refresh or offline load. Their generated
+  UUID-v4-shaped IDs have ambiguous provenance and their original VEVENT
+  contents are unavailable; such cached standalone-looking events are seeded
+  with their existing IDs, so a later UID-less feed entry can appear alongside
+  its cached predecessor. Occurrence-shaped IDs are not seeded, which can be
+  ambiguous for unusual UID values.
   Events absent from that cache cannot be recovered. Each configuration save
   changes its revision even when a URL is restored, and the active-folder epoch
   also rejects in-flight results after a folder switch away and back. A
