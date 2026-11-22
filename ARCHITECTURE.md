@@ -80,9 +80,30 @@ settings.json in userData    user-selected data folder
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Online calendar configuration is folder-local in `clubmanager-calendar.json`;
-  the last successful response is atomically stored beside it in
-  `clubmanager-calendar-cache.json`, bound to its normalized source URL and
-  including its fetch time. A folder-local lock serializes configuration and
+  the last successful response and observed event and occurrence history are
+  atomically stored together in `clubmanager-calendar-cache.json`; history is
+  separate for each normalized source URL and records its fetch time, while
+  only the latest source's response retains its live snapshot. Missing
+  events and individual occurrences are retained until two years after their end; active feed
+  entries remain visible regardless of age, replace matching history, and
+  explicit cancellations and recurrence exclusions remove entries until
+  actively reinstated, including every saved occurrence on series cancellation.
+  Recurrence identities use the UID and original occurrence instant so moved
+  instances replace their previous version. UID-less content matching cannot
+  reliably identify changed events; for series the recurrence rule and exclusions
+  are excluded from the fingerprint, so identical otherwise-indistinguishable
+  series cannot be distinguished. UID-less cancellations cannot reliably identify
+  an earlier event. Version 1 and earlier
+  version 2 caches are migrated on refresh or offline load. Their generated
+  UUID-v4-shaped IDs have ambiguous provenance and their original VEVENT
+  contents are unavailable; such cached standalone-looking events are seeded
+  with their existing IDs, so a later UID-less feed entry can appear alongside
+  its cached predecessor. Occurrence-shaped IDs are not seeded, which can be
+  ambiguous for unusual UID values.
+  Events absent from that cache cannot be recovered. Each configuration save
+  changes its revision even when a URL is restored, and the active-folder epoch
+  also rejects in-flight results after a folder switch away and back. A
+  folder-local lock serializes configuration and
   cache commits across app processes; completion timestamps ensure that the
   last successful concurrent refresh wins. Failed requests or cache writes
   preserve the previous cache. The restricted preload exposes loading, saving

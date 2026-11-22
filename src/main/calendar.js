@@ -29,7 +29,7 @@ function normalizeUrl(input) {
 }
 
 function encode(config) {
-  return JSON.stringify({ version: 1, url: config.url }, null, 2) + '\n';
+  return JSON.stringify({ version: 1, url: config.url, generation: crypto.randomUUID() }, null, 2) + '\n';
 }
 
 function revision(content) {
@@ -152,7 +152,7 @@ function zonedWallTimeToIso(time, tzid) {
         .filter(part => part.type !== 'literal')
         .map(part => [part.type, Number(part.value)]));
       const representedAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-      const correction = representedAsUtc - guess;
+      const correction = representedAsUtc - wall;
       guess -= correction;
       if (correction === 0) break;
     }
@@ -176,7 +176,39 @@ function allDayIso(time) {
   return new Date(Date.UTC(time.year, time.month - 1, time.day)).toISOString();
 }
 
-function parseIcs(content) {
+function recurrenceKey(property, time) {
+  return time.isDate ? allDayIso(time) : timeToIso(property, time);
+}
+
+function anonymousSeriesId(component) {
+  const [name, properties, children] = component.toJSON();
+  const identity = [name, properties.filter(property => !['rrule', 'rdate', 'exdate'].includes(property[0])), children];
+  return `uidless:${crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
+}
+
+function uidlessSeriesIdForOccurrence(components, recurrenceProperty, recurrenceId) {
+  for (const component of components) {
+    if (component.getFirstPropertyValue('uid')) continue;
+    if (!component.hasProperty('rrule') && !component.hasProperty('rdate')) continue;
+    const startProperty = component.getFirstProperty('dtstart');
+    if (!startProperty) continue;
+    try {
+      const event = new ICAL.Event(component);
+      const iterator = event.iterator();
+      let occurrence;
+      while ((occurrence = iterator.next()) && occurrence.year <= 2100) {
+        if (recurrenceKey(startProperty, occurrence) === recurrenceKey(recurrenceProperty, recurrenceId)) {
+          return anonymousSeriesId(component);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function parseCalendar(content) {
   let jcal;
   try {
     jcal = ICAL.parse(String(content));
@@ -195,9 +227,50 @@ function parseIcs(content) {
   }
 
   const events = [];
-  for (const component of calendar.getAllSubcomponents('vevent')) {
-    if (component.getFirstProperty('recurrence-id') ||
-        component.getFirstPropertyValue('status') === 'CANCELLED') continue;
+  const standalone = [];
+  const cancellations = [];
+  const anonymousCancellations = [];
+  const seriesCancellations = [];
+  const anonymousSeriesCancellations = new Set();
+  const components = calendar.getAllSubcomponents('vevent');
+  for (const component of components) {
+    const identified = component.getFirstPropertyValue('uid');
+    const uid = identified ||
+      ((component.hasProperty('rrule') || component.hasProperty('rdate')) ? anonymousSeriesId(component) : null);
+    const recurrenceProperty = component.getFirstProperty('recurrence-id');
+    const recurrenceId = recurrenceProperty?.getFirstValue();
+    const recurrenceUid = recurrenceId
+      ? uidlessSeriesIdForOccurrence(components, recurrenceProperty, recurrenceId)
+      : null;
+    if (component.getFirstPropertyValue('status') === 'CANCELLED') {
+      if (recurrenceId && identified) cancellations.push(`${identified}@${recurrenceKey(recurrenceProperty, recurrenceId)}`);
+      else if (recurrenceId && recurrenceUid) anonymousCancellations.push(`${recurrenceUid}@${recurrenceKey(recurrenceProperty, recurrenceId)}`);
+      else if (uid) {
+        cancellations.push(uid);
+        seriesCancellations.push(uid);
+        if (!identified) anonymousSeriesCancellations.add(uid);
+      }
+    }
+    for (const exdate of component.getAllProperties('exdate')) {
+      for (const date of exdate.getValues()) {
+        (identified ? cancellations : anonymousCancellations).push(`${uid}@${recurrenceKey(exdate, date)}`);
+      }
+    }
+  }
+  const cancelled = new Set(cancellations);
+  const anonymousCancelled = new Set(anonymousCancellations);
+  const cancelledSeries = new Set(seriesCancellations);
+  const emitted = new Set();
+  for (const component of [...components.filter(item => !item.hasProperty('recurrence-id')),
+    ...components.filter(item => item.hasProperty('recurrence-id'))]) {
+    const identified = component.getFirstPropertyValue('uid');
+    const recurring = component.hasProperty('rrule') || component.hasProperty('rdate') ||
+      component.hasProperty('recurrence-id');
+    if (identified && cancelledSeries.has(identified)) continue;
+    if (component.getFirstPropertyValue('status') === 'CANCELLED') {
+      continue;
+    }
+    if (component.hasProperty('recurrence-id') && !identified) continue;
     const startProperty = component.getFirstProperty('dtstart');
     if (!startProperty) continue;
     let startValue;
@@ -207,7 +280,10 @@ function parseIcs(content) {
       continue;
     }
     if (!startValue) continue;
-    const uid = component.getFirstPropertyValue('uid') || crypto.randomUUID();
+    const uidless = !identified;
+    const uid = identified || (recurring ? anonymousSeriesId(component)
+      : `uidless:${crypto.createHash('sha256').update(JSON.stringify(component.toJSON())).digest('hex')}`);
+    if (!identified && anonymousSeriesCancellations.has(uid)) continue;
     const append = (startTime, endTime, item, occurrenceKey) => {
       if (!startTime) return;
       const status = item?.component?.getFirstPropertyValue('status');
@@ -263,14 +339,34 @@ function parseIcs(content) {
         location: locationProperty?.getFirstValue() || '',
         start,
         end,
-        allDay
+        allDay,
+        ...(uidless ? { uidless: true } : {})
       });
+      emitted.add(eventKey(events[events.length - 1]));
+      standalone.push(recurring
+        ? { ...events[events.length - 1], ...(identified ? { seriesUid: identified } : {}) }
+        : events[events.length - 1]);
     };
 
-    if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
+    if (component.hasProperty('recurrence-id')) {
+      const property = component.getFirstProperty('recurrence-id');
+      const key = recurrenceKey(property, property.getFirstValue());
+      if (!emitted.has(eventKey({ id: `${uid}@${key}` })) && !cancelled.has(`${uid}@${key}`)) {
+        append(startValue, component.getFirstProperty('dtend')?.getFirstValue() || null, { component }, key);
+      }
+    } else if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
       let event;
+      const exceptions = components.filter(candidate =>
+        candidate.hasProperty('recurrence-id') &&
+        (identified
+          ? candidate.getFirstPropertyValue('uid') === identified
+          : !candidate.getFirstPropertyValue('uid')));
+      const exceptionsByKey = new Map(exceptions.map(candidate => {
+        const property = candidate.getFirstProperty('recurrence-id');
+        return [recurrenceKey(property, property.getFirstValue()), candidate];
+      }));
       try {
-        event = new ICAL.Event(component);
+        event = new ICAL.Event(component, { exceptions });
       } catch {
         continue;
       }
@@ -280,11 +376,21 @@ function parseIcs(content) {
       while ((occurrence = iterator.next()) && count < 10000) {
         count++;
         if (occurrence.year > 2100) break;
-        const details = event.getOccurrenceDetails(occurrence);
+        const key = recurrenceKey(startProperty, occurrence);
+        if ((uidless ? anonymousCancelled : cancelled).has(`${uid}@${key}`)) continue;
+        const exception = exceptionsByKey.get(key);
+        let details;
+        if (exception) {
+          if (!exception.hasProperty('dtstart')) continue;
+          const item = new ICAL.Event(exception);
+          details = { item, startDate: item.startDate, endDate: item.endDate };
+        } else {
+          details = event.getOccurrenceDetails(occurrence);
+        }
         const item = details.item;
         const status = item?.component?.getFirstPropertyValue('status');
         if (status === 'CANCELLED') continue;
-        append(details.startDate, details.endDate, item, details.recurrenceId?.toString() || null);
+        append(details.startDate, details.endDate, item, key);
       }
     } else {
       const endProperty = component.getFirstProperty('dtend');
@@ -292,7 +398,12 @@ function parseIcs(content) {
       append(startValue, endTime, { component }, null);
     }
   }
-  return events.sort((a, b) => a.start.localeCompare(b.start));
+  events.sort((a, b) => a.start.localeCompare(b.start));
+  return { events, standalone, cancellations, anonymousCancellations, seriesCancellations };
+}
+
+function parseIcs(content) {
+  return parseCalendar(content).events;
 }
 
 async function fetchIcs(input, redirects = 0) {
@@ -335,7 +446,8 @@ async function fetchIcs(input, redirects = 0) {
         if (tooLarge) reject(new Error('Die Kalender-Quelle ist größer als 10 MB.'));
         else {
           try {
-            resolve({ events: parseIcs(text), sourceUrl: url.protocol + '//' + url.host });
+            const parsed = parseCalendar(text);
+            resolve({ ...parsed, sourceUrl: url.protocol + '//' + url.host });
           } catch (error) {
             reject(new Error(`Die Kalender-Daten konnten nicht gelesen werden: ${error.message}`));
           }
@@ -452,28 +564,123 @@ async function loadCacheRecord(folder) {
   } catch {
     throw new Error('Der gespeicherte Kalender enthält ungültiges JSON.');
   }
-  if (!cache || cache.version !== 1 || typeof cache.sourceUrl !== 'string' ||
-      typeof cache.fetchedAt !== 'string' || !Array.isArray(cache.events)) {
+  if (!cache || ![1, 2].includes(cache.version)) {
     throw new Error('Der gespeicherte Kalender hat ein ungültiges oder nicht unterstütztes Format.');
   }
-  if (!Number.isFinite(Date.parse(cache.fetchedAt)) ||
-      (cache.completedAt !== undefined && !Number.isFinite(cache.completedAt)) ||
-      (cache.completionId !== undefined && typeof cache.completionId !== 'string') ||
-      cache.events.some(event =>
-    !event || typeof event.id !== 'string' || typeof event.title !== 'string' ||
-    typeof event.description !== 'string' || typeof event.location !== 'string' ||
-    (event.allDay !== undefined && typeof event.allDay !== 'boolean') ||
-    !Number.isFinite(Date.parse(event.start)) || !Number.isFinite(Date.parse(event.end)))) {
+  const sources = cache.version === 1 ? [cache] : cache.sources;
+  const validEvent = event => event && typeof event.id === 'string' &&
+    (event.seriesUid === undefined || typeof event.seriesUid === 'string') &&
+    typeof event.title === 'string' && typeof event.description === 'string' &&
+    typeof event.location === 'string' &&
+    (event.allDay === undefined || typeof event.allDay === 'boolean') &&
+    (event.uidless === undefined || event.uidless === true) &&
+    Number.isFinite(Date.parse(event.start)) && Number.isFinite(Date.parse(event.end));
+  if (!Array.isArray(sources) || sources.some(source => !source ||
+      typeof source.sourceUrl !== 'string' || typeof source.fetchedAt !== 'string' ||
+      !Number.isFinite(Date.parse(source.fetchedAt)) ||
+      (source.completedAt !== undefined && !Number.isFinite(source.completedAt)) ||
+      (source.completionId !== undefined && typeof source.completionId !== 'string') ||
+      (source.hasLiveSnapshot !== undefined && typeof source.hasLiveSnapshot !== 'boolean') ||
+      (source.uidlessHistorySeeded !== undefined && typeof source.uidlessHistorySeeded !== 'boolean') ||
+      !Array.isArray(source.events) || source.events.some(event => !validEvent(event)) ||
+      (cache.version === 2 && (!Array.isArray(source.history) ||
+        source.history.some(event => !validEvent(event)) ||
+        !Array.isArray(source.tombstones) || source.tombstones.some(uid => typeof uid !== 'string'))))) {
     throw new Error('Der gespeicherte Kalender enthält ungültige Daten.');
   }
   return cache;
 }
 
+function upgradeCache(cache) {
+  if (!cache) return { version: 2, sources: [] };
+  const occurrenceId = /@(?:\d{8}(?:T\d{6}Z?)?|\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}Z?)?)$/;
+  const generatedId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const sources = cache.version === 1
+    ? [{ ...cache, history: cache.events.filter(event => !occurrenceId.test(event.id)),
+      tombstones: [], hasLiveSnapshot: true, version: undefined }]
+    : cache.sources;
+  return { version: 2, sources: sources.map(source => {
+    if (source.uidlessHistorySeeded) return source;
+    const history = new Map(source.history.map(event => [eventKey(event), event]));
+    for (const event of source.events) {
+      if (generatedId.test(event.id) && !history.has(eventKey(event))) {
+        history.set(eventKey(event), event);
+      }
+    }
+    return { ...source, history: [...history.values()], uidlessHistorySeeded: true };
+  }) };
+}
+
+function eligible(event, now) {
+  const expiry = new Date(event.end);
+  expiry.setUTCFullYear(expiry.getUTCFullYear() + 2);
+  return now < expiry.getTime();
+}
+
+function eventKey(event) {
+  return `${event.uidless ? 'anonymous' : 'identified'}:${event.id}`;
+}
+
+function visible(source, now = Date.now()) {
+  const liveIds = new Set(source.events.map(eventKey));
+  return {
+    events: [...source.events, ...source.history.filter(event => !liveIds.has(eventKey(event)) && eligible(event, now))
+      .map(({ seriesUid, ...event }) => event)]
+      .sort((a, b) => a.start.localeCompare(b.start)),
+    fetchedAt: source.fetchedAt
+  };
+}
+
+class StaleRefresh extends Error {}
+
+async function writeCache(folder, cache, lock, isCurrent = async () => true) {
+  try {
+    await atomicWrite(cacheFileFor(folder), JSON.stringify(cache, null, 2) + '\n', async () => {
+      await lock.assert();
+      if (!await isCurrent()) throw new StaleRefresh();
+    });
+  } catch (error) {
+    if (error instanceof StaleRefresh) throw error;
+    throw new Error(`Der Kalender konnte nicht im Datenordner gespeichert werden: ${error.message}`);
+  }
+}
+
 async function loadCache(folder, input) {
   const url = normalizeUrl(input);
   if (!url) return null;
-  const cache = await loadCacheRecord(folder);
-  return cache?.sourceUrl === url ? { events: cache.events, fetchedAt: cache.fetchedAt } : null;
+  let cache = await loadCacheRecord(folder);
+  const needsUpgrade = record => record?.version === 1
+    ? record.sourceUrl === url
+    : record?.sources.some(source => source.sourceUrl === url && !source.uidlessHistorySeeded);
+  const fallback = record => record.version === 1
+    ? { events: record.events, fetchedAt: record.fetchedAt }
+    : visible(record.sources.find(source => source.sourceUrl === url));
+  if (needsUpgrade(cache)) {
+    let lock;
+    try {
+      lock = await acquireCacheLock(folder);
+    } catch (error) {
+      return { ...fallback(cache), migrationError: error.message };
+    }
+    try {
+      cache = await loadCacheRecord(folder);
+      if (needsUpgrade(cache)) {
+        const upgraded = upgradeCache(cache);
+        try {
+          await writeCache(folder, upgraded, lock);
+          cache = upgraded;
+        } catch (error) {
+          return { ...fallback(cache), migrationError: error.message };
+        }
+      }
+    } finally {
+      await lock.release();
+    }
+  }
+  const source = upgradeCache(cache).sources.find(item => item.sourceUrl === url);
+  if (!source) return null;
+  const result = visible(source);
+  return source.hasLiveSnapshot === false && !result.events.length ? null : result;
 }
 
 async function refreshCalendar(folder, config, isCurrent = async () => true) {
@@ -498,31 +705,60 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
     const current = await loadConfig(folder);
     if (current.url !== url || current.revision !== config.revision || !await isCurrent()) return { stale: true };
 
-    const previous = await loadCacheRecord(folder);
-    if (previous?.sourceUrl === url &&
+    const cache = upgradeCache(await loadCacheRecord(folder));
+    const previous = cache.sources.find(item => item.sourceUrl === url);
+    if (previous &&
         (previous.completedAt > completedAt ||
          (previous.completedAt === completedAt && previous.completionId > completionId))) {
-      return { events: previous.events, fetchedAt: previous.fetchedAt };
+      return await isCurrent() ? visible(previous) : { stale: true };
     }
 
-    const refreshed = { events: result.events, fetchedAt: new Date(completedAt).toISOString() };
-    const content = JSON.stringify({
-      version: 1,
+    const history = new Map((previous?.history || []).map(event => [eventKey(event), event]));
+    const tombstones = new Set(previous?.tombstones || []);
+    for (const uid of result.seriesCancellations) {
+      for (const [id, event] of history) {
+        if (event.seriesUid === uid) history.delete(id);
+      }
+    }
+    for (const uid of result.cancellations) {
+      history.delete(eventKey({ id: uid }));
+      tombstones.add(uid);
+    }
+    for (const id of result.anonymousCancellations) history.delete(eventKey({ id, uidless: true }));
+    for (const event of result.standalone) {
+      history.set(eventKey(event), event);
+      if (!event.uidless) tombstones.delete(event.id);
+    }
+    const now = Date.now();
+    const active = new Set(result.standalone.map(eventKey));
+    for (const [uid, event] of history) {
+      if (!active.has(uid) && !eligible(event, now)) history.delete(uid);
+    }
+    const source = {
       sourceUrl: url,
       completedAt,
       completionId,
-      ...refreshed
-    }, null, 2) + '\n';
+      events: result.events,
+      hasLiveSnapshot: true,
+      uidlessHistorySeeded: true,
+      fetchedAt: new Date(completedAt).toISOString(),
+      history: [...history.values()],
+      tombstones: [...tombstones]
+    };
+    cache.sources = cache.sources.filter(item => item.sourceUrl !== url)
+      .map(item => ({ ...item, events: [], hasLiveSnapshot: false }));
+    cache.sources.push(source);
     try {
-      await atomicWrite(cacheFileFor(folder), content, () => lock.assert());
+      await writeCache(folder, cache, lock, isCurrent);
     } catch (error) {
-      throw new Error(`Der Kalender konnte nicht im Datenordner gespeichert werden: ${error.message}`);
+      if (error instanceof StaleRefresh) return { stale: true };
+      throw error;
     }
     const afterWrite = await loadConfig(folder);
     if (afterWrite.url !== url || afterWrite.revision !== config.revision || !await isCurrent()) {
       return { stale: true };
     }
-    return refreshed;
+    return visible(source, now);
   } finally {
     await lock.release();
   }

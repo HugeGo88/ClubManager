@@ -20,6 +20,7 @@ let calendar;
 let mainWindow;
 let splashWindow;
 let folder;
+let calendarFolderEpoch = 0;
 let dataFolders = [];
 let folderNamesNeedCaching = false;
 let folderNameCacheWarning = null;
@@ -166,6 +167,7 @@ async function loadFolder() {
   if (config.activeFolder && !await checkFolderAvailability(config.activeFolder)) {
     configuredFolder = null;
     folder = null;
+    calendarFolderEpoch++;
     startupError = 'Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie einen verfügbaren Ordner in den Einstellungen aus oder verknüpfen Sie ihn erneut.';
   }
 
@@ -180,6 +182,7 @@ async function loadFolder() {
   ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } =
     await loadFolderCustomizations(config.activeFolder));
   folder = config.activeFolder;
+  calendarFolderEpoch++;
   moduleSettings = selection;
   if (conflicts.length) {
     startupError = `Bestehende Anpassungen im Datenordner wurden nicht überschrieben: ${formatCustomizationConflicts(conflicts)}`;
@@ -279,6 +282,7 @@ async function activateFolder(selected) {
   dataFolders = nextFolders;
   configuredFolder = selected;
   folder = selected;
+  calendarFolderEpoch++;
   moduleSettings = selection;
   ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } = customizations);
   return { folder: selected, ...selection, conflicts: formatCustomizationConflictList(conflicts) };
@@ -487,6 +491,7 @@ function registerHandlers() {
       if (configuredFolder === oldPath) {
         configuredFolder = newPath;
         folder = newPath;
+        calendarFolderEpoch++;
         moduleSettings = selection;
         ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } = customizations);
       }
@@ -507,6 +512,7 @@ function registerHandlers() {
     if (isActive) {
       configuredFolder = null;
       folder = null;
+      calendarFolderEpoch++;
       protocolCss = null;
       meetingTemplate = null;
       letterTemplate = null;
@@ -546,21 +552,25 @@ function registerHandlers() {
   }));
   ipcMain.handle('calendar:fetch', async (event, base) => {
     const active = requireFolder();
+    const epoch = calendarFolderEpoch;
+    const isCurrent = () => folder === active && calendarFolderEpoch === epoch;
     if (!base || base.folder !== active) return { stale: true };
     const config = await calendar.loadConfig(active);
+    if (!isCurrent()) return { stale: true };
     if (base.revision !== undefined && base.revision !== config.revision) {
       return { stale: true, config };
     }
     if (!config.url) return { missing: true };
     try {
-      const result = await calendar.refreshCalendar(active, config, () => folder === active);
+      const result = await calendar.refreshCalendar(active, config, isCurrent);
       if (result.stale) {
-        if (folder !== active) return { stale: true };
+        if (!isCurrent()) return { stale: true };
         return { stale: true, config: await calendar.loadConfig(active) };
       }
+      if (!isCurrent()) return { stale: true };
       return { ...result, stale: false };
     } catch (error) {
-      if (folder !== active) return { stale: true };
+      if (!isCurrent()) return { stale: true };
       const current = await calendar.loadConfig(active);
       if (current.url !== config.url || current.revision !== config.revision) {
         return { stale: true, config: current };
@@ -571,8 +581,14 @@ function registerHandlers() {
       } catch (cacheError) {
         throw new Error(`${error.message} Der gespeicherte Kalender konnte nicht verwendet werden: ${cacheError.message}`);
       }
+      if (!isCurrent()) return { stale: true };
+      const afterCache = await calendar.loadConfig(active);
+      if (!isCurrent()) return { stale: true };
+      if (afterCache.url !== config.url || afterCache.revision !== config.revision) {
+        return { stale: true, config: afterCache };
+      }
       if (!cached) throw error;
-      return { ...cached, stale: true, error: error.message };
+      return { ...cached, stale: true, error: [error.message, cached.migrationError].filter(Boolean).join(' ') };
     }
   });
   ipcMain.handle('sidebar:get', () => {
@@ -942,6 +958,7 @@ app.whenReady().then(async () => {
       if (!await checkFolderAvailability(configuredFolder)) {
         configuredFolder = null;
         folder = null;
+        calendarFolderEpoch++;
         return {
           error: {
             code: 'FOLDER_NOT_FOUND',
@@ -960,6 +977,7 @@ app.whenReady().then(async () => {
         ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } =
           await loadFolderCustomizations(configuredFolder));
         folder = configuredFolder;
+        calendarFolderEpoch++;
         moduleSettings = selection;
         if (conflicts.length) {
           startupError = `Bestehende Anpassungen im Datenordner wurden nicht überschrieben: ${formatCustomizationConflicts(conflicts)}`;
