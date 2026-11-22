@@ -184,7 +184,12 @@ function clearEditor() {
 function ensureAvailableView() {
   const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'meetings' : state.view;
   const availableModule = state.view === 'calendar' ? 'invoices' : module;
-  if (!['settings', 'manual', 'changelog'].includes(state.view) && !state.modules[availableModule]) {
+  
+  // If folder is null, disable all data operations (meetings, letters, calendar)
+  const isFolderMissing = state.folder === null;
+  const isDataView = ['meetings', 'tasks', 'decisions', 'tops', 'statistics', 'letters', 'calendar'].includes(state.view);
+  
+  if (!['settings', 'manual', 'changelog'].includes(state.view) && (!state.modules[availableModule] || (isFolderMissing && isDataView))) {
     state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
   }
 }
@@ -792,10 +797,13 @@ function renderNavigation() {
     else element.removeAttribute('title');
   });
   document.querySelectorAll('[data-module-view]').forEach(element => {
-    element.hidden = !state.modules[element.dataset.moduleView];
+    // Hide if module disabled OR if folder missing and this is a data module (meetings, letters, invoices)
+    const isDataModule = ['meetings', 'letters', 'invoices'].includes(element.dataset.moduleView);
+    const isFolderMissing = state.folder === null;
+    element.hidden = !state.modules[element.dataset.moduleView] || (isFolderMissing && isDataModule);
   });
-  document.querySelector('[data-module-nav="meetings"]').hidden = !state.modules.meetings;
-  document.querySelector('[data-module-nav="invoices"]').hidden = !state.modules.invoices;
+  document.querySelector('[data-module-nav="meetings"]').hidden = !state.modules.meetings || state.folder === null;
+  document.querySelector('[data-module-nav="invoices"]').hidden = !state.modules.invoices || state.folder === null;
   document.querySelector('[data-view="meetings"]').classList.toggle('parent-active', ['tasks', 'decisions', 'tops', 'statistics'].includes(state.view));
   const toggle = document.querySelector('[data-action="toggle-meeting-nav"]');
   toggle.setAttribute('aria-expanded', String(meetingNavExpanded));
@@ -908,7 +916,9 @@ function settingsView() {
         ${state.folder ? button('open-customizations', 'Anpassungsordner öffnen') : '<p>Wählen Sie zuerst einen Datenordner aus.</p>'}</div>
       <div class="card"><h2>Über ClubManager</h2><p data-app-version>Version: ${escape(state.version ?? 'Nicht verfügbar')}</p></div>
     </section>`;
+  const folderMissingError = !state.folder ? '<p role="alert" class="notice error">Datenordner nicht verfügbar. Wählen Sie einen Ordner aus, um Sitzungen und Briefe verwenden zu können.</p>' : '';
   return `<h1>Einstellungen</h1>
+    ${folderMissingError}
     ${moduleConflict && state.message !== moduleConflict ? `<p role="status" class="notice error">${escape(moduleConflict)}</p>` : ''}
     ${state.folder ? button('reload-modules', 'Modul-Einstellungen neu laden') : ''}
     <div class="settings-tabs" role="tablist" aria-label="Einstellungsbereiche">
@@ -1087,6 +1097,14 @@ async function changeView(view) {
   if (view === state.view) return;
   const module = ['tasks', 'decisions', 'tops', 'statistics'].includes(view) ? 'meetings' : view;
   const availableModule = view === 'calendar' ? 'invoices' : module;
+  
+  // Prevent navigation to data views when folder is null
+  const isDataView = ['meetings', 'tasks', 'decisions', 'tops', 'statistics', 'letters', 'calendar'].includes(view);
+  if (isDataView && state.folder === null) {
+    setMessage('Datenordner nicht verfügbar. Wählen Sie einen Ordner in den Einstellungen aus.', true);
+    return;
+  }
+  
   if (!['settings', 'changelog', 'manual'].includes(view) && !state.modules[availableModule]) {
     setMessage('Dieses Modul ist deaktiviert. Aktivieren Sie es zuerst in den Einstellungen.', true);
     return;
@@ -1913,6 +1931,8 @@ window.club.onPrepareUpdate(async () => {
     letterState.placeholdersDirty = false;
     calendarState.config = calendarConfig;
     if (!state.modules.meetings) state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
+    // Ensure the view is available (handle null folder case)
+    ensureAvailableView();
     state.meetings = state.folder ? await window.club.listMeetings() : [];
     letterState.letters = state.folder && state.view === 'letters' ? await window.club.listLetters() : [];
   } catch (error) {
