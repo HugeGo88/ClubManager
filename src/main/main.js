@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { loadDataFolder: loadDataFolderBase } = require('./startup');
+const { loadDataFolder: loadDataFolderBase, startupSequence, checkNetworkAvailable } = require('./startup');
 
 app.commandLine.appendSwitch('lang', 'de-DE');
 
@@ -807,7 +807,7 @@ app.whenReady().then(async () => {
   settings = require('./settings');
   ({ protocolHtml, validateProtocolTemplate } = require('./protocol'));
   ({ isDate } = require('../shared/dates'));
-  ({ startUpdates } = require('./updates'));
+  ({ startUpdates, performUpdateCheck, performUpdateInstall } = require('./updates'));
   letters = require('./letters');
   documentCustomizations = require('./document-customizations');
   folderName = require('./folder-name');
@@ -815,17 +815,174 @@ app.whenReady().then(async () => {
   calendar = require('./calendar');
   ({ loadManual } = require('./manual'));
 
-  let updateReady;
+  // Load settings before startup sequence
+  let config;
+  try {
+    config = await settings.loadSettings(settingsFile());
+  } catch (error) {
+    config = {};
+  }
+  dataFolders = config.dataFolders || [];
+  for (const item of dataFolders) {
+    if (item.moduleSettingsKnown) configuredModuleFolders.add(item.path);
+  }
+  configuredFolder = config.activeFolder;
+  legacyDocumentCustomizations = {
+    protocolCss: config.protocolCss,
+    meetingTemplate: config.meetingTemplate,
+    letterTemplate: config.letterTemplate,
+    signatures: config.legacySignatures
+  };
+  legacyModules = config.modules;
+  sidebarCollapsed = config.sidebarCollapsed;
+  lastSeenVersion = config.lastSeenVersion;
+  settingsLoaded = true;
+
+  // Set up update handling for packaged builds
+  let autoUpdater = null;
   if (app.isPackaged) {
-    const { autoUpdater } = require('electron-updater');
-    updateReady = startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow, getSplashWindow: () => splashWindow, autoInstall: true });
+    ({ autoUpdater } = require('electron-updater'));
+    // Start update listeners in background (for Linux auto-install and UI feedback)
+    void startUpdates({ updater: autoUpdater, app, dialog, getWindow: () => mainWindow, getSplashWindow: () => splashWindow, autoInstall: process.platform === 'linux' });
   }
 
   registerHandlers();
-  const folderReady = loadFolder().catch(error => { startupError = error.message; });
-  startupReady = process.platform === 'linux'
-    ? Promise.all([folderReady, updateReady]).then(() => {})
-    : folderReady;
+
+  // Create startup sequence callbacks
+  const startupConfig = {
+    checkNetworkAvailable,
+    performUpdateCheck: async (isOnline) => {
+      if (!autoUpdater) return { available: false };
+      return new Promise((resolve) => {
+        let resolved = false;
+        const handleUpdateAvailable = (info) => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            resolve({ available: true, version: info?.version });
+          }
+        };
+        const handleUpdateNotAvailable = () => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            resolve({ available: false });
+          }
+        };
+        const handleError = () => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            resolve({ available: false });
+          }
+        };
+        const cleanup = () => {
+          autoUpdater.removeListener('update-available', handleUpdateAvailable);
+          autoUpdater.removeListener('update-not-available', handleUpdateNotAvailable);
+          autoUpdater.removeListener('error', handleError);
+        };
+        autoUpdater.on('update-available', handleUpdateAvailable);
+        autoUpdater.on('update-not-available', handleUpdateNotAvailable);
+        autoUpdater.on('error', handleError);
+        autoUpdater.checkForUpdates().catch(() => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            resolve({ available: false });
+          }
+        });
+      });
+    },
+    performUpdateInstall: async () => {
+      if (!autoUpdater) return;
+      return new Promise((resolve) => {
+        let resolved = false;
+        const handleUpdateDownloaded = () => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            autoUpdater.quitAndInstall(false, true);
+            resolve();
+          }
+        };
+        const handleError = (error) => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            throw error;
+          }
+        };
+        const cleanup = () => {
+          autoUpdater.removeListener('update-downloaded', handleUpdateDownloaded);
+          autoUpdater.removeListener('error', handleError);
+        };
+        autoUpdater.on('update-downloaded', handleUpdateDownloaded);
+        autoUpdater.on('error', handleError);
+      });
+    },
+    loadDataFolder: async () => {
+      // Check if folder is available and initialize it
+      if (!configuredFolder) {
+        return { folder: null };
+      }
+
+      if (!await checkFolderAvailability(configuredFolder)) {
+        configuredFolder = null;
+        folder = null;
+        return {
+          error: {
+            code: 'FOLDER_NOT_FOUND',
+            message: 'Der gespeicherte Datenordner ist nicht verfügbar. Wählen Sie einen verfügbaren Ordner in den Einstellungen aus oder verknüpfen Sie ihn erneut.'
+          }
+        };
+      }
+
+      try {
+        await refreshFolderRegistry();
+        const selectionWasKnown = configuredModuleFolders.has(configuredFolder);
+        const selection = await initializeFolder(configuredFolder);
+        const hadLegacyCustomizations = hasLegacyDocumentCustomizations();
+        const conflicts = await migrateLegacyDocumentCustomizations(configuredFolder);
+        if (hadLegacyCustomizations || !selectionWasKnown) await persistSettings();
+        ({ protocolCss, meetingTemplate, letterTemplate, signatures, letterPlaceholders, letterPlaceholdersRevision } =
+          await loadFolderCustomizations(configuredFolder));
+        folder = configuredFolder;
+        moduleSettings = selection;
+        if (conflicts.length) {
+          startupError = `Bestehende Anpassungen im Datenordner wurden nicht überschrieben: ${formatCustomizationConflicts(conflicts)}`;
+        }
+        return { folder: configuredFolder };
+      } catch (error) {
+        return {
+          error: {
+            code: 'FOLDER_INIT_ERROR',
+            message: `Der Datenordner konnte nicht geladen werden: ${error.message || 'Unbekannter Fehler'}`
+          }
+        };
+      }
+    },
+    sendSplashMessage: (msg) => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('splash:update-message', msg);
+      }
+    },
+    sendSplashError: (code, message) => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('splash:error-message', { code, message });
+      }
+      startupError = message;
+    }
+  };
+
+  // Run startup sequence
+  startupReady = startupSequence(startupConfig).then(result => {
+    if (!result.success && result.error) {
+      startupError = result.error.message;
+    }
+  }).catch(error => {
+    startupError = error.message;
+  });
+
   mainWindow = new BrowserWindow({
     width: 1280, height: 800, minWidth: 850, minHeight: 600, show: false, icon: appIcon,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }

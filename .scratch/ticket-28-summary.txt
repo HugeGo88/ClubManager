@@ -1,0 +1,38 @@
+# Ticket #28: Data Folder Loading with Non-Fatal Errors - COMPLETED
+
+## Summary
+Successfully implemented `loadDataFolder()` function that returns structured results `{folder}` or `{error}` instead of throwing errors, enabling graceful error handling during startup.
+
+## Implementation Location
+- **Base function:** `src/main/startup.js`
+- **Wrapper function:** `src/main/main.js`  
+- **Tests:** `test/load-data-folder.test.js` (17 tests)
+
+## Key Features
+✅ Returns `{folder: path}` on success
+✅ Returns `{error: {code, message}}` on failure
+✅ Never throws - all errors are captured
+✅ Handles all error cases: missing folder, invalid path, permission errors
+✅ Errors logged for debugging (logger option)
+✅ Error messages human-readable and in German
+✅ Testable with mockable logger option
+✅ Full folder initialization in main.js wrapper
+
+## Error Codes
+- `INVALID_PATH` - null, empty string, non-string paths
+- `FOLDER_NOT_FOUND` - path doesn't exist (ENOENT)
+- `INVALID_FOLDER` - path is file, not directory
+- `FOLDER_LOAD_ERROR` - initialization errors
+
+## Test Results
+✅ 17 new tests for loadDataFolder() - ALL PASS
+✅ 99 existing tests - ALL PASS
+✅ Total: 116/116 tests passing
+
+## Git Commit
+Commit 302f7a9: "Implement loadDataFolder() with non-fatal error handling"
+
+## Ready For
+- Ticket #29: Startup sequence orchestrator
+- Ticket #30: Splash error display
+- Ticket #31: Read-only mode implementation
