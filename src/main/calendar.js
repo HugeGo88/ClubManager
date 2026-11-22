@@ -186,6 +186,28 @@ function anonymousSeriesId(component) {
   return `uidless:${crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
 }
 
+function uidlessSeriesIdForOccurrence(components, recurrenceProperty, recurrenceId) {
+  for (const component of components) {
+    if (component.getFirstPropertyValue('uid')) continue;
+    if (!component.hasProperty('rrule') && !component.hasProperty('rdate')) continue;
+    const startProperty = component.getFirstProperty('dtstart');
+    if (!startProperty) continue;
+    try {
+      const event = new ICAL.Event(component);
+      const iterator = event.iterator();
+      let occurrence;
+      while ((occurrence = iterator.next()) && occurrence.year <= 2100) {
+        if (recurrenceKey(startProperty, occurrence) === recurrenceKey(recurrenceProperty, recurrenceId)) {
+          return anonymousSeriesId(component);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 function parseCalendar(content) {
   let jcal;
   try {
@@ -209,19 +231,24 @@ function parseCalendar(content) {
   const cancellations = [];
   const anonymousCancellations = [];
   const seriesCancellations = [];
+  const anonymousSeriesCancellations = new Set();
   const components = calendar.getAllSubcomponents('vevent');
   for (const component of components) {
     const identified = component.getFirstPropertyValue('uid');
     const uid = identified ||
       ((component.hasProperty('rrule') || component.hasProperty('rdate')) ? anonymousSeriesId(component) : null);
-    if (!uid) continue;
     const recurrenceProperty = component.getFirstProperty('recurrence-id');
     const recurrenceId = recurrenceProperty?.getFirstValue();
+    const recurrenceUid = recurrenceId
+      ? uidlessSeriesIdForOccurrence(components, recurrenceProperty, recurrenceId)
+      : null;
     if (component.getFirstPropertyValue('status') === 'CANCELLED') {
-      if (recurrenceId) cancellations.push(`${uid}@${recurrenceKey(recurrenceProperty, recurrenceId)}`);
-      else {
+      if (recurrenceId && identified) cancellations.push(`${identified}@${recurrenceKey(recurrenceProperty, recurrenceId)}`);
+      else if (recurrenceId && recurrenceUid) anonymousCancellations.push(`${recurrenceUid}@${recurrenceKey(recurrenceProperty, recurrenceId)}`);
+      else if (uid) {
         cancellations.push(uid);
         seriesCancellations.push(uid);
+        if (!identified) anonymousSeriesCancellations.add(uid);
       }
     }
     for (const exdate of component.getAllProperties('exdate')) {
@@ -256,6 +283,7 @@ function parseCalendar(content) {
     const uidless = !identified;
     const uid = identified || (recurring ? anonymousSeriesId(component)
       : `uidless:${crypto.createHash('sha256').update(JSON.stringify(component.toJSON())).digest('hex')}`);
+    if (!identified && anonymousSeriesCancellations.has(uid)) continue;
     const append = (startTime, endTime, item, occurrenceKey) => {
       if (!startTime) return;
       const status = item?.component?.getFirstPropertyValue('status');
@@ -328,9 +356,11 @@ function parseCalendar(content) {
       }
     } else if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
       let event;
-      const exceptions = identified ? components.filter(candidate =>
+      const exceptions = components.filter(candidate =>
         candidate.hasProperty('recurrence-id') &&
-        candidate.getFirstPropertyValue('uid') === identified) : [];
+        (identified
+          ? candidate.getFirstPropertyValue('uid') === identified
+          : !candidate.getFirstPropertyValue('uid')));
       const exceptionsByKey = new Map(exceptions.map(candidate => {
         const property = candidate.getFirstProperty('recurrence-id');
         return [recurrenceKey(property, property.getFirstValue()), candidate];

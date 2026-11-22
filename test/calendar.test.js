@@ -413,6 +413,22 @@ test('recurring timed and all-day occurrences expire separately while old live o
   assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 4);
 });
 
+test('a moved UID-less occurrence updates the occurrence without leaving the original', async t => {
+  const folder = await fixture(t);
+  const master = 'BEGIN:VEVENT\r\nDTSTART:20990101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:Anonymous\r\nEND:VEVENT';
+  let contents = master;
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  contents += '\r\nBEGIN:VEVENT\r\nRECURRENCE-ID:20990102T100000Z\r\nDTSTART:20990104T120000Z\r\nSUMMARY:Moved anonymous\r\nEND:VEVENT';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => [e.title, e.start]), [
+    ['Anonymous', '2099-01-01T10:00:00.000Z'], ['Moved anonymous', '2099-01-04T12:00:00.000Z']
+  ]);
+});
+
 test('unchanged UID-less series do not duplicate occurrences and retain them after omission', async t => {
   const folder = await fixture(t);
   let contents = 'BEGIN:VEVENT\r\nDTSTART:20990101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:Anonymous series\r\nEND:VEVENT';
