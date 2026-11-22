@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.1.12",
+    "date": "2026-11-22",
+    "sections": [
+      {
+        "title": "Kalender",
+        "changes": [
+          "Bereits geladene Termine bleiben in ihrem Datenordner und ihrer Kalenderadresse erhalten, wenn sie aus dem ICS-Kalender entfernt werden.",
+          "Erkannte Termine und Wiederholungen werden aktualisiert oder verschoben, ohne eine neue Doppelausgabe zu erzeugen.",
+          "Ausdrückliche Absagen, Serienabsagen und ausgeschlossene Wiederholungen werden beachtet; Termine ohne UID werden nach ihrem Inhalt abgeglichen.",
+          "Fehlende Termine bleiben bis zwei Jahre nach ihrem Ende sichtbar, sofern sie nicht weiterhin vom Kalender geliefert werden."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.11",
     "date": "2026-11-22",
     "sections": [
