@@ -425,6 +425,10 @@ async function calendarRetentionSmoke(window, port, setFeed) {
     if (bar.dataset.startDate !== '2026-11-25' || bar.dataset.endDate !== '2026-11-29') {
       throw new Error('Retained multi-day event did not span the week');
     }
+    const recurringBar = document.querySelector('[data-event-title="Retained 3"]');
+    if (!recurringBar || recurringBar.dataset.startDate !== '2026-11-25' || recurringBar.dataset.endDate !== '2026-11-29') {
+      throw new Error('Retained recurring multi-day event did not span the week');
+    }
     bar.click();
     await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
     const detail = document.querySelector('[data-calendar-event-dialog]');
@@ -433,6 +437,12 @@ async function calendarRetentionSmoke(window, port, setFeed) {
     }
     detail.querySelector('[data-action="close-calendar-event"]').click();
     await waitFor(() => !document.querySelector('[data-calendar-event-dialog]'));
+    document.querySelector('[data-event-title="Retained 2"]').click();
+    await waitFor(() => document.querySelector('[data-calendar-event-dialog]'));
+    if (!document.querySelector('[data-calendar-event-dialog] h2').textContent.includes('Retained 2')) {
+      throw new Error('Colliding identified and UID-less events opened the wrong details');
+    }
+    document.querySelector('[data-calendar-event-dialog] [data-action="close-calendar-event"]').click();
     document.querySelector('[data-action="calendar-more"][data-date="2026-11-25"]').click();
     await waitFor(() => document.querySelector('[data-calendar-overflow-dialog]'));
     const hidden = document.querySelector('[data-calendar-overflow-dialog] [data-event-title="Retained 4"]');
@@ -625,6 +635,10 @@ async function main() {
   let selectedDataFolder = data;
   let calendarAvailable = true;
   let retentionFeed = 'full';
+  const anonymousEvent = ['BEGIN:VEVENT', 'DTSTART;VALUE=DATE:20261125',
+    'DTEND;VALUE=DATE:20261130', 'SUMMARY:Retained 1', 'LOCATION:Clubhaus', 'END:VEVENT'];
+  const anonymousId = require('../src/main/calendar').parseIcs(
+    ['BEGIN:VCALENDAR', ...anonymousEvent, 'END:VCALENDAR'].join('\r\n'))[0].id;
   const calendarServer = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'text/calendar');
     if (request.url === '/retention.ics') {
@@ -633,8 +647,8 @@ async function main() {
         response.end('unavailable');
       } else {
         response.end(['BEGIN:VCALENDAR', ...(retentionFeed === 'full' ? [1, 2, 3, 4].flatMap(number => [
-          'BEGIN:VEVENT', `UID:retained-${number}`, 'DTSTART;VALUE=DATE:20261125',
-          'DTEND;VALUE=DATE:20261130', 'RRULE:FREQ=DAILY;COUNT=1',
+          'BEGIN:VEVENT', ...(number === 1 || number === 4 ? [] : [`UID:${number === 2 ? anonymousId : `retained-${number}`}`]), 'DTSTART;VALUE=DATE:20261125',
+          'DTEND;VALUE=DATE:20261130', ...(number >= 3 ? ['RRULE:FREQ=DAILY;COUNT=1'] : []),
           `SUMMARY:Retained ${number}`, 'LOCATION:Clubhaus', 'END:VEVENT'
         ]) : []), 'END:VCALENDAR'].join('\r\n'));
       }

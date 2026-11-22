@@ -131,7 +131,10 @@ items are still open, partially implemented, or ongoing design goals.
   with crowded-day overflow.
 - [x] Retain previously observed standalone ICS events with UIDs per data folder
   and source, subject to expiry and explicit cancellation (#34).
-- [ ] Retain recurring and UID-less calendar history (#33).
+- [x] Retain previously observed standalone ICS events without UIDs by content,
+  with possible separate versions after changes (#35).
+- [x] Retain recurring calendar occurrences, including shortened series and
+  explicit exclusions and cancellations (#33, #36).
 - [ ] Provide an invoice module for creating/writing invoices.
 - [ ] Use a master-detail view: show a list of invoices and display the selected
   invoice's details alongside or in a detail pane.

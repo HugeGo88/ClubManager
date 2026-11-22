@@ -207,10 +207,12 @@ function parseCalendar(content) {
   const events = [];
   const standalone = [];
   const cancellations = [];
+  const anonymousCancellations = [];
   const seriesCancellations = [];
   const components = calendar.getAllSubcomponents('vevent');
   for (const component of components) {
-    const uid = component.getFirstPropertyValue('uid') ||
+    const identified = component.getFirstPropertyValue('uid');
+    const uid = identified ||
       ((component.hasProperty('rrule') || component.hasProperty('rdate')) ? anonymousSeriesId(component) : null);
     if (!uid) continue;
     const recurrenceProperty = component.getFirstProperty('recurrence-id');
@@ -223,10 +225,13 @@ function parseCalendar(content) {
       }
     }
     for (const exdate of component.getAllProperties('exdate')) {
-      for (const date of exdate.getValues()) cancellations.push(`${uid}@${recurrenceKey(exdate, date)}`);
+      for (const date of exdate.getValues()) {
+        (identified ? cancellations : anonymousCancellations).push(`${uid}@${recurrenceKey(exdate, date)}`);
+      }
     }
   }
   const cancelled = new Set(cancellations);
+  const anonymousCancelled = new Set(anonymousCancellations);
   const cancelledSeries = new Set(seriesCancellations);
   const emitted = new Set();
   for (const component of [...components.filter(item => !item.hasProperty('recurrence-id')),
@@ -248,7 +253,9 @@ function parseCalendar(content) {
       continue;
     }
     if (!startValue) continue;
-    const uid = identified || (recurring ? anonymousSeriesId(component) : crypto.randomUUID());
+    const uidless = !identified;
+    const uid = identified || (recurring ? anonymousSeriesId(component)
+      : `uidless:${crypto.createHash('sha256').update(JSON.stringify(component.toJSON())).digest('hex')}`);
     const append = (startTime, endTime, item, occurrenceKey) => {
       if (!startTime) return;
       const status = item?.component?.getFirstPropertyValue('status');
@@ -304,10 +311,11 @@ function parseCalendar(content) {
         location: locationProperty?.getFirstValue() || '',
         start,
         end,
-        allDay
+        allDay,
+        ...(uidless ? { uidless: true } : {})
       });
-      emitted.add(events[events.length - 1].id);
-      if (identified || recurring) standalone.push(recurring
+      emitted.add(eventKey(events[events.length - 1]));
+      standalone.push(recurring
         ? { ...events[events.length - 1], ...(identified ? { seriesUid: identified } : {}) }
         : events[events.length - 1]);
     };
@@ -315,7 +323,7 @@ function parseCalendar(content) {
     if (component.hasProperty('recurrence-id')) {
       const property = component.getFirstProperty('recurrence-id');
       const key = recurrenceKey(property, property.getFirstValue());
-      if (!emitted.has(`${uid}@${key}`) && !cancelled.has(`${uid}@${key}`)) {
+      if (!emitted.has(eventKey({ id: `${uid}@${key}` })) && !cancelled.has(`${uid}@${key}`)) {
         append(startValue, component.getFirstProperty('dtend')?.getFirstValue() || null, { component }, key);
       }
     } else if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
@@ -339,7 +347,7 @@ function parseCalendar(content) {
         count++;
         if (occurrence.year > 2100) break;
         const key = recurrenceKey(startProperty, occurrence);
-        if (cancelled.has(`${uid}@${key}`)) continue;
+        if ((uidless ? anonymousCancelled : cancelled).has(`${uid}@${key}`)) continue;
         const exception = exceptionsByKey.get(key);
         let details;
         if (exception) {
@@ -361,7 +369,7 @@ function parseCalendar(content) {
     }
   }
   events.sort((a, b) => a.start.localeCompare(b.start));
-  return { events, standalone, cancellations, seriesCancellations };
+  return { events, standalone, cancellations, anonymousCancellations, seriesCancellations };
 }
 
 function parseIcs(content) {
@@ -535,6 +543,7 @@ async function loadCacheRecord(folder) {
     typeof event.title === 'string' && typeof event.description === 'string' &&
     typeof event.location === 'string' &&
     (event.allDay === undefined || typeof event.allDay === 'boolean') &&
+    (event.uidless === undefined || event.uidless === true) &&
     Number.isFinite(Date.parse(event.start)) && Number.isFinite(Date.parse(event.end));
   if (!Array.isArray(sources) || sources.some(source => !source ||
       typeof source.sourceUrl !== 'string' || typeof source.fetchedAt !== 'string' ||
@@ -542,6 +551,7 @@ async function loadCacheRecord(folder) {
       (source.completedAt !== undefined && !Number.isFinite(source.completedAt)) ||
       (source.completionId !== undefined && typeof source.completionId !== 'string') ||
       (source.hasLiveSnapshot !== undefined && typeof source.hasLiveSnapshot !== 'boolean') ||
+      (source.uidlessHistorySeeded !== undefined && typeof source.uidlessHistorySeeded !== 'boolean') ||
       !Array.isArray(source.events) || source.events.some(event => !validEvent(event)) ||
       (cache.version === 2 && (!Array.isArray(source.history) ||
         source.history.some(event => !validEvent(event)) ||
@@ -553,12 +563,22 @@ async function loadCacheRecord(folder) {
 
 function upgradeCache(cache) {
   if (!cache) return { version: 2, sources: [] };
-  if (cache.version === 2) return cache;
-  // Legacy IDs do not record whether they were generated or expanded occurrences.
-  const history = cache.events.filter(event =>
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event.id) &&
-    !/@(?:\d{8}(?:T\d{6}Z?)?|\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}Z?)?)$/.test(event.id));
-  return { version: 2, sources: [{ ...cache, history, tombstones: [], hasLiveSnapshot: true, version: undefined }] };
+  const occurrenceId = /@(?:\d{8}(?:T\d{6}Z?)?|\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}Z?)?)$/;
+  const generatedId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const sources = cache.version === 1
+    ? [{ ...cache, history: cache.events.filter(event => !occurrenceId.test(event.id)),
+      tombstones: [], hasLiveSnapshot: true, version: undefined }]
+    : cache.sources;
+  return { version: 2, sources: sources.map(source => {
+    if (source.uidlessHistorySeeded) return source;
+    const history = new Map(source.history.map(event => [eventKey(event), event]));
+    for (const event of source.events) {
+      if (generatedId.test(event.id) && !history.has(eventKey(event))) {
+        history.set(eventKey(event), event);
+      }
+    }
+    return { ...source, history: [...history.values()], uidlessHistorySeeded: true };
+  }) };
 }
 
 function eligible(event, now) {
@@ -567,10 +587,14 @@ function eligible(event, now) {
   return now < expiry.getTime();
 }
 
+function eventKey(event) {
+  return `${event.uidless ? 'anonymous' : 'identified'}:${event.id}`;
+}
+
 function visible(source, now = Date.now()) {
-  const liveIds = new Set(source.events.map(event => event.id));
+  const liveIds = new Set(source.events.map(eventKey));
   return {
-    events: [...source.events, ...source.history.filter(event => !liveIds.has(event.id) && eligible(event, now))
+    events: [...source.events, ...source.history.filter(event => !liveIds.has(eventKey(event)) && eligible(event, now))
       .map(({ seriesUid, ...event }) => event)]
       .sort((a, b) => a.start.localeCompare(b.start)),
     fetchedAt: source.fetchedAt
@@ -595,22 +619,28 @@ async function loadCache(folder, input) {
   const url = normalizeUrl(input);
   if (!url) return null;
   let cache = await loadCacheRecord(folder);
-  if (cache?.version === 1 && cache.sourceUrl === url) {
+  const needsUpgrade = record => record?.version === 1
+    ? record.sourceUrl === url
+    : record?.sources.some(source => source.sourceUrl === url && !source.uidlessHistorySeeded);
+  const fallback = record => record.version === 1
+    ? { events: record.events, fetchedAt: record.fetchedAt }
+    : visible(record.sources.find(source => source.sourceUrl === url));
+  if (needsUpgrade(cache)) {
     let lock;
     try {
       lock = await acquireCacheLock(folder);
     } catch (error) {
-      return { events: cache.events, fetchedAt: cache.fetchedAt, migrationError: error.message };
+      return { ...fallback(cache), migrationError: error.message };
     }
     try {
       cache = await loadCacheRecord(folder);
-      if (cache?.version === 1 && cache.sourceUrl === url) {
+      if (needsUpgrade(cache)) {
         const upgraded = upgradeCache(cache);
         try {
           await writeCache(folder, upgraded, lock);
           cache = upgraded;
         } catch (error) {
-          return { events: cache.events, fetchedAt: cache.fetchedAt, migrationError: error.message };
+          return { ...fallback(cache), migrationError: error.message };
         }
       }
     } finally {
@@ -653,7 +683,7 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
       return await isCurrent() ? visible(previous) : { stale: true };
     }
 
-    const history = new Map((previous?.history || []).map(event => [event.id, event]));
+    const history = new Map((previous?.history || []).map(event => [eventKey(event), event]));
     const tombstones = new Set(previous?.tombstones || []);
     for (const uid of result.seriesCancellations) {
       for (const [id, event] of history) {
@@ -661,15 +691,16 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
       }
     }
     for (const uid of result.cancellations) {
-      history.delete(uid);
+      history.delete(eventKey({ id: uid }));
       tombstones.add(uid);
     }
+    for (const id of result.anonymousCancellations) history.delete(eventKey({ id, uidless: true }));
     for (const event of result.standalone) {
-      history.set(event.id, event);
-      tombstones.delete(event.id);
+      history.set(eventKey(event), event);
+      if (!event.uidless) tombstones.delete(event.id);
     }
     const now = Date.now();
-    const active = new Set(result.standalone.map(event => event.id));
+    const active = new Set(result.standalone.map(eventKey));
     for (const [uid, event] of history) {
       if (!active.has(uid) && !eligible(event, now)) history.delete(uid);
     }
@@ -679,6 +710,7 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
       completionId,
       events: result.events,
       hasLiveSnapshot: true,
+      uidlessHistorySeeded: true,
       fetchedAt: new Date(completedAt).toISOString(),
       history: [...history.values()],
       tombstones: [...tombstones]

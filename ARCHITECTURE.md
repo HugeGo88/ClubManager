@@ -92,11 +92,14 @@ settings.json in userData    user-selected data folder
   instances replace their previous version. UID-less content matching cannot
   reliably identify changed events; for series the recurrence rule and exclusions
   are excluded from the fingerprint, so identical otherwise-indistinguishable
-  series cannot be distinguished. Version 1 caches are migrated on refresh or offline load;
-  their IDs did not record provenance, so UUID-v4-shaped IDs and
-  occurrence-shaped IDs cannot safely be distinguished from generated IDs or
-  recurrence instances and are not seeded as history. Other legacy IDs are
-  treated as standalone, which can be ambiguous for unusual UID values.
+  series cannot be distinguished. UID-less cancellations cannot reliably identify
+  an earlier event. Version 1 and earlier
+  version 2 caches are migrated on refresh or offline load. Their generated
+  UUID-v4-shaped IDs have ambiguous provenance and their original VEVENT
+  contents are unavailable; such cached standalone-looking events are seeded
+  with their existing IDs, so a later UID-less feed entry can appear alongside
+  its cached predecessor. Occurrence-shaped IDs are not seeded, which can be
+  ambiguous for unusual UID values.
   Events absent from that cache cannot be recovered. Each configuration save
   changes its revision even when a URL is restored, and the active-folder epoch
   also rejects in-flight results after a folder switch away and back. A
