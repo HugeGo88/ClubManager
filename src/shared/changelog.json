@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.1.11",
+    "date": "2026-11-22",
+    "sections": [
+      {
+        "title": "Allgemein",
+        "changes": [
+          "Der Start läuft jetzt streng nacheinander: Netzwerkprüfung, Updateprüfung und -installation sowie Laden des Datenordners.",
+          "Fehler werden auf dem Startbildschirm angezeigt und müssen bestätigt werden. Ist der Datenordner nicht verfügbar, bleiben Einstellungen und Ordnerauswahl nutzbar, während Datenfunktionen deaktiviert sind."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.10",
     "date": "2026-11-21",
     "sections": [

@@ -86,6 +86,6 @@ Die verfügbaren Platzhalter stehen in den jeweiligen Einstellungen. In eigenen 
 
 ClubManager speichert Daten in den jeweiligen registrierten Ordnern. Erstellen Sie regelmäßig Sicherungskopien. Die Daten sind nicht verschlüsselt; Änderungen durch mehrere gleichzeitig laufende Instanzen werden nicht synchronisiert. Bei einem Konflikt laden Sie den aktuellen Stand erneut, bevor Sie speichern.
 
-Bei unterstützten installierten Versionen prüft ClubManager beim Start auf Updates. Eine neue Version wird automatisch heruntergeladen und installiert; der Startbildschirm informiert Sie darüber. Währenddessen startet ClubManager neu.
+Beim Start öffnet ClubManager zuerst den Startbildschirm. Unterstützte installierte Versionen prüfen danach die Verbindung, suchen der Reihe nach nach Updates und installieren eine gefundene neue Version automatisch, bevor das Hauptfenster geladen wird. Der Startbildschirm informiert Sie über den Verlauf. Währenddessen startet ClubManager gegebenenfalls neu.
 
 Unter Ubuntu prüft das installierte `.deb`-Paket beim Start auf Aktualisierungen. Für die Installation kann eine Bestätigung mit Administratorrechten erforderlich sein. Wenn die Installation fehlschlägt, können Sie das neue Paket aus den GitHub Releases herunterladen und manuell installieren.

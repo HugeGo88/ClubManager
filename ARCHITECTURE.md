@@ -60,15 +60,16 @@ settings.json in userData    user-selected data folder
   platforms. The application window uses context isolation and sandboxing
   with Node integration disabled. The main process validates and performs
   privileged operations on behalf of the renderer. It displays the lightweight
-  splash before loading app main-process modules, then initiates the update check
-  while keeping the splash visible. The hidden app window loads saved settings,
-  the active registered data folder and its first view. If a new version is available,
-  it is downloaded and installed automatically with status messages shown on
-  the splash screen via a restricted preload. On Linux, startup waits for this
-  check and any download before the main window opens. A startup IPC handshake keeps
-  settings access behind initialization and closes the splash only after the
-  first render or after update installation. The renderer loads independent
-  settings and release-note requests in parallel.
+  splash before loading app main-process modules, then runs the startup sequence
+  strictly in order: network availability, update check, update installation
+  when available, and data-folder loading. The splash remains visible and
+  reports startup status through a restricted preload. Fatal errors require user
+  acknowledgment before the app exits; non-fatal folder errors allow startup
+  to continue. The hidden app window is not shown until the sequence completes,
+  then a startup IPC handshake closes the splash only after the renderer reports
+  that it is ready. If the data folder is unavailable, the renderer receives a
+  null folder and keeps settings and folder selection available while guarding
+  folder-backed views and operations. Source-mode runs do not perform updates.
 - [src/main/preload.js](src/main/preload.js) exposes the restricted `window.club`
   API, wrapping `ipcRenderer.invoke` and translating common filesystem errors.
   IPC covers application version, folder selection, registry, activation and
@@ -301,17 +302,15 @@ notarization; Windows signing remains open. Ubuntu package installation and
 updates still need verification on a real Ubuntu installation.
 
 [src/main/updates.js](src/main/updates.js) uses `electron-updater` for packaged
-macOS, Windows and Ubuntu `.deb` builds. On startup,
-updates are checked automatically and downloaded in the background. If a new
-version is available, installation starts automatically, with status messages
-displayed on the splash screen. This provides a seamless
-update experience. On Linux, startup waits for the update check and any download
-and installation attempt before opening the application window, avoiding
-interrupting edits; installation may require administrator authentication.
-Linux update errors are shown to the user. The renderer can guard
-unsaved meeting edits before restart. Update errors are reported. Source-mode
-runs do not check for updates, and real-device signing, release and update
-verification remain separate operational steps.
+macOS, Windows and Ubuntu `.deb` builds. The startup sequence checks network
+availability before it checks for updates. On packaged builds, update checks
+and installation run sequentially after the network check and before folder
+loading. If a new version is available, installation starts automatically, with
+status and fatal errors shown on the splash screen. Installation may require
+administrator authentication on Ubuntu. The splash and main window remain
+coordinated across platforms by the startup IPC handshake. Source-mode runs do
+not check for updates, and real-device signing, release and update verification
+remain separate operational steps.
 
 ## Renderer and interactions
 
