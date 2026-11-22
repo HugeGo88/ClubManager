@@ -1,3 +1,82 @@
+function performUpdateCheck({ updater }) {
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const handleUpdateAvailable = () => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(true);
+      }
+    };
+
+    const handleUpdateNotAvailable = () => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(false);
+      }
+    };
+
+    const handleError = () => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(false);
+      }
+    };
+
+    const cleanup = () => {
+      updater.removeListener('update-available', handleUpdateAvailable);
+      updater.removeListener('update-not-available', handleUpdateNotAvailable);
+      updater.removeListener('error', handleError);
+    };
+
+    updater.on('update-available', handleUpdateAvailable);
+    updater.on('update-not-available', handleUpdateNotAvailable);
+    updater.on('error', handleError);
+
+    updater.checkForUpdates().catch(() => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(false);
+      }
+    });
+  });
+}
+
+function performUpdateInstall({ updater }) {
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const handleUpdateDownloaded = () => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        updater.quitAndInstall(false, true);
+        resolve(true);
+      }
+    };
+
+    const handleError = () => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(false);
+      }
+    };
+
+    const cleanup = () => {
+      updater.removeListener('update-downloaded', handleUpdateDownloaded);
+      updater.removeListener('error', handleError);
+    };
+
+    updater.on('update-downloaded', handleUpdateDownloaded);
+    updater.on('error', handleError);
+  });
+}
+
 function startUpdates({ updater, app, dialog, getWindow, getSplashWindow, platform = process.platform, autoInstall = false }) {
   if (!app.isPackaged || !['darwin', 'win32', 'linux'].includes(platform)) return;
 
@@ -80,4 +159,4 @@ function startUpdates({ updater, app, dialog, getWindow, getSplashWindow, platfo
     });
 }
 
-module.exports = { startUpdates };
+module.exports = { startUpdates, performUpdateCheck, performUpdateInstall };

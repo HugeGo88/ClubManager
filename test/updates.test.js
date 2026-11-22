@@ -4,7 +4,7 @@ const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { startUpdates } = require('../src/main/updates');
+const { startUpdates, performUpdateCheck, performUpdateInstall } = require('../src/main/updates');
 
 function fixture(response = 0) {
   const updater = new EventEmitter();
@@ -124,4 +124,57 @@ test('handles a failed background download promise', async () => {
   } finally {
     console.error = original;
   }
+});
+
+// Tests for performUpdateCheck()
+test('performUpdateCheck returns true when update is available', async () => {
+  const updater = new EventEmitter();
+  updater.checkForUpdates = async () => { return { downloadPromise: Promise.resolve() }; };
+  
+  const result = performUpdateCheck({ updater });
+  
+  updater.emit('update-available', { version: '1.0.0' });
+  assert.equal(await result, true);
+});
+
+test('performUpdateCheck returns false when no update is available', async () => {
+  const updater = new EventEmitter();
+  updater.checkForUpdates = async () => { return { downloadPromise: Promise.resolve() }; };
+  
+  const result = performUpdateCheck({ updater });
+  
+  updater.emit('update-not-available');
+  assert.equal(await result, false);
+});
+
+test('performUpdateCheck returns false on error and never throws', async () => {
+  const updater = new EventEmitter();
+  updater.checkForUpdates = async () => { return { downloadPromise: Promise.resolve() }; };
+  
+  const result = performUpdateCheck({ updater });
+  
+  updater.emit('error', new Error('Network error'));
+  assert.equal(await result, false);
+});
+
+// Tests for performUpdateInstall()
+test('performUpdateInstall returns true when update is downloaded and installed', async () => {
+  const updater = new EventEmitter();
+  const installed = [];
+  updater.quitAndInstall = (...args) => installed.push(args);
+  
+  const result = performUpdateInstall({ updater });
+  
+  updater.emit('update-downloaded', { version: '1.0.0' });
+  assert.equal(await result, true);
+  assert.deepEqual(installed, [[false, true]]);
+});
+
+test('performUpdateInstall returns false on error', async () => {
+  const updater = new EventEmitter();
+  
+  const result = performUpdateInstall({ updater });
+  
+  updater.emit('error', new Error('Install failed'));
+  assert.equal(await result, false);
 });

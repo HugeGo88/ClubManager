@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { loadDataFolder: loadDataFolderBase } = require('./startup');
 
 app.commandLine.appendSwitch('lang', 'de-DE');
 
@@ -102,6 +103,44 @@ function withRegisteredFolder(item) {
   return dataFolders.some(current => current.path === item.path)
     ? dataFolders.map(current => current.path === item.path ? item : current)
     : [...dataFolders, item];
+}
+
+/**
+ * Load a data folder and return structured result with either folder or error.
+ * This is the main process wrapper around the startup.js function that includes
+ * folder initialization logic (creating necessary structures, loading customizations).
+ * Never throws; all errors are captured and returned as {error: {code, message}}.
+ * 
+ * @param {string} folderPath - The path to the data folder to load
+ * @returns {Promise<{folder: string} | {error: {code: string, message: string}}>}
+ */
+async function loadDataFolder(folderPath) {
+  // First check if the folder path is valid using the base function
+  const baseResult = await loadDataFolderBase(folderPath);
+  
+  // If base check fails, return the error immediately
+  if ('error' in baseResult) {
+    return baseResult;
+  }
+  
+  // Base check passed, now do full folder initialization
+  try {
+    // Load the folder with all its data and customizations
+    // This is similar to the initializeFolder and loadFolderCustomizations logic
+    const selection = await initializeFolder(folderPath);
+    const customizations = await loadFolderCustomizations(folderPath);
+    
+    // Folder loaded successfully
+    return { folder: folderPath };
+  } catch (err) {
+    // Catch any initialization errors and return them as non-fatal
+    const error = {
+      code: 'FOLDER_INIT_ERROR',
+      message: `Der Datenordner konnte nicht geladen werden: ${err.message || 'Unbekannter Fehler'}`
+    };
+    console.error('Error initializing folder:', error, err);
+    return { error };
+  }
 }
 
 async function loadFolder() {
