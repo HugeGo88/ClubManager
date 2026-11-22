@@ -404,6 +404,12 @@ async function calendarRetentionSmoke(window, port, setFeed) {
   })()`);
   setFeed('empty');
   await window.webContents.executeJavaScript(`(async () => {
+    const folder = await window.club.getFolder();
+    const config = await window.club.getCalendarConfig();
+    const result = await window.club.fetchCalendar({ folder, revision: config.revision });
+    if (result.events.length !== 4) throw new Error('Recurring occurrences were not retained');
+  })()`);
+  await window.webContents.executeJavaScript(`(async () => {
     const waitFor = async test => {
       for (let i = 0; i < 200; i++) {
         if (test()) return;
@@ -628,7 +634,8 @@ async function main() {
       } else {
         response.end(['BEGIN:VCALENDAR', ...(retentionFeed === 'full' ? [1, 2, 3, 4].flatMap(number => [
           'BEGIN:VEVENT', `UID:retained-${number}`, 'DTSTART;VALUE=DATE:20261125',
-          'DTEND;VALUE=DATE:20261130', `SUMMARY:Retained ${number}`, 'LOCATION:Clubhaus', 'END:VEVENT'
+          'DTEND;VALUE=DATE:20261130', 'RRULE:FREQ=DAILY;COUNT=1',
+          `SUMMARY:Retained ${number}`, 'LOCATION:Clubhaus', 'END:VEVENT'
         ]) : []), 'END:VCALENDAR'].join('\r\n'));
       }
       return;

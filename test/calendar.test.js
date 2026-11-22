@@ -249,6 +249,204 @@ test('retains an omitted identified standalone event across refresh and reload',
   assert.equal((await calendar.loadCache(folder, url)).events[0].title, 'Remember me');
 });
 
+test('retains future occurrences removed by shortening a series across refresh and reload', async t => {
+  const folder = await fixture(t);
+  let count = 3;
+  const server = http.createServer((request, response) => response.end([
+    'BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:series', 'DTSTART:20990101T100000Z',
+    `RRULE:FREQ=DAILY;COUNT=${count}`, 'SUMMARY:Series', 'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n')));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  count = 1;
+  const result = await calendar.refreshCalendar(folder, config);
+  assert.deepEqual(result.events.map(event => event.start), [
+    '2099-01-01T10:00:00.000Z', '2099-01-02T10:00:00.000Z', '2099-01-03T10:00:00.000Z'
+  ]);
+  assert.deepEqual((await calendar.loadCache(folder, url)).events, result.events);
+});
+
+test('occurrence cancellation and EXDATE remove only affected history until reinstated', async t => {
+  const folder = await fixture(t);
+  const master = extra => [
+    'BEGIN:VEVENT', 'UID:series', 'DTSTART:20990101T100000Z',
+    'RRULE:FREQ=DAILY;COUNT=3', extra, 'SUMMARY:Series', 'END:VEVENT'
+  ].filter(Boolean).join('\r\n');
+  const cancel = ['BEGIN:VEVENT', 'UID:series', 'RECURRENCE-ID:20990102T100000Z',
+    'STATUS:CANCELLED', 'END:VEVENT'].join('\r\n');
+  let contents = master('');
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  contents = `${master('EXDATE:20990103T100000Z')}\r\n${cancel}`;
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.start), ['2099-01-01T10:00:00.000Z']);
+  contents = '';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.start), ['2099-01-01T10:00:00.000Z']);
+  contents = master('');
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 3);
+  contents = '';
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 3);
+});
+
+test('whole-series cancellation removes past and future occurrences until actively reinstated', async t => {
+  const folder = await fixture(t);
+  const master = [
+    'BEGIN:VEVENT', 'UID:series', 'DTSTART:20240101T100000Z',
+    'RRULE:FREQ=DAILY;COUNT=2', 'SUMMARY:Series', 'END:VEVENT'
+  ].join('\r\n');
+  let contents = master;
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2024-01-01T12:00:00Z') });
+  await calendar.refreshCalendar(folder, config);
+  contents = `${master}\r\nBEGIN:VEVENT\r\nUID:series\r\nSTATUS:CANCELLED\r\nEND:VEVENT`;
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events, []);
+  contents = '';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events, []);
+  contents = master;
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 2);
+  contents = '';
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 2);
+});
+
+test('moving an identified occurrence updates it without changing another series', async t => {
+  const folder = await fixture(t);
+  const master = uid => `BEGIN:VEVENT\r\nUID:${uid}\r\nDTSTART:20990101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:${uid}\r\nEND:VEVENT`;
+  let contents = `${master('first')}\r\n${master('second')}`;
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  contents += '\r\nBEGIN:VEVENT\r\nUID:first\r\nRECURRENCE-ID:20990102T100000Z\r\nDTSTART:20990104T120000Z\r\nSUMMARY:Moved\r\nEND:VEVENT';
+  const events = (await calendar.refreshCalendar(folder, config)).events;
+  assert.equal(events.length, 4);
+  assert.deepEqual(events.filter(e => e.title === 'Moved').map(e => e.start), ['2099-01-04T12:00:00.000Z']);
+  assert.deepEqual(events.filter(e => e.title === 'second').map(e => e.start), ['2099-01-01T10:00:00.000Z', '2099-01-02T10:00:00.000Z']);
+});
+
+test('a detached moved occurrence updates history even outside a shortened rule', async t => {
+  const folder = await fixture(t);
+  const master = count => `BEGIN:VEVENT\r\nUID:series\r\nDTSTART:20990101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=${count}\r\nSUMMARY:Series\r\nEND:VEVENT`;
+  let contents = master(2);
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  contents = `${master(1)}\r\nBEGIN:VEVENT\r\nUID:series\r\nRECURRENCE-ID:20990102T100000Z\r\nDTSTART:20990104T120000Z\r\nSUMMARY:Moved\r\nEND:VEVENT`;
+  const events = (await calendar.refreshCalendar(folder, config)).events;
+  assert.deepEqual(events.map(e => [e.title, e.start]), [
+    ['Series', '2099-01-01T10:00:00.000Z'], ['Moved', '2099-01-04T12:00:00.000Z']
+  ]);
+});
+
+test('excludes a retained zoned occurrence when EXDATE uses the equivalent UTC instant', async t => {
+  const folder = await fixture(t);
+  const master = extra => [
+    'BEGIN:VEVENT', 'UID:zoned', 'DTSTART;TZID=Europe/Berlin:20260101T100000',
+    'RRULE:FREQ=DAILY;COUNT=2', extra, 'SUMMARY:Zoned', 'END:VEVENT'
+  ].filter(Boolean).join('\r\n');
+  let contents = master('');
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-01-01T00:00:00Z') });
+  await calendar.refreshCalendar(folder, config);
+  contents = master('EXDATE:20260102T090000Z');
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.start), ['2026-01-01T09:00:00.000Z']);
+});
+
+test('a UTC recurrence identifier moves a zoned occurrence without leaving the original', async t => {
+  const folder = await fixture(t);
+  const master = 'BEGIN:VEVENT\r\nUID:zoned\r\nDTSTART;TZID=Europe/Berlin:20260101T100000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:Zoned\r\nEND:VEVENT';
+  let contents = master;
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-01-01T00:00:00Z') });
+  await calendar.refreshCalendar(folder, config);
+  contents += '\r\nBEGIN:VEVENT\r\nUID:zoned\r\nRECURRENCE-ID:20260102T090000Z\r\nDTSTART:20260103T120000Z\r\nSUMMARY:Moved\r\nEND:VEVENT';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => [e.title, e.start]), [
+    ['Zoned', '2026-01-01T09:00:00.000Z'], ['Moved', '2026-01-03T12:00:00.000Z']
+  ]);
+});
+
+test('recurring timed and all-day occurrences expire separately while old live occurrences remain', async t => {
+  const folder = await fixture(t);
+  const series = [
+    'BEGIN:VEVENT', 'UID:timed-series', 'DTSTART:20240101T090000Z', 'DTEND:20240101T100000Z',
+    'RRULE:FREQ=DAILY;COUNT=2', 'SUMMARY:Timed', 'END:VEVENT',
+    'BEGIN:VEVENT', 'UID:day-series', 'DTSTART;VALUE=DATE:20240101', 'DTEND;VALUE=DATE:20240103',
+    'RRULE:FREQ=DAILY;COUNT=2', 'SUMMARY:Day', 'END:VEVENT'
+  ].join('\r\n');
+  let contents = series;
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-01-01T09:59:59Z') });
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 4);
+  contents = '';
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 4);
+  t.mock.timers.setTime(new Date('2026-01-01T10:00:00Z').getTime());
+  assert.equal((await calendar.loadCache(folder, url)).events.length, 3);
+  t.mock.timers.setTime(new Date('2026-01-04T00:00:00Z').getTime());
+  assert.deepEqual((await calendar.loadCache(folder, url)).events, []);
+  contents = series;
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 4);
+});
+
+test('unchanged UID-less series do not duplicate occurrences and retain them after omission', async t => {
+  const folder = await fixture(t);
+  let contents = 'BEGIN:VEVENT\r\nDTSTART:20990101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:Anonymous series\r\nEND:VEVENT';
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 2);
+  contents = '';
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.start), [
+    '2099-01-01T10:00:00.000Z', '2099-01-02T10:00:00.000Z'
+  ]);
+});
+
+test('a UID-less series honours a new exclusion and retains occurrences omitted by a shortened rule', async t => {
+  const folder = await fixture(t);
+  const master = extra => [
+    'BEGIN:VEVENT', 'DTSTART:20990101T100000Z', extra, 'SUMMARY:Anonymous', 'END:VEVENT'
+  ].join('\r\n');
+  let contents = master('RRULE:FREQ=DAILY;COUNT=3');
+  const server = http.createServer((request, response) => response.end(`BEGIN:VCALENDAR\r\n${contents}\r\nEND:VCALENDAR`));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${server.address().port}/calendar.ics`;
+  const config = await calendar.saveConfig(folder, url);
+  await calendar.refreshCalendar(folder, config);
+  contents = master('RRULE:FREQ=DAILY;COUNT=1\r\nEXDATE:20990102T100000Z');
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(e => e.start), [
+    '2099-01-01T10:00:00.000Z', '2099-01-03T10:00:00.000Z'
+  ]);
+});
+
 test('expires missing timed, all-day and multi-day events at two years after their ends but keeps live old events', async t => {
   const folder = await fixture(t);
   let feed = [
@@ -319,7 +517,7 @@ test('keeps normalized source histories independent in each data folder when swi
   assert.equal(await calendar.loadCache(second, `${base}/a`), null);
 });
 
-test('switching sources retains standalone history but does not restore an older source live recurrence cache', async t => {
+test('switching sources restores retained standalone and recurring history for the earlier source', async t => {
   const folder = await fixture(t);
   const server = http.createServer((request, response) => response.end(request.url === '/a'
     ? 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:item\r\nDTSTART:20990101T100000Z\r\nSUMMARY:Standalone\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:series\r\nDTSTART:20990101T100000Z\r\nRRULE:FREQ=DAILY;COUNT=1\r\nSUMMARY:Series\r\nEND:VEVENT\r\nEND:VCALENDAR'
@@ -332,7 +530,7 @@ test('switching sources retains standalone history but does not restore an older
   config = await calendar.saveConfig(folder, `${base}/b`, config.revision);
   await calendar.refreshCalendar(folder, config);
   await calendar.saveConfig(folder, `${base}/a`, config.revision);
-  assert.deepEqual((await calendar.loadCache(folder, `${base}/a`)).events.map(e => e.title), ['Standalone']);
+  assert.deepEqual((await calendar.loadCache(folder, `${base}/a`)).events.map(e => e.title), ['Standalone', 'Series']);
 });
 
 test('migrates the last successful cache offline and seeds identifiable standalone history without retaining recurrence or generated IDs', async t => {
@@ -373,7 +571,7 @@ test('keeps the legacy cache usable and reports a failed offline migration', asy
   assert.equal(await fs.readFile(file, 'utf8'), original);
 });
 
-test('recurring and UID-less events remain available in the live cache but are not retained after omission', async t => {
+test('recurring events remain available after omission while UID-less standalone events use the live cache', async t => {
   const folder = await fixture(t);
   let feed = [
     'BEGIN:VCALENDAR',
@@ -389,7 +587,7 @@ test('recurring and UID-less events remain available in the live cache but are n
   assert.equal((await calendar.refreshCalendar(folder, config)).events.length, 3);
   assert.equal((await calendar.loadCache(folder, url)).events.length, 3);
   feed = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR';
-  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events, []);
+  assert.deepEqual((await calendar.refreshCalendar(folder, config)).events.map(event => event.title), ['Series', 'Series']);
 });
 
 test('does not publish an in-flight refresh after its source becomes stale', async t => {

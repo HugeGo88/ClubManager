@@ -152,7 +152,7 @@ function zonedWallTimeToIso(time, tzid) {
         .filter(part => part.type !== 'literal')
         .map(part => [part.type, Number(part.value)]));
       const representedAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-      const correction = representedAsUtc - guess;
+      const correction = representedAsUtc - wall;
       guess -= correction;
       if (correction === 0) break;
     }
@@ -176,6 +176,16 @@ function allDayIso(time) {
   return new Date(Date.UTC(time.year, time.month - 1, time.day)).toISOString();
 }
 
+function recurrenceKey(property, time) {
+  return time.isDate ? allDayIso(time) : timeToIso(property, time);
+}
+
+function anonymousSeriesId(component) {
+  const [name, properties, children] = component.toJSON();
+  const identity = [name, properties.filter(property => !['rrule', 'rdate', 'exdate'].includes(property[0])), children];
+  return `uidless:${crypto.createHash('sha256').update(JSON.stringify(identity)).digest('hex')}`;
+}
+
 function parseCalendar(content) {
   let jcal;
   try {
@@ -197,15 +207,38 @@ function parseCalendar(content) {
   const events = [];
   const standalone = [];
   const cancellations = [];
-  for (const component of calendar.getAllSubcomponents('vevent')) {
+  const seriesCancellations = [];
+  const components = calendar.getAllSubcomponents('vevent');
+  for (const component of components) {
+    const uid = component.getFirstPropertyValue('uid') ||
+      ((component.hasProperty('rrule') || component.hasProperty('rdate')) ? anonymousSeriesId(component) : null);
+    if (!uid) continue;
+    const recurrenceProperty = component.getFirstProperty('recurrence-id');
+    const recurrenceId = recurrenceProperty?.getFirstValue();
+    if (component.getFirstPropertyValue('status') === 'CANCELLED') {
+      if (recurrenceId) cancellations.push(`${uid}@${recurrenceKey(recurrenceProperty, recurrenceId)}`);
+      else {
+        cancellations.push(uid);
+        seriesCancellations.push(uid);
+      }
+    }
+    for (const exdate of component.getAllProperties('exdate')) {
+      for (const date of exdate.getValues()) cancellations.push(`${uid}@${recurrenceKey(exdate, date)}`);
+    }
+  }
+  const cancelled = new Set(cancellations);
+  const cancelledSeries = new Set(seriesCancellations);
+  const emitted = new Set();
+  for (const component of [...components.filter(item => !item.hasProperty('recurrence-id')),
+    ...components.filter(item => item.hasProperty('recurrence-id'))]) {
     const identified = component.getFirstPropertyValue('uid');
     const recurring = component.hasProperty('rrule') || component.hasProperty('rdate') ||
       component.hasProperty('recurrence-id');
+    if (identified && cancelledSeries.has(identified)) continue;
     if (component.getFirstPropertyValue('status') === 'CANCELLED') {
-      if (identified && !recurring) cancellations.push(identified);
       continue;
     }
-    if (component.getFirstProperty('recurrence-id')) continue;
+    if (component.hasProperty('recurrence-id') && !identified) continue;
     const startProperty = component.getFirstProperty('dtstart');
     if (!startProperty) continue;
     let startValue;
@@ -215,7 +248,7 @@ function parseCalendar(content) {
       continue;
     }
     if (!startValue) continue;
-    const uid = component.getFirstPropertyValue('uid') || crypto.randomUUID();
+    const uid = identified || (recurring ? anonymousSeriesId(component) : crypto.randomUUID());
     const append = (startTime, endTime, item, occurrenceKey) => {
       if (!startTime) return;
       const status = item?.component?.getFirstPropertyValue('status');
@@ -273,13 +306,29 @@ function parseCalendar(content) {
         end,
         allDay
       });
-      if (identified && !recurring) standalone.push(events[events.length - 1]);
+      emitted.add(events[events.length - 1].id);
+      if (identified || recurring) standalone.push(recurring
+        ? { ...events[events.length - 1], ...(identified ? { seriesUid: identified } : {}) }
+        : events[events.length - 1]);
     };
 
-    if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
+    if (component.hasProperty('recurrence-id')) {
+      const property = component.getFirstProperty('recurrence-id');
+      const key = recurrenceKey(property, property.getFirstValue());
+      if (!emitted.has(`${uid}@${key}`) && !cancelled.has(`${uid}@${key}`)) {
+        append(startValue, component.getFirstProperty('dtend')?.getFirstValue() || null, { component }, key);
+      }
+    } else if (component.hasProperty('rrule') || component.hasProperty('rdate')) {
       let event;
+      const exceptions = identified ? components.filter(candidate =>
+        candidate.hasProperty('recurrence-id') &&
+        candidate.getFirstPropertyValue('uid') === identified) : [];
+      const exceptionsByKey = new Map(exceptions.map(candidate => {
+        const property = candidate.getFirstProperty('recurrence-id');
+        return [recurrenceKey(property, property.getFirstValue()), candidate];
+      }));
       try {
-        event = new ICAL.Event(component);
+        event = new ICAL.Event(component, { exceptions });
       } catch {
         continue;
       }
@@ -289,11 +338,21 @@ function parseCalendar(content) {
       while ((occurrence = iterator.next()) && count < 10000) {
         count++;
         if (occurrence.year > 2100) break;
-        const details = event.getOccurrenceDetails(occurrence);
+        const key = recurrenceKey(startProperty, occurrence);
+        if (cancelled.has(`${uid}@${key}`)) continue;
+        const exception = exceptionsByKey.get(key);
+        let details;
+        if (exception) {
+          if (!exception.hasProperty('dtstart')) continue;
+          const item = new ICAL.Event(exception);
+          details = { item, startDate: item.startDate, endDate: item.endDate };
+        } else {
+          details = event.getOccurrenceDetails(occurrence);
+        }
         const item = details.item;
         const status = item?.component?.getFirstPropertyValue('status');
         if (status === 'CANCELLED') continue;
-        append(details.startDate, details.endDate, item, details.recurrenceId?.toString() || null);
+        append(details.startDate, details.endDate, item, key);
       }
     } else {
       const endProperty = component.getFirstProperty('dtend');
@@ -302,7 +361,7 @@ function parseCalendar(content) {
     }
   }
   events.sort((a, b) => a.start.localeCompare(b.start));
-  return { events, standalone, cancellations };
+  return { events, standalone, cancellations, seriesCancellations };
 }
 
 function parseIcs(content) {
@@ -472,6 +531,7 @@ async function loadCacheRecord(folder) {
   }
   const sources = cache.version === 1 ? [cache] : cache.sources;
   const validEvent = event => event && typeof event.id === 'string' &&
+    (event.seriesUid === undefined || typeof event.seriesUid === 'string') &&
     typeof event.title === 'string' && typeof event.description === 'string' &&
     typeof event.location === 'string' &&
     (event.allDay === undefined || typeof event.allDay === 'boolean') &&
@@ -510,7 +570,8 @@ function eligible(event, now) {
 function visible(source, now = Date.now()) {
   const liveIds = new Set(source.events.map(event => event.id));
   return {
-    events: [...source.events, ...source.history.filter(event => !liveIds.has(event.id) && eligible(event, now))]
+    events: [...source.events, ...source.history.filter(event => !liveIds.has(event.id) && eligible(event, now))
+      .map(({ seriesUid, ...event }) => event)]
       .sort((a, b) => a.start.localeCompare(b.start)),
     fetchedAt: source.fetchedAt
   };
@@ -594,6 +655,11 @@ async function refreshCalendar(folder, config, isCurrent = async () => true) {
 
     const history = new Map((previous?.history || []).map(event => [event.id, event]));
     const tombstones = new Set(previous?.tombstones || []);
+    for (const uid of result.seriesCancellations) {
+      for (const [id, event] of history) {
+        if (event.seriesUid === uid) history.delete(id);
+      }
+    }
     for (const uid of result.cancellations) {
       history.delete(uid);
       tombstones.add(uid);

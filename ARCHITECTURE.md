@@ -80,15 +80,19 @@ settings.json in userData    user-selected data folder
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Online calendar configuration is folder-local in `clubmanager-calendar.json`;
-  the last successful response and standalone UID-bearing event history are
+  the last successful response and observed event and occurrence history are
   atomically stored together in `clubmanager-calendar-cache.json`; history is
   separate for each normalized source URL and records its fetch time, while
-  only the latest source's response retains non-history events. Missing
-  standalone events are retained until two years after their end; active feed
+  only the latest source's response retains its live snapshot. Missing
+  events and individual occurrences are retained until two years after their end; active feed
   entries remain visible regardless of age, replace matching history, and
-  explicit cancellations remove and tombstone entries until reinstated.
-  Recurring and UID-less events are cached as live results but are not retained
-  after omission. Version 1 caches are migrated on refresh or offline load;
+  explicit cancellations and recurrence exclusions remove entries until
+  actively reinstated, including every saved occurrence on series cancellation.
+  Recurrence identities use the UID and original occurrence instant so moved
+  instances replace their previous version. UID-less content matching cannot
+  reliably identify changed events; for series the recurrence rule and exclusions
+  are excluded from the fingerprint, so identical otherwise-indistinguishable
+  series cannot be distinguished. Version 1 caches are migrated on refresh or offline load;
   their IDs did not record provenance, so UUID-v4-shaped IDs and
   occurrence-shaped IDs cannot safely be distinguished from generated IDs or
   recurrence instances and are not seeded as history. Other legacy IDs are
