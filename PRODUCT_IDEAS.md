@@ -135,6 +135,21 @@ items are still open, partially implemented, or ongoing design goals.
   with possible separate versions after changes (#35).
 - [x] Retain recurring calendar occurrences, including shortened series and
   explicit exclusions and cancellations (#33, #36).
+- [ ] Retain previously observed calendar events per source URL in the active
+  data folder, including future events that disappear from the feed. Restore
+  each source's history when switching back to it, and display retained events
+  like live ICS events. Update matching events when the feed changes them.
+  Keep missing events until two years after they end; do not hide older events
+  that are still in the feed.
+  - Remove explicitly cancelled events and occurrences excluded by EXDATE.
+    Cancelling a series removes all its occurrences, including past ones;
+    shortening a series alone does not remove missing occurrences. A cancelled
+    event may return when it is supplied as active again, but not merely when
+    its cancellation disappears.
+  - Seed history from the existing last-successful cache, including when
+    offline. Events absent before that cache cannot be recovered. Match
+    UID-less events by content where possible; changed UID-less events may
+    appear twice because their identity cannot be reliably determined.
 - [ ] Provide an invoice module for creating/writing invoices.
 - [ ] Use a master-detail view: show a list of invoices and display the selected
   invoice's details alongside or in a detail pane.

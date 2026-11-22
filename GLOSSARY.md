@@ -39,6 +39,11 @@ _Avoid_: global signatures
 **PDF preview**:
 A read-only view of an exported document PDF, not a live rendering of unsaved edits.
 
+## Calendar
+
+**Retained calendar event**:
+A previously observed calendar event that remains visible after it disappears from its source.
+
 ## Sitzungen
 
 **Sitzungsleitung**:
