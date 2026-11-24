@@ -920,6 +920,9 @@ async function main() {
           await new Promise(resolve => setTimeout(resolve, 10));
         }
         assert.equal(window.isVisible(), true, 'The app window appears after the first render');
+        for (let attempt = 0; attempt < 100 && !splash.isDestroyed(); attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
         assert.equal(splash.isDestroyed(), true, 'The splash screen closes after the app window appears');
         await window.webContents.executeJavaScript(`(async () => {
           const button = document.querySelector('[data-action="toggle-sidebar"]');
@@ -1033,7 +1036,7 @@ async function main() {
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
-              const value = test();
+              const value = await test();
               if (value) return value;
               await new Promise(resolve => setTimeout(resolve, 25));
             }

@@ -443,6 +443,8 @@ deterministic initialization-write failure and retry, guarded external refresh,
 stale-save reload recovery, and a full app restart
 using the same settings context.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
-syntax, providing a virtual display for Electron. The `start`, Electron smoke
-test and distribution scripts build the editor and versioned manual through npm
-lifecycle scripts. VS Code's debug configurations also build these assets first.
+syntax, providing a virtual display for Electron. It installs Electron before
+configuring its Linux sandbox helper with root ownership and setuid permissions.
+The `start`, Electron smoke test and distribution scripts build the editor and
+versioned manual through npm lifecycle scripts. VS Code's debug configurations
+also build these assets first.

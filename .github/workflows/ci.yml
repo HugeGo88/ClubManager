@@ -22,4 +22,9 @@ jobs:
       - run: npm test
       - run: node --check scripts/electron-folder-recovery-smoke.cjs
       - run: node --check scripts/electron-smoke.cjs
+      - name: Prepare Electron sandbox
+        run: |
+          npm exec -- install-electron
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - run: xvfb-run -a npm run test:electron
