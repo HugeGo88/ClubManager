@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('club', {
   previewLetterPdf: id => invoke('letters:preview-pdf', id),
   listMeetings: () => invoke('meetings:list'),
   saveMeeting: (meeting, revision) => invoke('meetings:save', meeting, revision),
+  deleteMeeting: (id, revision) => invoke('meetings:delete', id, revision),
   exportMeeting: (meeting, revision, includeEarlierTasks) => invoke('meetings:export', meeting, revision, includeEarlierTasks),
   onPrepareUpdate: callback => ipcRenderer.on('update:prepare-install', () => callback()),
   installUpdate: () => invoke('update:install'),

@@ -3233,6 +3233,54 @@ async function main() {
         await runFolderRecoverySmoke('restart-check');
         await runFolderRecoverySmoke('restart-external');
         await runFolderRecoverySmoke('restart-missing');
+        const deletionTestMeeting = {
+          id: randomUUID(), title: 'Löschtest', date: '', attendance: [], points: []
+        };
+        await window.webContents.executeJavaScript(`(async () => {
+          const meeting = ${JSON.stringify(deletionTestMeeting)};
+          const waitFor = async test => {
+            for (let i = 0; i < 200; i++) {
+              const value = await test();
+              if (value) return value;
+              await new Promise(resolve => setTimeout(resolve, 25));
+            }
+            throw new Error('Timed out waiting for meeting deletion');
+          };
+          await window.club.saveMeeting(meeting, null);
+          const revision = (await window.club.listMeetings()).find(item => item.meeting.id === meeting.id).revision;
+          await window.club.exportMeeting(meeting, revision, false);
+          document.querySelector('[data-view="tasks"]').click();
+          await waitFor(() => !document.body.inert && document.querySelector('main h1')?.textContent === 'Offene Aufgaben');
+          document.querySelector('[data-view="meetings"]').click();
+          const savedButton = await waitFor(() => document.querySelector('[data-action="select"][data-id="${deletionTestMeeting.id}"]'));
+          savedButton.click();
+          await waitFor(() => !document.body.inert && document.querySelector('[data-action="delete-meeting"]'));
+          if (document.querySelector('[data-action="delete-meeting"]').textContent !== 'Sitzung löschen') {
+            throw new Error('Saved meeting editor must provide a delete button');
+          }
+          const originalConfirm = window.confirm;
+          let confirmation = '';
+          try {
+            window.confirm = message => { confirmation = message; return false; };
+            document.querySelector('[data-action="delete-meeting"]').click();
+            await waitFor(() => !document.body.inert);
+            if (!confirmation.includes('endgültig löschen') ||
+                !(await window.club.listMeetings()).some(item => item.meeting.id === meeting.id)) {
+              throw new Error('Canceling meeting deletion must preserve the saved meeting');
+            }
+            window.confirm = message => { confirmation = message; return true; };
+            document.querySelector('[data-action="delete-meeting"]').click();
+            await waitFor(() => !document.body.inert &&
+              document.querySelector('[role="status"]')?.textContent.includes('Sitzung und gespeichertes PDF wurden gelöscht.'));
+          } finally {
+            window.confirm = originalConfirm;
+          }
+          if ((await window.club.listMeetings()).some(item => item.meeting.id === meeting.id)) {
+            throw new Error('Confirmed meeting deletion must remove the saved meeting');
+          }
+        })()`);
+        await assert.rejects(fs.access(path.join(data, 'meetings', `${deletionTestMeeting.id}.json`)), { code: 'ENOENT' });
+        await assert.rejects(fs.access(path.join(data, 'meetings', 'protocols', `${deletionTestMeeting.id}.pdf`)), { code: 'ENOENT' });
         console.log('Electron smoke test passed: folder switching, dirty-draft decisions, task filtering, conflict recovery, and PDF export.');
         clearTimeout(timeout);
         await new Promise(resolve => calendarServer.close(resolve));

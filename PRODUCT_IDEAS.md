@@ -107,6 +107,7 @@ items are still open, partially implemented, or ongoing design goals.
   with an excuse, and people absent without an excuse.
 - [x] Record an optional meeting chair and recorder and include them in the protocol.
 - [x] Generate a meeting protocol PDF and store it in `meetings/protocols`.
+- [x] Delete a saved meeting and its exported PDF from the editor.
 - [x] Build the meeting protocol PDF using HTML and CSS, with an optional custom
   stylesheet.
 - [ ] Use a consistent HTML and CSS approach across meeting protocols, invoices,

@@ -147,6 +147,7 @@ button.action.icon-button { display: grid; width: 36px; height: 36px; flex: 0 0 
 .icon-button svg { width: 20px; height: 20px; }
 .icon-button[aria-pressed="true"] { color: #215fb8; border-color: #9cbce8; background: #eaf2fe; }
 button.primary { background: #2867c7; color: white; border-color: #2867c7; }
+button.danger { color: #a32f26; border-color: #d99a94; }
 button.action:hover { filter: brightness(.96); }
 button:disabled { opacity: .45; cursor: default; }
 .list .action { width: 100%; margin-top: 10px; }

@@ -767,6 +767,8 @@ function registerHandlers() {
   }));
   ipcMain.handle('meetings:save', (event, meeting, revision) =>
     serializeWrite(() => storage.saveMeeting(requireFolder(), meeting, revision)));
+  ipcMain.handle('meetings:delete', (event, id, revision) =>
+    serializeWrite(() => storage.deleteMeeting(requireFolder(), id, revision)));
   ipcMain.handle('meetings:has-protocol', (event, id) => storage.hasProtocol(requireFolder(), id));
   ipcMain.handle('meetings:preview-protocol', async (event, id) => {
     const currentFolder = requireFolder();

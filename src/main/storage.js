@@ -139,4 +139,26 @@ async function saveMeeting(folder, meeting, expectedRevision) {
   return revision(content);
 }
 
-module.exports = { initializeFolder, listMeetings, saveMeeting, atomicWrite, validateMeeting, protocolPath, hasProtocol };
+async function deleteMeeting(folder, id, expectedRevision) {
+  const file = meetingPath(folder, id);
+  let content;
+  try {
+    content = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error('Die Sitzung wurde auf dem Datenträger geändert. Laden Sie sie vor dem Löschen neu.');
+    }
+    throw error;
+  }
+  if (revision(content) !== expectedRevision) {
+    throw new Error('Die Sitzung wurde auf dem Datenträger geändert. Laden Sie sie vor dem Löschen neu.');
+  }
+  await fs.unlink(file);
+  try {
+    await fs.unlink(protocolPath(folder, id));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
+
+module.exports = { initializeFolder, listMeetings, saveMeeting, deleteMeeting, atomicWrite, validateMeeting, protocolPath, hasProtocol };

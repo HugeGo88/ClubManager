@@ -540,7 +540,7 @@ function meetingEditor(meeting) {
   return `<div class="topline meeting-toolbar"><div><h1>Sitzung bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
     <div class="row meeting-actions">${state.hasProtocol ? button('open-protocol', 'Gespeichertes PDF öffnen') : ''}
       <label class="checkbox export-option"><input type="checkbox" data-include-earlier-tasks ${includeEarlierTasks ? 'checked' : ''}> Offene Aufgaben früherer Sitzungen einbeziehen</label>
-      ${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}</div></div>
+      ${button('export', 'PDF exportieren')}${button('save', 'Sitzung speichern', 'primary')}${state.revision !== null ? button('delete-meeting', 'Sitzung löschen', 'danger') : ''}</div></div>
     ${state.hasProtocol ? '<p class="muted">Das gespeicherte PDF zeigt den Stand des letzten Exports. Änderungen an der Sitzung werden erst nach einem erneuten Export übernommen.</p>' : ''}
     <label class="checkbox"><input type="checkbox" data-meeting-read-only ${meeting.readOnly ? 'checked' : ''}> Protokoll schreibgeschützt</label>
     ${meeting.readOnly ? '<p class="muted">Das Protokoll ist schreibgeschützt. Aufgaben können weiterhin erledigt oder wieder geöffnet werden.</p>' : ''}
@@ -1508,6 +1508,14 @@ async function run(action, target) {
       state.dirty = false;
       await refresh();
       setMessage('Sitzung gespeichert.');
+      break;
+    case 'delete-meeting':
+      if (!meeting || state.revision === null || !confirmDiscard()) return false;
+      if (!window.confirm(`Sitzung "${meeting.title || 'Sitzung ohne Titel'}" und ihr gespeichertes PDF endgültig löschen?`)) break;
+      await window.club.deleteMeeting(meeting.id, state.revision);
+      clearEditor();
+      await refresh();
+      setMessage('Sitzung und gespeichertes PDF wurden gelöscht.');
       break;
     case 'export':
       if (state.dirty || !state.revision) throw new Error('Speichern Sie die Sitzung, bevor Sie das PDF exportieren.');
