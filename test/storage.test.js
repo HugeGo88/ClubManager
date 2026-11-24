@@ -115,6 +115,26 @@ test('does not overwrite a meeting changed or removed on disk', async t => {
   await assert.rejects(storage.saveMeeting(folder, data, revision), /auf dem Datenträger geändert/);
 });
 
+test('deletes a meeting and its PDF only when the saved revision matches', async t => {
+  const folder = await fixture(t);
+  const data = meeting();
+  const originalRevision = await storage.saveMeeting(folder, data, null);
+  data.title = 'Updated committee';
+  const revision = await storage.saveMeeting(folder, data, originalRevision);
+  const pdf = storage.protocolPath(folder, data.id);
+  await fs.mkdir(path.dirname(pdf));
+  await fs.writeFile(pdf, '%PDF-test');
+
+  await assert.rejects(storage.deleteMeeting(folder, data.id, originalRevision), /auf dem Datenträger geändert/);
+  assert.equal((await storage.listMeetings(folder)).length, 1);
+  assert.equal(await storage.hasProtocol(folder, data.id), true);
+
+  await storage.deleteMeeting(folder, data.id, revision);
+  assert.deepEqual(await storage.listMeetings(folder), []);
+  await assert.rejects(fs.access(pdf), { code: 'ENOENT' });
+  await assert.rejects(storage.deleteMeeting(folder, data.id, revision), /auf dem Datenträger geändert/);
+});
+
 test('preserves optional TOP responsibility and rejects invalid values', async t => {
   const folder = await fixture(t);
   const data = meeting();

@@ -75,7 +75,7 @@ settings.json in userData    user-selected data folder
   IPC covers application version, folder selection, registry, activation and
   renaming, module settings, folder-local document customization import, reset
   and directory opening, PDF CSS,
-  meeting list/save/export, opening exported PDFs, reading existing meeting
+  meeting list/save/delete/export, opening exported PDFs, reading existing meeting
   and letter PDFs for their resizable in-app previews and update installation.
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
@@ -248,7 +248,9 @@ settings.json in userData    user-selected data folder
   filename. Unsupported file versions, invalid records and corrupt JSON are
   reported rather than silently skipped; startup reads meeting records in
   batches of at most eight files to reduce serial I/O without unbounded
-  concurrency. There is no version migration for unsupported meeting formats.
+  concurrency. Deleting a saved meeting checks its loaded revision and removes
+  its JSON record and exported PDF; a changed or missing record is rejected.
+  There is no version migration for unsupported meeting formats.
 - Meeting data contains a title, optional date, optional chair and recorder names, an
   optional Boolean `readOnly` flag (absent in legacy records), attendance entries and ordered
   TOPs. A TOP has a headline, `discussion`/`decision`/`info` type, Markdown
@@ -352,6 +354,9 @@ remain separate operational steps.
   requires confirmation. Task completion and reopening remain available in the
   editor and task overview. This is an accidental-edit guard, not file access
   control; toggles and editor task changes follow the normal save workflow.
+  Saved meetings can be deleted from the editor after confirmation; unsaved
+  changes must be discarded first, and stale revisions cannot delete a newer
+  saved record.
 - The letter editor similarly tracks unsaved changes and revisions, uses the
   shared Markdown editor, and exports saved content with optional address and
   selected signatures from the active data folder. Letter templates use
@@ -438,6 +443,8 @@ deterministic initialization-write failure and retry, guarded external refresh,
 stale-save reload recovery, and a full app restart
 using the same settings context.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
-syntax, providing a virtual display for Electron. The `start`, Electron smoke
-test and distribution scripts build the editor and versioned manual through npm
-lifecycle scripts. VS Code's debug configurations also build these assets first.
+syntax, providing a virtual display for Electron. It installs Electron before
+configuring its Linux sandbox helper with root ownership and setuid permissions.
+The `start`, Electron smoke test and distribution scripts build the editor and
+versioned manual through npm lifecycle scripts. VS Code's debug configurations
+also build these assets first.
