@@ -125,9 +125,11 @@ settings.json in userData    user-selected data folder
   Rechnung views and rejects navigation to them.
 - Invoice drafts are folder-local records below `invoices/`, while issuer,
   bank and payment-term settings are stored in the same module directory.
-  Quantity and price calculations use exact decimal-to-cent rounding: every
-  position is rounded Half-up independently before totals are summed. The HTML
-  preview escapes all user values. Draft writes use SHA-256 revisions and
+  Prices are entered in euros but stored as integer cents; the shared invoice
+  amount helpers calculate editor, list and document totals using exact
+  decimal-to-cent rounding. Every position is rounded Half-up independently
+  before totals are summed. The HTML preview uses a sandboxed blob frame and
+  escapes all user values. Draft writes use SHA-256 revisions and
   atomic replacement; stale or invalid writes are rejected with German errors.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
   same width when selecting another saved item from the list. It replaces the

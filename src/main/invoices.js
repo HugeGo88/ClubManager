@@ -4,45 +4,12 @@ const crypto = require('node:crypto');
 const { atomicWrite } = require('./storage');
 const { escapeHtml } = require('./protocol');
 const { isDate, formatDate } = require('../shared/dates');
+const { parseQuantity, calculateInvoiceTotal, formatCents } = require('../shared/invoice-amounts');
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const QUANTITY = /^(?:0|[1-9]\d*)(?:\.(\d{1,3}))?$/;
 
 function revision(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
-}
-
-function parseQuantity(value) {
-  if (typeof value !== 'string' || !QUANTITY.test(value)) {
-    if (typeof value === 'string' && /^\d+\.\d{4,}$/.test(value)) {
-      throw new Error('Die Menge darf höchstens drei Nachkommastellen haben.');
-    }
-    throw new Error('Die Menge muss eine positive Zahl mit höchstens drei Nachkommastellen sein.');
-  }
-  const [whole, fraction = ''] = value.split('.');
-  const milli = BigInt(whole || '0') * 1000n + BigInt(fraction.padEnd(3, '0'));
-  if (milli <= 0n) throw new Error('Die Menge muss eine positive Menge sein.');
-  return milli;
-}
-
-function calculateInvoiceTotal(items) {
-  const itemsCents = items.map(item => {
-    if (!item || typeof item.quantity !== 'string' || !Number.isSafeInteger(item.unitPriceCents) ||
-        item.unitPriceCents < 0) {
-      throw new Error('Die Rechnungsposition enthält einen ungültigen Preis oder eine ungültige Menge.');
-    }
-    const milli = parseQuantity(item.quantity);
-    const product = milli * BigInt(item.unitPriceCents);
-    const cents = (product + 500n) / 1000n;
-    return Number(cents);
-  });
-  return { cents: itemsCents.reduce((sum, cents) => sum + cents, 0), itemsCents };
-}
-
-function formatCents(cents) {
-  const euros = Math.trunc(cents / 100);
-  const remainder = String(cents % 100).padStart(2, '0');
-  return `${euros},${remainder} €`;
 }
 
 function validateAddress(address) {
@@ -87,7 +54,7 @@ function validateInvoiceDraft(invoice) {
       throw new Error('Ungültige Rechnungsposition.');
     }
     if (!Number.isSafeInteger(item.unitPriceCents) || item.unitPriceCents < 0) {
-      throw new Error('Der Einzelpreis muss in Cent als nicht negativer Ganzzahlwert angegeben werden.');
+      throw new Error('Der Einzelpreis muss ein nicht negativer Eurobetrag mit höchstens zwei Nachkommastellen sein.');
     }
     parseQuantity(item.quantity);
   }
@@ -110,7 +77,7 @@ async function listInvoices(folder) {
     throw error;
   }
   const records = [];
-  for (const entry of entries.filter(item => item.isFile() && item.name.endsWith('.json'))) {
+  for (const entry of entries.filter(item => item.isFile() && item.name.endsWith('.json') && item.name !== 'settings.json')) {
     const id = entry.name.slice(0, -5);
     const content = await fs.readFile(invoicePath(folder, id), 'utf8');
     let record;

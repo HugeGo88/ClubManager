@@ -68,11 +68,11 @@ Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PD
 
 Aktivieren Sie das Modul **Rechnungen** und wählen Sie in der Seitenleiste **Rechnungen**. Unter **Einstellungen → Rechnungen** pflegen Sie Ausstellername, Anschrift, Bankdaten und die anfängliche Zahlungsfrist von 14 Tagen; diese Angaben gelten nur für den aktiven Datenordner.
 
-Über **Neue Rechnung** erstellen Sie einen Rechnungsentwurf. Erfassen Sie Empfänger, Rechnungsdatum, Leistungsdatum oder Leistungszeitraum, Fälligkeit und beliebig viele Positionen. Jede Position enthält eine positive Menge mit höchstens drei Nachkommastellen, eine Einheit, eine Beschreibung und einen nicht negativen Einzelpreis in Cent. Kostenlose Positionen sind neben berechneten Positionen möglich. ClubManager rundet jede Positionssumme einzeln kaufmännisch auf Cent und bildet erst danach die Gesamtsumme.
+Über **Neue Rechnung** erstellen Sie einen Rechnungsentwurf. Erfassen Sie Empfänger, Rechnungsdatum, Leistungsdatum oder Leistungszeitraum, Fälligkeit und beliebig viele Positionen. Jede Position enthält eine positive Menge mit höchstens drei Nachkommastellen (mit Punkt, z. B. `0.125`), eine Einheit, eine Beschreibung und einen nicht negativen Einzelpreis in Euro (z. B. `3,50`, höchstens zwei Nachkommastellen). Kostenlose Positionen sind neben berechneten Positionen möglich. ClubManager zeigt die Positionssummen und die Gesamtsumme im Editor und in der HTML-Vorschau sowie die Gesamtsumme in der Rechnungsliste. Jede Positionssumme wird einzeln kaufmännisch auf Cent gerundet, bevor die Gesamtsumme gebildet wird.
 
 Mit **Rechnung speichern** wird der Entwurf lokal im Datenordner gespeichert und bleibt nach einem Neustart in der Liste und im Editor verfügbar. Ungültige Mengen oder Preise, negative Einzelpreise und eine nicht positive Gesamtsumme werden abgewiesen. Wurde der Datensatz inzwischen auf dem Datenträger geändert, meldet ClubManager einen Konflikt und überschreibt keine fremden Änderungen.
 
-**HTML-Vorschau** zeigt die Rechnung als lesbare Vorschau. Alle Eingaben werden als Text dargestellt; eingegebene HTML-, Skript- oder Formatierungszeichen werden nicht ausgeführt. Dieses Modul erzeugt in diesem Umfang noch keine endgültige Rechnungsnummer, Ausstellung oder PDF-Datei.
+**HTML-Vorschau** zeigt die Rechnung als lesbare Vorschau mit Positionssummen und Gesamtsumme. Wählen Sie **HTML-Vorschau** nach Änderungen erneut, um die Vorschau zu aktualisieren. Alle Eingaben werden als Text dargestellt; eingegebene HTML-, Skript- oder Formatierungszeichen werden nicht ausgeführt. Dieses Modul erzeugt in diesem Umfang noch keine endgültige Rechnungsnummer, Ausstellung oder PDF-Datei.
 
 ## Online-Kalender unter Rechnungen
 

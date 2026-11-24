@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.1.13",
+    "date": "2026-11-24",
+    "sections": [
+      {
+        "title": "Rechnungen",
+        "changes": [
+          "Rechnungsentwürfe können mit Empfänger, Leistungsdaten, Positionen und Fälligkeit erstellt und im Datenordner gespeichert werden.",
+          "Aussteller-, Bank- und Zahlungsfristeneinstellungen werden je Datenordner verwaltet.",
+          "Mengen und Einzelpreise werden präzise berechnet; Positionssummen und Gesamtsummen werden in Editor und HTML-Vorschau angezeigt.",
+          "Speicherkonflikte werden erkannt, bevor fremde Änderungen überschrieben werden."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.12",
     "date": "2026-11-22",
     "sections": [

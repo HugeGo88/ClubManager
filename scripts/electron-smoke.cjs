@@ -329,18 +329,53 @@ async function invoiceDraftSmoke(window) {
     setValue('[data-invoice-field="recipient.postalCode"]', '12345');
     setValue('[data-invoice-field="recipient.city"]', 'Musterstadt');
     setValue('[data-invoice-item-field="description"]', 'Mitgliedsbeitrag');
-    setValue('[data-invoice-item-field="quantity"]', '0.125');
-    setValue('[data-invoice-item-field="unitPriceCents"]', '4');
+    setValue('[data-invoice-item="0"][data-invoice-item-field="quantity"]', '2');
+    setValue('[data-invoice-item="0"][data-invoice-item-field="unitPriceEuro"]', '3,50');
+    if (document.querySelector('[data-invoice-item-total="0"]').textContent !== '7,00 €') {
+      throw new Error('The first invoice position must show 7,00 €');
+    }
+    document.querySelector('[data-action="add-invoice-item"]').click();
+    await waitFor(() => document.querySelector('[data-invoice-item="1"][data-invoice-item-field="unitPriceEuro"]'));
+    setValue('[data-invoice-item="1"][data-invoice-item-field="description"]', 'Weitere Leistung');
+    setValue('[data-invoice-item="1"][data-invoice-item-field="quantity"]', '0.125');
+    setValue('[data-invoice-item="1"][data-invoice-item-field="unitPriceEuro"]', '0,04');
+    if (document.querySelector('[data-invoice-item-total="1"]').textContent !== '0,01 €' ||
+        document.querySelector('[data-invoice-total]').textContent !== '7,01 €') {
+      throw new Error('The rounded second position and invoice total must be visible');
+    }
+    setValue('[data-invoice-item="1"][data-invoice-item-field="unitPriceEuro"]', '0,004');
+    if (document.querySelector('[data-invoice-total]').textContent.includes('7,01')) {
+      throw new Error('Invalid price precision must not leave a stale total visible');
+    }
+    document.querySelector('[data-action="save-invoice"]').click();
+    await waitFor(() => !document.body.inert && document.querySelector('.notice.error')?.textContent.includes('Einzelpreis'));
+    if ((await window.club.listInvoices()).length !== 0 ||
+        document.querySelector('[data-invoice-item="1"][data-invoice-item-field="unitPriceEuro"]').value !== '0,004') {
+      throw new Error('An invalid euro amount must be retained for correction and not saved');
+    }
+    setValue('[data-invoice-item="1"][data-invoice-item-field="unitPriceEuro"]', '0,04');
+    setValue('[data-invoice-item="0"][data-invoice-item-field="quantity"]', '3');
+    if (document.querySelector('[data-invoice-total]').textContent !== '10,51 €') {
+      throw new Error('Changing a quantity must update the total');
+    }
+    setValue('[data-invoice-item="0"][data-invoice-item-field="quantity"]', '2');
     await waitFor(() => document.querySelector('[data-action="save-invoice"]'));
     document.querySelector('[data-action="save-invoice"]').click();
     await waitFor(async () => (await window.club.listInvoices()).length === 1);
+    await waitFor(() => !document.body.inert && document.querySelector('[data-action="select-invoice"]')?.textContent.includes('7,01 €'));
+    document.querySelector('[data-action="select-invoice"]').click();
+    await waitFor(() => !document.body.inert && document.querySelector('[data-invoice-item="0"][data-invoice-item-field="unitPriceEuro"]')?.value === '3,50');
     document.querySelector('[data-action="preview-invoice"]').click();
     await waitFor(() => document.querySelector('.preview-pane iframe'));
     const iframe = document.querySelector('.preview-pane iframe');
-    await waitFor(() => iframe.getAttribute('src')?.startsWith('data:text/html'));
-    if (!iframe.src.includes('Alex') && !decodeURIComponent(iframe.src).includes('Alex')) {
-      throw new Error('The invoice HTML preview did not contain the recipient');
+    await waitFor(() => iframe.contentDocument?.body?.textContent.includes('Gesamtsumme: 7,01 €'));
+    const text = iframe.contentDocument.body.textContent;
+    if (!text.includes('Alex <Script>') || !text.includes('7,00 €') || !text.includes('0,01 €') ||
+        iframe.contentDocument.querySelector('script')) {
+      throw new Error('The invoice HTML preview must show escaped recipient and rounded amounts');
     }
+    document.querySelector('[data-action="close-preview"]').click();
+    await waitFor(() => !document.querySelector('.preview-pane'));
   })()`);
 }
 

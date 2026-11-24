@@ -7,6 +7,7 @@ const letterState = {
 };
 const invoiceState = {
   invoices: [], invoice: null, revision: null,
+  priceInputs: [],
   settings: null, settingsRevision: null, settingsDirty: false,
   preview: { open: false, url: null, error: false }
 };
@@ -102,24 +103,47 @@ function invoiceList() {
     [invoice.recipient.name, invoice.recipient.company, invoice.invoiceDate, formatDate(invoice.invoiceDate)]
       .join(' ').toLocaleLowerCase('de').includes(search));
   const items = matches.map(({ invoice }) => `<button class="list-item ${invoiceState.invoice?.id === invoice.id ? 'selected' : ''}" data-action="select-invoice" data-id="${escape(invoice.id)}">
-    <strong>${escape(invoice.recipient.company || invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong><small>${escape(invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum')}</small></button>`).join('');
+    <strong>${escape(invoice.recipient.company || invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong><small>${escape(invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum')} · ${escape(invoiceAmounts.formatCents(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents))}</small></button>`).join('');
   return `<aside class="list"><h2>Rechnungsentwürfe</h2>${button('new-invoice', '+ Neue Rechnung', 'primary')}
     <label>Rechnungen suchen<input type="search" data-list-search="invoices" value="${escape(listSearch.invoices)}" placeholder="Empfänger oder Datum"></label>
     <div data-list-results aria-live="polite">${invoiceState.invoices.length ? (items || '<p>Keine Rechnungen entsprechen der Suche.</p>') : '<p>Noch keine Rechnungsentwürfe gespeichert.</p>'}</div></aside>`;
 }
 
-function formatInvoiceCents(cents) {
-  return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, '0')} €`;
+function invoiceAmount(items) {
+  try {
+    return { text: invoiceAmounts.formatCents(invoiceAmounts.calculateInvoiceTotal(items).cents), error: '' };
+  } catch (error) {
+    if (!(error instanceof invoiceAmounts.InvoiceAmountError)) throw error;
+    return { text: 'Ungültige Eingabe', error: error.message };
+  }
+}
+
+function refreshInvoiceAmounts() {
+  invoiceState.invoice.items.forEach((item, index) => {
+    const result = invoiceAmount([item]);
+    const element = app.querySelector(`[data-invoice-item-total="${index}"]`);
+    element.textContent = result.text;
+    element.title = result.error;
+  });
+  const result = invoiceAmount(invoiceState.invoice.items);
+  const total = app.querySelector('[data-invoice-total]');
+  total.textContent = result.text;
+  total.title = result.error;
 }
 
 function invoiceEditor(invoice) {
-  const items = invoice.items.map((item, index) => `<tr>
+  const items = invoice.items.map((item, index) => {
+    const amount = invoiceAmount([item]);
+    return `<tr>
     <td><input data-invoice-item="${index}" data-invoice-item-field="description" value="${escape(item.description)}"></td>
     <td><input data-invoice-item="${index}" data-invoice-item-field="quantity" value="${escape(item.quantity)}" inputmode="decimal"></td>
     <td><input data-invoice-item="${index}" data-invoice-item-field="unit" value="${escape(item.unit)}"></td>
-    <td><input data-invoice-item="${index}" data-invoice-item-field="unitPriceCents" type="number" min="0" step="1" value="${escape(item.unitPriceCents)}"></td>
+    <td><input data-invoice-item="${index}" data-invoice-item-field="unitPriceEuro" inputmode="decimal" aria-label="Einzelpreis in Euro für Position ${index + 1}" value="${escape(invoiceState.priceInputs[index])}"></td>
+    <td data-invoice-item-total="${index}" title="${escape(amount.error)}">${escape(amount.text)}</td>
     <td><button type="button" class="action" data-action="remove-invoice-item" data-index="${index}" ${invoice.items.length === 1 ? 'disabled' : ''}>Entfernen</button></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
+  const total = invoiceAmount(invoice.items);
   return `<div class="topline"><div><h1>Rechnungsentwurf bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
     <div class="row"><button class="action" data-action="preview-invoice">HTML-Vorschau</button><button class="action primary" data-action="save-invoice">Rechnung speichern</button></div></div>
     <div class="card"><h2>Empfänger</h2><div class="fields">
@@ -135,8 +159,9 @@ function invoiceEditor(invoice) {
       <label>Leistungsbeginn<input type="date" data-invoice-field="servicePeriodStart" value="${escape(invoice.servicePeriodStart)}"></label>
       <label>Leistungsende<input type="date" data-invoice-field="servicePeriodEnd" value="${escape(invoice.servicePeriodEnd)}"></label>
     </div>
-    <h2>Positionen</h2><div class="table-scroll"><table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis in Cent</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
-    <div class="row"><button type="button" class="action" data-action="add-invoice-item">Position hinzufügen</button></div></div>`;
+    <h2>Positionen</h2><div class="table-scroll"><table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis in Euro</th><th>Positionssumme</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
+    <div class="row"><button type="button" class="action" data-action="add-invoice-item">Position hinzufügen</button></div>
+    <p><strong>Gesamtsumme: <span data-invoice-total aria-live="polite" title="${escape(total.error)}">${escape(total.text)}</span></strong></p></div>`;
 }
 
 function letterEditor(letter) {
@@ -239,6 +264,7 @@ function clearEditor() {
   letterState.letter = null;
   invoiceState.invoice = null;
   invoiceState.revision = null;
+  invoiceState.priceInputs = [];
   letterState.revision = null;
   letterState.hasPdf = false;
   state.revision = null;
@@ -1076,10 +1102,11 @@ function render() {
     <div class="meeting-stage ${showPreview ? 'preview-open' : ''}" ${showPreview ? `style="--preview-width: ${state.previewWidth}px"` : ''}>
       ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="${state.view === 'meetings' ? 'toggle-preview' : state.view === 'letters' ? 'toggle-letter-preview' : 'toggle-invoice-preview'}" aria-label="${previewOpen ? (state.view === 'invoices' ? 'HTML-Vorschau schließen' : 'PDF-Vorschau schließen') : (state.view === 'invoices' ? 'HTML-Vorschau öffnen' : 'PDF-Vorschau öffnen')}" title="${previewOpen ? 'Vorschau schließen' : 'Vorschau öffnen'}" aria-pressed="${previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
       <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div>
-      ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="PDF-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
-        <aside class="preview-pane" aria-label="PDF-Vorschau">
-          <div class="preview-header"><h2>PDF-Vorschau</h2><button class="action" data-action="close-preview" aria-label="PDF-Vorschau schließen">Schließen</button></div>
-          ${preview.url ? `<iframe title="${state.view === 'meetings' ? 'Gespeichertes Sitzungsprotokoll' : 'Gespeicherter Brief'}" src="${escape(preview.url)}"></iframe>`
+      ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="${state.view === 'invoices' ? 'HTML' : 'PDF'}-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
+        <aside class="preview-pane" aria-label="${state.view === 'invoices' ? 'HTML' : 'PDF'}-Vorschau">
+          <div class="preview-header"><h2>${state.view === 'invoices' ? 'HTML' : 'PDF'}-Vorschau</h2><button class="action" data-action="close-preview" aria-label="${state.view === 'invoices' ? 'HTML' : 'PDF'}-Vorschau schließen">Schließen</button></div>
+          ${state.view === 'invoices' ? '<p class="muted">Die Vorschau zeigt den Stand beim Öffnen. Wählen Sie HTML-Vorschau erneut, um Änderungen anzuzeigen.</p>' : ''}
+          ${preview.url ? `<iframe title="${state.view === 'meetings' ? 'Gespeichertes Sitzungsprotokoll' : state.view === 'letters' ? 'Gespeicherter Brief' : 'Rechnungsentwurf'}" ${state.view === 'invoices' ? 'sandbox="allow-same-origin"' : ''} src="${escape(preview.url)}"></iframe>`
             : `<p class="preview-message" role="${preview.error ? 'alert' : 'status'}">${preview.error
               ? 'Das exportierte PDF konnte nicht gelesen werden.' : 'Für diesen Eintrag wurde noch kein PDF exportiert.'}</p>`}
         </aside>` : ''}
@@ -1262,6 +1289,7 @@ async function run(action, target) {
       if (!confirmDiscard()) return;
       closePdfPreview(invoiceState.preview);
       invoiceState.invoice = blankInvoice();
+      invoiceState.priceInputs = ['0,00'];
       invoiceState.revision = null;
       state.dirty = true;
       setMessage('');
@@ -1273,6 +1301,7 @@ async function run(action, target) {
       if (!selected) throw new Error('Der Rechnungsentwurf wurde nicht gefunden.');
       closePdfPreview(invoiceState.preview);
       invoiceState.invoice = JSON.parse(JSON.stringify(selected.invoice));
+      invoiceState.priceInputs = selected.invoice.items.map(item => invoiceAmounts.formatCents(item.unitPriceCents).slice(0, -2));
       invoiceState.revision = selected.revision;
       state.dirty = false;
       setMessage('');
@@ -1286,7 +1315,8 @@ async function run(action, target) {
       break;
     case 'preview-invoice': {
       const html = await window.club.previewInvoiceHtml(invoiceState.invoice);
-      invoiceState.preview.url = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+      if (invoiceState.preview.url) URL.revokeObjectURL(invoiceState.preview.url);
+      invoiceState.preview.url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
       invoiceState.preview.error = false;
       invoiceState.preview.open = true;
       break;
@@ -1296,11 +1326,13 @@ async function run(action, target) {
       break;
     case 'add-invoice-item':
       invoiceState.invoice.items.push({ description: '', quantity: '1', unit: 'Stück', unitPriceCents: 0 });
+      invoiceState.priceInputs.push('0,00');
       state.dirty = true;
       break;
     case 'remove-invoice-item':
       if (invoiceState.invoice.items.length > 1) {
         invoiceState.invoice.items.splice(Number(target.dataset.index), 1);
+        invoiceState.priceInputs.splice(Number(target.dataset.index), 1);
         state.dirty = true;
       }
       break;
@@ -1691,7 +1723,7 @@ async function run(action, target) {
       else await openPdfPreview(state.preview, window.club.previewProtocol, meeting.id);
       break;
     case 'close-preview':
-      closePdfPreview(state.view === 'letters' ? letterState.preview : state.preview);
+      closePdfPreview(state.view === 'letters' ? letterState.preview : state.view === 'invoices' ? invoiceState.preview : state.preview);
       break;
     case 'toggle-letter-preview':
       if (letterState.preview.open) closePdfPreview(letterState.preview);
@@ -1911,8 +1943,17 @@ app.addEventListener('input', event => {
   if (target.hasAttribute('data-invoice-item') && invoiceState.invoice) {
     const index = Number(target.dataset.invoiceItem);
     const field = target.dataset.invoiceItemField;
-    invoiceState.invoice.items[index][field] = field === 'unitPriceCents' ? Number(target.value) : target.value;
+    if (field === 'unitPriceEuro') {
+      invoiceState.priceInputs[index] = target.value;
+      invoiceState.invoice.items[index].unitPriceCents = invoiceAmounts.parseEuroPrice(target.value);
+    } else {
+      invoiceState.invoice.items[index][field] = target.value;
+    }
     state.dirty = true;
+    refreshInvoiceAmounts();
+    const status = document.querySelector('.status');
+    if (status) status.textContent = 'Ungespeicherte Änderungen';
+    return;
   }
   if (target.hasAttribute('data-letter-placeholder-key') ||
       target.hasAttribute('data-letter-placeholder-value')) {

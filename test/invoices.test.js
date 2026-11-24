@@ -5,6 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { initializeFolder } = require('../src/main/storage');
+const { parseEuroPrice } = require('../src/shared/invoice-amounts');
 const {
   calculateInvoiceTotal,
   validateInvoiceDraft,
@@ -38,6 +39,15 @@ function draft(overrides = {}) {
   };
 }
 
+test('accepts euro prices exactly in cents and rejects invalid precision and signs', () => {
+  for (const [input, cents] of [['3,50', 350], ['3.5', 350], ['0,04', 4], ['0', 0], ['12,', null]]) {
+    assert.equal(parseEuroPrice(input), cents);
+  }
+  for (const input of ['', '-1,00', '1,001', '1e2', '90071992547409,92']) {
+    assert.equal(parseEuroPrice(input), null);
+  }
+});
+
 test('rounds each invoice position half-up before summing the cent total', () => {
   assert.deepEqual(calculateInvoiceTotal([
     { quantity: '0.125', unitPriceCents: 4 },
@@ -47,6 +57,13 @@ test('rounds each invoice position half-up before summing the cent total', () =>
     { quantity: '1', unitPriceCents: 0 },
     { quantity: '1.5', unitPriceCents: 50 }
   ]), { cents: 75, itemsCents: [0, 75] });
+  assert.throws(() => calculateInvoiceTotal([
+    { quantity: '2', unitPriceCents: Number.MAX_SAFE_INTEGER }
+  ]), /Rechnungsbetrag ist zu groß/);
+  assert.throws(() => calculateInvoiceTotal([
+    { quantity: '1', unitPriceCents: Number.MAX_SAFE_INTEGER },
+    { quantity: '1', unitPriceCents: 1 }
+  ]), /Rechnungsbetrag ist zu groß/);
 });
 
 test('rejects invalid invoice amounts and precision with German errors', () => {
@@ -103,12 +120,28 @@ test('saves and lists folder-local invoice drafts and detects conflicts', async 
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-invoice-'));
   t.after(() => fs.rm(folder, { recursive: true, force: true }));
   await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, settings.settings, settings.revision);
   const value = draft();
   const revision = await saveInvoice(folder, value, null);
   assert.deepEqual(await listInvoices(folder), [{ invoice: value, revision }]);
   await assert.rejects(saveInvoice(folder, value, null), /Rechnung wurde auf dem Datenträger geändert/);
   await fs.unlink(path.join(folder, 'invoices', `${value.id}.json`));
   await assert.rejects(saveInvoice(folder, value, revision), /Rechnung wurde auf dem Datenträger geändert/);
+});
+
+test('renders rounded position amounts and their total in the invoice document', () => {
+  const value = draft({
+    items: [
+      { description: 'Erste', quantity: '0.125', unit: 'Stunde', unitPriceCents: 4 },
+      { description: 'Zweite', quantity: '0.125', unit: 'Stunde', unitPriceCents: 4 }
+    ]
+  });
+  const settings = { issuerName: '', issuerAddress: '', bankName: '', iban: '', bic: '' };
+  const html = invoiceHtml(value, settings);
+  assert.match(html, /Erste<\/td><td>0\.125<\/td><td>Stunde<\/td><td>0,04 €<\/td><td>0,01 €/);
+  assert.match(html, /Zweite<\/td><td>0\.125<\/td><td>Stunde<\/td><td>0,04 €<\/td><td>0,01 €/);
+  assert.match(html, /Gesamtsumme: 0,02 €/);
 });
 
 test('renders invoice user values as escaped text and never executable markup', () => {

@@ -139,6 +139,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Provide an invoice module for creating and managing invoice drafts (#40).
 - [x] Use a master-detail view: show a list of invoices and display the selected
   invoice's details alongside or in a detail pane (#40).
+- [x] Enter invoice unit prices in euros and show rounded position totals and
+  the overall amount in the draft editor and HTML preview.
 - [ ] Generate a PDF invoice from the entered invoice information.
 - [ ] Build the layout with HTML and style it with CSS.
 
