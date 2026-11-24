@@ -299,6 +299,51 @@ async function calendarSmoke(window, port) {
   }
 }
 
+async function invoiceDraftSmoke(window) {
+  await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for invoice scenario');
+    };
+    await waitFor(() => document.querySelector('[data-view="invoices"]'));
+    const modules = await window.club.getModules();
+    await window.club.setModules({ ...modules, invoices: true }, {
+      folder: await window.club.getFolder(),
+      revision: (await window.club.reloadModules()).revision
+    });
+    document.querySelector('[data-view="invoices"]').click();
+    await waitFor(() => document.querySelector('[data-action="new-invoice"]'));
+    document.querySelector('[data-action="new-invoice"]').click();
+    await waitFor(() => document.querySelector('[data-invoice-field="recipient.name"]'));
+    const setValue = (selector, value) => {
+      const input = document.querySelector(selector);
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    setValue('[data-invoice-field="recipient.name"]', 'Alex <Script>');
+    setValue('[data-invoice-field="recipient.street"]', 'Hauptstraße 1');
+    setValue('[data-invoice-field="recipient.postalCode"]', '12345');
+    setValue('[data-invoice-field="recipient.city"]', 'Musterstadt');
+    setValue('[data-invoice-item-field="description"]', 'Mitgliedsbeitrag');
+    setValue('[data-invoice-item-field="quantity"]', '0.125');
+    setValue('[data-invoice-item-field="unitPriceCents"]', '4');
+    await waitFor(() => document.querySelector('[data-action="save-invoice"]'));
+    document.querySelector('[data-action="save-invoice"]').click();
+    await waitFor(async () => (await window.club.listInvoices()).length === 1);
+    document.querySelector('[data-action="preview-invoice"]').click();
+    await waitFor(() => document.querySelector('.preview-pane iframe'));
+    const iframe = document.querySelector('.preview-pane iframe');
+    await waitFor(() => iframe.getAttribute('src')?.startsWith('data:text/html'));
+    if (!iframe.src.includes('Alex') && !decodeURIComponent(iframe.src).includes('Alex')) {
+      throw new Error('The invoice HTML preview did not contain the recipient');
+    }
+  })()`);
+}
+
 async function calendarCacheSmoke(window, port, setCalendarAvailable) {
   const configure = async url => {
     await window.webContents.executeJavaScript(`(async () => {
@@ -3227,6 +3272,7 @@ async function main() {
         ]);
         assert.equal(folderSettings.activeFolder, data);
         await calendarSmoke(window, calendarPort);
+        await invoiceDraftSmoke(window);
         await calendarCacheSmoke(window, calendarPort, available => { calendarAvailable = available; });
         await calendarRetentionSmoke(window, calendarPort, mode => { retentionFeed = mode; });
         await previewSelectionSmoke(window);

@@ -136,9 +136,9 @@ items are still open, partially implemented, or ongoing design goals.
   with possible separate versions after changes (#35).
 - [x] Retain recurring calendar occurrences, including shortened series and
   explicit exclusions and cancellations (#33, #36).
-- [ ] Provide an invoice module for creating/writing invoices.
-- [ ] Use a master-detail view: show a list of invoices and display the selected
-  invoice's details alongside or in a detail pane.
+- [x] Provide an invoice module for creating and managing invoice drafts (#40).
+- [x] Use a master-detail view: show a list of invoices and display the selected
+  invoice's details alongside or in a detail pane (#40).
 - [ ] Generate a PDF invoice from the entered invoice information.
 - [ ] Build the layout with HTML and style it with CSS.
 

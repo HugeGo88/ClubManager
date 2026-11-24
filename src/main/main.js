@@ -17,6 +17,7 @@ let documentCustomizations;
 let folderName;
 let folderModules;
 let calendar;
+let invoices;
 let mainWindow;
 let splashWindow;
 let folder;
@@ -726,6 +727,25 @@ function registerHandlers() {
       return activateFolder(selected);
     });
   });
+  ipcMain.handle('invoices:settings:get', () => folder ? invoices.loadInvoiceSettings(folder) : { settings: null, revision: null });
+  ipcMain.handle('invoices:settings:set', (event, settings, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnungseinstellungen neu.');
+    try {
+      return await invoices.saveInvoiceSettings(active, settings, base.revision);
+    } catch (error) {
+      if (/geändert/.test(error.message)) return { conflict: error.message };
+      throw error;
+    }
+  }));
+  ipcMain.handle('invoices:list', () => invoices.listInvoices(requireFolder()));
+  ipcMain.handle('invoices:save', (event, invoice, revision) => serializeWrite(() =>
+    invoices.saveInvoice(requireFolder(), invoice, revision)));
+  ipcMain.handle('invoices:preview-html', (event, invoice) => {
+    const active = requireFolder();
+    return invoices.loadInvoiceSettings(active).then(({ settings }) =>
+      invoices.invoiceHtml(invoice, settings));
+  });
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));
   ipcMain.handle('letters:list', () => letters.listLetters(requireFolder()));
   ipcMain.handle('letters:save', (event, letter, revision) => serializeWrite(() => letters.saveLetter(requireFolder(), letter, revision)));
@@ -844,6 +864,7 @@ app.whenReady().then(async () => {
   folderName = require('./folder-name');
   folderModules = require('./folder-modules');
   calendar = require('./calendar');
+  invoices = require('./invoices');
   ({ loadManual } = require('./manual'));
 
   // Load settings before startup sequence

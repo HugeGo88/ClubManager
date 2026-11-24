@@ -5,7 +5,12 @@ const letterState = {
   letters: [], letter: null, revision: null, hasPdf: false, preview: { open: false, url: null, error: false }, template: null, signatures: [],
   placeholders: [], placeholdersRevision: null, placeholdersDirty: false
 };
-const listSearch = { meetings: '', letters: '' };
+const invoiceState = {
+  invoices: [], invoice: null, revision: null,
+  settings: null, settingsRevision: null, settingsDirty: false,
+  preview: { open: false, url: null, error: false }
+};
+const listSearch = { meetings: '', letters: '', invoices: '' };
 const calendarState = {
   config: null, events: [], fetchedAt: null, stale: false, loading: false, error: '', request: 0, month: new Date()
 };
@@ -46,6 +51,19 @@ function blankLetter() {
     address: { name: '', company: '', street: '', postalCode: '', city: '' }, content: '', signatures: [] };
 }
 
+function blankInvoice() {
+  const today = clubDates.localDate();
+  const due = new Date(`${today}T12:00:00`);
+  due.setDate(due.getDate() + (invoiceState.settings?.paymentDays ?? 14));
+  const dueDate = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`;
+  return {
+    id: crypto.randomUUID(), invoiceDate: today, serviceDate: today,
+    servicePeriodStart: '', servicePeriodEnd: '', dueDate,
+    recipient: { name: '', company: '', street: '', postalCode: '', city: '' },
+    items: [{ description: '', quantity: '1', unit: 'Stück', unitPriceCents: 0 }]
+  };
+}
+
 function savedListResults(module) {
   const isMeeting = module === 'meetings';
   const records = isMeeting ? state.meetings.map(item => item.meeting) : letterState.letters.map(item => item.letter);
@@ -76,6 +94,49 @@ function savedList(module, heading, action, label) {
 
 function letterList() {
   return savedList('letters', 'Briefe', 'new-letter', '+ Neuer Brief');
+}
+
+function invoiceList() {
+  const search = listSearch.invoices.trim().toLocaleLowerCase('de');
+  const matches = invoiceState.invoices.filter(({ invoice }) =>
+    [invoice.recipient.name, invoice.recipient.company, invoice.invoiceDate, formatDate(invoice.invoiceDate)]
+      .join(' ').toLocaleLowerCase('de').includes(search));
+  const items = matches.map(({ invoice }) => `<button class="list-item ${invoiceState.invoice?.id === invoice.id ? 'selected' : ''}" data-action="select-invoice" data-id="${escape(invoice.id)}">
+    <strong>${escape(invoice.recipient.company || invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong><small>${escape(invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum')}</small></button>`).join('');
+  return `<aside class="list"><h2>Rechnungsentwürfe</h2>${button('new-invoice', '+ Neue Rechnung', 'primary')}
+    <label>Rechnungen suchen<input type="search" data-list-search="invoices" value="${escape(listSearch.invoices)}" placeholder="Empfänger oder Datum"></label>
+    <div data-list-results aria-live="polite">${invoiceState.invoices.length ? (items || '<p>Keine Rechnungen entsprechen der Suche.</p>') : '<p>Noch keine Rechnungsentwürfe gespeichert.</p>'}</div></aside>`;
+}
+
+function formatInvoiceCents(cents) {
+  return `${Math.trunc(cents / 100)},${String(cents % 100).padStart(2, '0')} €`;
+}
+
+function invoiceEditor(invoice) {
+  const items = invoice.items.map((item, index) => `<tr>
+    <td><input data-invoice-item="${index}" data-invoice-item-field="description" value="${escape(item.description)}"></td>
+    <td><input data-invoice-item="${index}" data-invoice-item-field="quantity" value="${escape(item.quantity)}" inputmode="decimal"></td>
+    <td><input data-invoice-item="${index}" data-invoice-item-field="unit" value="${escape(item.unit)}"></td>
+    <td><input data-invoice-item="${index}" data-invoice-item-field="unitPriceCents" type="number" min="0" step="1" value="${escape(item.unitPriceCents)}"></td>
+    <td><button type="button" class="action" data-action="remove-invoice-item" data-index="${index}" ${invoice.items.length === 1 ? 'disabled' : ''}>Entfernen</button></td>
+  </tr>`).join('');
+  return `<div class="topline"><div><h1>Rechnungsentwurf bearbeiten</h1><p class="status">${state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
+    <div class="row"><button class="action" data-action="preview-invoice">HTML-Vorschau</button><button class="action primary" data-action="save-invoice">Rechnung speichern</button></div></div>
+    <div class="card"><h2>Empfänger</h2><div class="fields">
+      <label>Name<input data-invoice-field="recipient.name" value="${escape(invoice.recipient.name)}"></label>
+      <label>Firma<input data-invoice-field="recipient.company" value="${escape(invoice.recipient.company)}"></label>
+    </div><label>Straße und Hausnummer<input data-invoice-field="recipient.street" value="${escape(invoice.recipient.street)}"></label>
+    <div class="fields"><label>PLZ<input data-invoice-field="recipient.postalCode" value="${escape(invoice.recipient.postalCode)}"></label><label>Ort<input data-invoice-field="recipient.city" value="${escape(invoice.recipient.city)}"></label></div>
+    <h2>Daten</h2><div class="fields">
+      <label>Rechnungsdatum<input type="date" data-invoice-field="invoiceDate" value="${escape(invoice.invoiceDate)}"></label>
+      <label>Leistungsdatum<input type="date" data-invoice-field="serviceDate" value="${escape(invoice.serviceDate)}"></label>
+      <label>Fälligkeit<input type="date" data-invoice-field="dueDate" value="${escape(invoice.dueDate)}"></label>
+    </div><div class="fields">
+      <label>Leistungsbeginn<input type="date" data-invoice-field="servicePeriodStart" value="${escape(invoice.servicePeriodStart)}"></label>
+      <label>Leistungsende<input type="date" data-invoice-field="servicePeriodEnd" value="${escape(invoice.servicePeriodEnd)}"></label>
+    </div>
+    <h2>Positionen</h2><div class="table-scroll"><table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis in Cent</th><th></th></tr></thead><tbody>${items}</tbody></table></div>
+    <div class="row"><button type="button" class="action" data-action="add-invoice-item">Position hinzufügen</button></div></div>`;
 }
 
 function letterEditor(letter) {
@@ -111,7 +172,7 @@ function confirmDiscard() {
 function confirmFolderSwitch(reason = 'Ordnerwechsel') {
   if (!state.dirty && !letterState.placeholdersDirty) return Promise.resolve('discard');
   const changes = [
-    state.dirty ? 'Sitzungs- oder Briefentwurf' : '',
+    state.dirty ? 'Sitzungs-, Rechnungs- oder Briefentwurf' : '',
     letterState.placeholdersDirty ? 'benutzerdefinierte Briefplatzhalter' : ''
   ].filter(Boolean).join(' und ');
   const dialog = document.createElement('dialog');
@@ -138,6 +199,8 @@ async function saveCurrentDraft() {
   } else if (letterState.letter) {
     if (!letterState.letter.title.trim()) throw new Error('Geben Sie vor dem Speichern einen Titel für den Brief ein.');
     letterState.revision = await window.club.saveLetter(letterState.letter, letterState.revision);
+  } else if (invoiceState.invoice) {
+    invoiceState.revision = await window.club.saveInvoice(invoiceState.invoice, invoiceState.revision);
   } else {
     throw new Error('Die ungespeicherten Änderungen können nicht gespeichert werden.');
   }
@@ -155,7 +218,7 @@ async function saveCurrentLetterPlaceholders() {
 }
 
 function editedModule() {
-  return state.meeting ? 'meetings' : letterState.letter ? 'letters' : null;
+  return state.meeting ? 'meetings' : letterState.letter ? 'letters' : invoiceState.invoice ? 'invoices' : null;
 }
 
 async function guardDraft(reason) {
@@ -171,8 +234,11 @@ async function guardDraft(reason) {
 function clearEditor() {
   closePdfPreview(state.preview);
   closePdfPreview(letterState.preview);
+  closePdfPreview(invoiceState.preview);
   state.meeting = null;
   letterState.letter = null;
+  invoiceState.invoice = null;
+  invoiceState.revision = null;
   letterState.revision = null;
   letterState.hasPdf = false;
   state.revision = null;
@@ -187,11 +253,25 @@ function ensureAvailableView() {
   
   // If folder is null, disable all data operations (meetings, letters, calendar)
   const isFolderMissing = state.folder === null;
-  const isDataView = ['meetings', 'tasks', 'decisions', 'tops', 'statistics', 'letters', 'calendar'].includes(state.view);
+  const isDataView = ['meetings', 'tasks', 'decisions', 'tops', 'statistics', 'letters', 'invoices', 'calendar'].includes(state.view);
   
   if (!['settings', 'manual', 'changelog'].includes(state.view) && (!state.modules[availableModule] || (isFolderMissing && isDataView))) {
     state.view = MODULES.find(([id]) => state.modules[id])?.[0] || 'settings';
   }
+
+}
+
+async function loadInvoiceSettings(folder = state.folder) {
+  if (!folder) {
+    invoiceState.settings = null;
+    invoiceState.settingsRevision = null;
+    return;
+  }
+  const loaded = await window.club.getInvoiceSettings();
+  if (state.folder !== folder) return;
+  invoiceState.settings = loaded.settings;
+  invoiceState.settingsRevision = loaded.revision;
+  invoiceState.settingsDirty = false;
 }
 
 function calendarDateKey(date) {
@@ -876,7 +956,14 @@ function settingsView() {
         <h2>Unterschriften</h2><p>Importierte Unterschriften werden im Anpassungsordner dieses Datenordners gespeichert.</p>
         ${letterState.signatures.map(item => `<div class="row"><span>${escape(item.name)} — <span class="path">${escape(item.path)}</span></span><button class="action" data-action="remove-signature" data-id="${escape(item.id)}" aria-label="Unterschrift ${escape(item.name)} entfernen">Entfernen</button></div>`).join('')}
         <button class="action" data-action="choose-signature" ${state.folder ? '' : 'disabled'}>Unterschrift hinzufügen</button>` : ''}
-      ${selected[0] === 'invoices' ? `<h2>Online-Kalender</h2>
+      ${selected[0] === 'invoices' ? `<h2>Rechnungseinstellungen</h2>
+        <label>Name des Ausstellers<input data-invoice-setting="issuerName" value="${escape(invoiceState.settings?.issuerName || '')}" ${state.folder ? '' : 'disabled'}></label>
+        <label>Anschrift des Ausstellers<textarea data-invoice-setting="issuerAddress" rows="3" ${state.folder ? '' : 'disabled'}>${escape(invoiceState.settings?.issuerAddress || '')}</textarea></label>
+        <label>Bank<input data-invoice-setting="bankName" value="${escape(invoiceState.settings?.bankName || '')}" ${state.folder ? '' : 'disabled'}></label>
+        <div class="fields"><label>IBAN<input data-invoice-setting="iban" value="${escape(invoiceState.settings?.iban || '')}" ${state.folder ? '' : 'disabled'}></label><label>BIC<input data-invoice-setting="bic" value="${escape(invoiceState.settings?.bic || '')}" ${state.folder ? '' : 'disabled'}></label></div>
+        <label>Standardzahlungsfrist in Tagen<input type="number" min="0" step="1" data-invoice-setting="paymentDays" value="${escape(invoiceState.settings?.paymentDays ?? 14)}" ${state.folder ? '' : 'disabled'}></label>
+        <div class="row"><button class="action primary" data-action="save-invoice-settings" ${state.folder ? '' : 'disabled'}>Rechnungseinstellungen speichern</button></div>
+        <h2>Online-Kalender</h2>
         <p>Eine ICS-Abonnementadresse wird mit diesem Datenordner gespeichert und gilt für alle Benutzer dieses Ordners.</p>
         <label>ICS-URL<input type="url" data-calendar-url value="${escape(calendarState.config?.url || '')}" ${state.folder ? '' : 'disabled'} placeholder="https://.../calendar.ics"></label>
         ${calendarState.config?.url?.startsWith('http://') ? '<p role="alert" class="notice error">Sicherheitshinweis: Diese Kalenderadresse verwendet unverschlüsseltes HTTP. Die Verbindung kann ausgelesen oder verändert werden.</p>' : ''}
@@ -964,26 +1051,30 @@ function render() {
     content = statisticsView();
   } else if (state.view === 'letters') {
     content = letterState.letter ? letterEditor(letterState.letter) : '<div class="empty"><h1>Briefe</h1><p>Erstellen Sie einen Brief oder wählen Sie einen aus der Liste aus.</p></div>';
+  } else if (state.view === 'invoices') {
+    content = invoiceState.invoice ? invoiceEditor(invoiceState.invoice) : '<div class="empty"><h1>Rechnungen</h1><p>Erstellen Sie einen Rechnungsentwurf oder wählen Sie einen aus der Liste aus.</p></div>';
   } else if (state.view === 'calendar') {
     content = calendarView();
   } else {
     const titles = { members: 'Mitglieder', invoices: 'Rechnungen', letters: 'Briefe' };
     content = `<h1>${titles[state.view]}</h1><div class="card"><p>Dieses Modul ist für eine spätere Version geplant.</p></div>`;
   }
-  const preview = state.view === 'meetings' ? state.preview : letterState.preview;
+  const preview = state.view === 'meetings' ? state.preview : state.view === 'letters' ? letterState.preview : invoiceState.preview;
   const previewOpen = preview.open;
   const previewAvailable = state.folder && ((state.view === 'meetings' && state.meeting) ||
-    (state.view === 'letters' && letterState.letter));
+    (state.view === 'letters' && letterState.letter) ||
+    (state.view === 'invoices' && invoiceState.invoice));
   const showPreview = previewAvailable && previewOpen;
-  const showPreviewToggle = previewAvailable && (previewOpen || (state.view === 'meetings' ? state.hasProtocol : letterState.hasPdf));
+  const showPreviewToggle = previewAvailable && (previewOpen ||
+    (state.view === 'meetings' ? state.hasProtocol : state.view === 'letters' ? letterState.hasPdf : invoiceState.preview.url));
   const folderOptions = state.dataFolders.length
     ? state.dataFolders.map(item => `<option value="${escape(item.path)}" title="${escape(item.path)}" ${!item.available ? 'disabled' : ''} ${item.path === state.folder ? 'selected' : ''}>${escape(item.name)}${!item.available ? ' (nicht verfügbar)' : ''}</option>`).join('')
     : '<option value="" selected>Kein Datenordner</option>';
   app.innerHTML = `<header class="app-header"><label>Datenordner<select data-folder-switcher aria-label="Datenordner wechseln" ${state.dataFolders.length ? '' : 'disabled'}>${folderOptions}</select></label>
     ${button('choose-folder', 'Datenordner hinzufügen', 'primary')}</header>
-    <div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : state.view === 'letters' && state.folder ? letterList() : ''}
+    <div class="layout">${state.view === 'meetings' && state.folder ? meetingList() : state.view === 'letters' && state.folder ? letterList() : state.view === 'invoices' && state.folder ? invoiceList() : ''}
     <div class="meeting-stage ${showPreview ? 'preview-open' : ''}" ${showPreview ? `style="--preview-width: ${state.previewWidth}px"` : ''}>
-      ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="${state.view === 'meetings' ? 'toggle-preview' : 'toggle-letter-preview'}" aria-label="${previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" title="${previewOpen ? 'PDF-Vorschau schließen' : 'PDF-Vorschau öffnen'}" aria-pressed="${previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
+      ${showPreviewToggle ? `<button type="button" class="action icon-button meeting-preview-toggle" data-action="${state.view === 'meetings' ? 'toggle-preview' : state.view === 'letters' ? 'toggle-letter-preview' : 'toggle-invoice-preview'}" aria-label="${previewOpen ? (state.view === 'invoices' ? 'HTML-Vorschau schließen' : 'PDF-Vorschau schließen') : (state.view === 'invoices' ? 'HTML-Vorschau öffnen' : 'PDF-Vorschau öffnen')}" title="${previewOpen ? 'Vorschau schließen' : 'Vorschau öffnen'}" aria-pressed="${previewOpen}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>` : ''}
       <div class="content" data-view-context="${escape(state.view)}" data-meeting-id="${escape(state.meeting?.id || '')}"><div class="content-inner ${['tasks', 'decisions', 'tops', 'statistics'].includes(state.view) ? 'content-inner-wide' : ''}">${notice()}${content}</div></div>
       ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="PDF-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
         <aside class="preview-pane" aria-label="PDF-Vorschau">
@@ -1064,6 +1155,7 @@ document.addEventListener('visibilitychange', () => {
 async function refresh() {
   state.meetings = state.folder ? await window.club.listMeetings() : [];
   letterState.letters = state.folder && state.view === 'letters' ? await window.club.listLetters() : [];
+  invoiceState.invoices = state.folder && state.view === 'invoices' ? await window.club.listInvoices() : [];
   taskView.expanded = '';
 }
 
@@ -1099,7 +1191,7 @@ async function changeView(view) {
   const availableModule = view === 'calendar' ? 'invoices' : module;
   
   // Prevent navigation to data views when folder is null
-  const isDataView = ['meetings', 'tasks', 'decisions', 'tops', 'statistics', 'letters', 'calendar'].includes(view);
+  const isDataView = ['meetings', 'tasks', 'decisions', 'tops', 'statistics', 'letters', 'invoices', 'calendar'].includes(view);
   if (isDataView && state.folder === null) {
     setMessage('Datenordner nicht verfügbar. Wählen Sie einen Ordner in den Einstellungen aus.', true);
     return;
@@ -1119,7 +1211,11 @@ async function changeView(view) {
   if (!preserveEditor) clearEditor();
   state.view = view;
   setMessage(refreshError?.message ?? '', Boolean(refreshError));
-  if (view === 'settings') await loadCalendarConfig();
+  if (view === 'settings') {
+    await loadCalendarConfig();
+    await loadInvoiceSettings();
+  }
+  if (view === 'invoices') await loadInvoiceSettings();
   if (view === 'calendar') {
     await loadCalendarConfig();
     await fetchCalendarEvents();
@@ -1142,6 +1238,71 @@ async function run(action, target) {
     case 'open-invoice-calendar-settings':
       await changeView('settings');
       settingsTab = 'invoices';
+      break;
+    case 'save-invoice-settings': {
+      const settings = {};
+      app.querySelectorAll('[data-invoice-setting]').forEach(input => {
+        settings[input.dataset.invoiceSetting] = input.dataset.invoiceSetting === 'paymentDays'
+          ? Number(input.value) : input.value;
+      });
+      const result = await window.club.saveInvoiceSettings(settings, {
+        folder: state.folder,
+        revision: invoiceState.settingsRevision
+      });
+      if (result.conflict) {
+        setMessage(result.conflict, true);
+      } else {
+        invoiceState.settings = result.settings;
+        invoiceState.settingsRevision = result.revision;
+        setMessage('Rechnungseinstellungen wurden gespeichert.');
+      }
+      break;
+    }
+    case 'new-invoice':
+      if (!confirmDiscard()) return;
+      closePdfPreview(invoiceState.preview);
+      invoiceState.invoice = blankInvoice();
+      invoiceState.revision = null;
+      state.dirty = true;
+      setMessage('');
+      break;
+    case 'select-invoice': {
+      if (!confirmDiscard()) return false;
+      await refresh();
+      const selected = invoiceState.invoices.find(item => item.invoice.id === target.dataset.id);
+      if (!selected) throw new Error('Der Rechnungsentwurf wurde nicht gefunden.');
+      closePdfPreview(invoiceState.preview);
+      invoiceState.invoice = JSON.parse(JSON.stringify(selected.invoice));
+      invoiceState.revision = selected.revision;
+      state.dirty = false;
+      setMessage('');
+      break;
+    }
+    case 'save-invoice':
+      invoiceState.revision = await window.club.saveInvoice(invoiceState.invoice, invoiceState.revision);
+      state.dirty = false;
+      await refresh();
+      setMessage('Rechnungsentwurf wurde gespeichert.');
+      break;
+    case 'preview-invoice': {
+      const html = await window.club.previewInvoiceHtml(invoiceState.invoice);
+      invoiceState.preview.url = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+      invoiceState.preview.error = false;
+      invoiceState.preview.open = true;
+      break;
+    }
+    case 'toggle-invoice-preview':
+      invoiceState.preview.open = !invoiceState.preview.open;
+      break;
+    case 'add-invoice-item':
+      invoiceState.invoice.items.push({ description: '', quantity: '1', unit: 'Stück', unitPriceCents: 0 });
+      state.dirty = true;
+      break;
+    case 'remove-invoice-item':
+      if (invoiceState.invoice.items.length > 1) {
+        invoiceState.invoice.items.splice(Number(target.dataset.index), 1);
+        state.dirty = true;
+      }
       break;
     case 'save-calendar-url': {
       const input = app.querySelector('[data-calendar-url]');
@@ -1741,6 +1902,18 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.hasAttribute('data-invoice-field') && invoiceState.invoice) {
+    const pathParts = target.dataset.invoiceField.split('.');
+    if (pathParts.length === 2) invoiceState.invoice[pathParts[0]][pathParts[1]] = target.value;
+    else invoiceState.invoice[pathParts[0]] = target.value;
+    state.dirty = true;
+  }
+  if (target.hasAttribute('data-invoice-item') && invoiceState.invoice) {
+    const index = Number(target.dataset.invoiceItem);
+    const field = target.dataset.invoiceItemField;
+    invoiceState.invoice.items[index][field] = field === 'unitPriceCents' ? Number(target.value) : target.value;
+    state.dirty = true;
+  }
   if (target.hasAttribute('data-letter-placeholder-key') ||
       target.hasAttribute('data-letter-placeholder-value')) {
     const index = Number(target.dataset.letterPlaceholderKey ?? target.dataset.letterPlaceholderValue);
@@ -1768,7 +1941,9 @@ app.addEventListener('input', event => {
   if (target.dataset.listSearch) {
     const module = target.dataset.listSearch;
     listSearch[module] = target.value;
-    app.querySelector('[data-list-results]').innerHTML = savedListResults(module);
+    app.querySelector('[data-list-results]').innerHTML = module === 'invoices'
+      ? invoiceList().match(/<div data-list-results[^>]*>([\s\S]*)<\/div><\/aside>/)?.[1] || ''
+      : savedListResults(module);
     return;
   }
   if (letterState.letter && (target.dataset.letterField || target.dataset.letterSignature || target.dataset.letterAddressField)) {

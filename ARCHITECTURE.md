@@ -21,8 +21,8 @@ every tool or contributor.
 ## Product and module boundaries
 
 ClubManager is a local Electron desktop application with German user-facing
-text. Meetings and single-recipient Letters are implemented. Members is a
-placeholder; Invoices includes a read-only calendar but no invoice records.
+text. Meetings, single-recipient Letters and invoice drafts are implemented.
+Members is a placeholder; Invoices also includes a read-only calendar.
 Separate data folders exist for each
 module, but there is currently no cross-module data-sharing API, plugin system
 or separate service. Modularity and intentional data-sharing interfaces are
@@ -123,6 +123,12 @@ settings.json in userData    user-selected data folder
   each day it covers. Enabling
   Rechnungen exposes Kalender as a submodule; disabling Rechnungen hides both
   Rechnung views and rejects navigation to them.
+- Invoice drafts are folder-local records below `invoices/`, while issuer,
+  bank and payment-term settings are stored in the same module directory.
+  Quantity and price calculations use exact decimal-to-cent rounding: every
+  position is rounded Half-up independently before totals are summed. The HTML
+  preview escapes all user values. Draft writes use SHA-256 revisions and
+  atomic replacement; stale or invalid writes are rejected with German errors.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
   same width when selecting another saved item from the list. It replaces the
   PDF with that item's export or shows a missing/unreadable message. Selection

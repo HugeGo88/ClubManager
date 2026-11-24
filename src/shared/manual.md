@@ -64,6 +64,16 @@ Für Briefe können Sie unter **Einstellungen → Briefe** benutzerdefinierte Br
 
 Speichern Sie den Brief und wählen Sie **PDF exportieren**. Das gespeicherte PDF zeigt den Stand des letzten Exports. Mit dem Augensymbol öffnen Sie das PDF in der Vorschau; die Vorschau lässt sich mit der Maus oder Tastatur in der Breite anpassen. Wählen Sie einen anderen Brief aus der Liste, bleibt dieselbe Breite erhalten und die Vorschau zeigt dessen letzten Export ab der ersten Seite. Fehlt das PDF oder kann es nicht gelesen werden, erscheint stattdessen ein Hinweis. Exportieren Sie den gerade ausgewählten Brief erneut, schließen und öffnen Sie die Vorschau, um das neue PDF zu sehen. Das PDF kann weiterhin über **Gespeichertes PDF öffnen** geöffnet werden. Serienbriefe und die Auswahl von Mitgliedern als Empfänger sind noch nicht verfügbar.
 
+## Rechnungsentwürfe
+
+Aktivieren Sie das Modul **Rechnungen** und wählen Sie in der Seitenleiste **Rechnungen**. Unter **Einstellungen → Rechnungen** pflegen Sie Ausstellername, Anschrift, Bankdaten und die anfängliche Zahlungsfrist von 14 Tagen; diese Angaben gelten nur für den aktiven Datenordner.
+
+Über **Neue Rechnung** erstellen Sie einen Rechnungsentwurf. Erfassen Sie Empfänger, Rechnungsdatum, Leistungsdatum oder Leistungszeitraum, Fälligkeit und beliebig viele Positionen. Jede Position enthält eine positive Menge mit höchstens drei Nachkommastellen, eine Einheit, eine Beschreibung und einen nicht negativen Einzelpreis in Cent. Kostenlose Positionen sind neben berechneten Positionen möglich. ClubManager rundet jede Positionssumme einzeln kaufmännisch auf Cent und bildet erst danach die Gesamtsumme.
+
+Mit **Rechnung speichern** wird der Entwurf lokal im Datenordner gespeichert und bleibt nach einem Neustart in der Liste und im Editor verfügbar. Ungültige Mengen oder Preise, negative Einzelpreise und eine nicht positive Gesamtsumme werden abgewiesen. Wurde der Datensatz inzwischen auf dem Datenträger geändert, meldet ClubManager einen Konflikt und überschreibt keine fremden Änderungen.
+
+**HTML-Vorschau** zeigt die Rechnung als lesbare Vorschau. Alle Eingaben werden als Text dargestellt; eingegebene HTML-, Skript- oder Formatierungszeichen werden nicht ausgeführt. Dieses Modul erzeugt in diesem Umfang noch keine endgültige Rechnungsnummer, Ausstellung oder PDF-Datei.
+
 ## Online-Kalender unter Rechnungen
 
 Aktivieren Sie das Modul **Rechnungen** und öffnen Sie **Einstellungen → Rechnungen**. Dort können Sie eine einzelne ICS-Abonnementadresse für den aktiven Datenordner speichern oder löschen. Die URL wird in diesem Datenordner gespeichert, folgt beim Wechsel des Datenordners dessen eigener Einstellung und wird mit allen Personen geteilt, die auf diesen Ordner zugreifen. Eine gespeicherte URL kann einen Zugangstoken enthalten; diese URL ist deshalb für alle Personen mit Datenordnerzugriff sichtbar.
