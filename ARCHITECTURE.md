@@ -21,7 +21,8 @@ every tool or contributor.
 ## Product and module boundaries
 
 ClubManager is a local Electron desktop application with German user-facing
-text. Meetings, single-recipient Letters and invoice drafts are implemented.
+text. Meetings, single-recipient Letters, and invoice drafts with ZUGFeRD issuance
+are implemented.
 Members is a placeholder; Invoices also includes a read-only calendar.
 Separate data folders exist for each
 module, but there is currently no cross-module data-sharing API, plugin system
@@ -75,8 +76,9 @@ settings.json in userData    user-selected data folder
   IPC covers application version, folder selection, registry, activation and
   renaming, module settings, folder-local document customization import, reset
   and directory opening, PDF CSS,
-  meeting list/save/delete/export, opening exported PDFs, reading existing meeting
-  and letter PDFs for their resizable in-app previews and update installation.
+  meeting list/save/delete/export, invoice draft/settings/issuance/PDF
+  preview/download, opening exported PDFs, reading existing meeting and letter
+  PDFs for their resizable in-app previews and update installation.
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
 - Online calendar configuration is folder-local in `clubmanager-calendar.json`;
@@ -124,13 +126,26 @@ settings.json in userData    user-selected data folder
   Rechnungen exposes Kalender as a submodule; disabling Rechnungen hides both
   Rechnung views and rejects navigation to them.
 - Invoice drafts are folder-local records below `invoices/`, while issuer,
-  bank and payment-term settings are stored in the same module directory.
+  bank, payment-term and invoice-number settings are stored in the same module
+  directory. Issuance reserves a prefix/year/sequence number, freezes the
+  invoice and issuer data, and stores the PDF under `invoices/pdf/`. Issued
+  records cannot be edited or issued again; the PDF is SHA-256 checked when
+  previewed or downloaded. The main process serializes writes, and an
+  inter-process invoice lock prevents concurrent saves and issuance of the same
+  draft. Number reservation uses exclusive file creation to avoid duplicate
+  numbers across processes sharing the folder.
   Prices are entered in euros but stored as integer cents; the shared invoice
   amount helpers calculate editor, list and document totals using exact
   decimal-to-cent rounding. Every position is rounded Half-up independently
   before totals are summed. The HTML preview uses a sandboxed blob frame and
   escapes all user values. Draft writes use SHA-256 revisions and
   atomic replacement; stale or invalid writes are rejected with German errors.
+  Issued PDFs are generated locally from HTML, contain validated EN-16931 CII
+  XML and an EPC GiroCode QR, and are checked with the ZUGFeRD dependency's
+  PDF/A validation subset before storage. This check is not a full independent
+  veraPDF conformance report. Invoice tax is currently fixed to the
+  EN-16931 outside-scope category; VAT calculation, cancellation and correction
+  workflows are not implemented.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
   same width when selecting another saved item from the list. It replaces the
   PDF with that item's export or shows a missing/unreadable message. Selection

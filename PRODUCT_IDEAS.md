@@ -141,8 +141,11 @@ items are still open, partially implemented, or ongoing design goals.
   invoice's details alongside or in a detail pane (#40).
 - [x] Enter invoice unit prices in euros and show rounded position totals and
   the overall amount in the draft editor and HTML preview.
-- [ ] Generate a PDF invoice from the entered invoice information.
-- [ ] Build the layout with HTML and style it with CSS.
+- [x] Issue invoices with a per-folder prefix and annual sequence, freezing the
+  issuer and invoice snapshot and preventing edits after issuance (#41).
+- [x] Generate a local ZUGFeRD PDF with EN-16931 CII XML and an EPC GiroCode,
+  store it with an integrity hash, and provide in-app preview and download (#41).
+- [x] Build the issued invoice layout with HTML and shared PDF CSS.
 
 ### Members
 
@@ -177,8 +180,8 @@ items are still open, partially implemented, or ongoing design goals.
 - [ ] Decide whether people and other records are shared between modules.
 - [ ] Decide which member-derived personalization fields series letters need, and
   whether single-person recipients can be non-members.
-- [ ] Decide how invoices are numbered and stored, and what PDF export or printing options
-  are needed.
+- [ ] Add workflows for correcting or cancelling issued invoices and handling
+  VAT cases beyond the current outside-scope assumption.
 - [ ] Decide on encryption, access control, backups, and storage formats for
   future modules. Meeting data currently uses versioned JSON.
 - [ ] Decide on the final visual design and module icon choices.

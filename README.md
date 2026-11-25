@@ -1,9 +1,10 @@
 # ClubManager
 
-An early Electron desktop app with meetings and individual letters. Members and
-Invoices are placeholders. See [product ideas](PRODUCT_IDEAS.md)
-for the longer-term direction and [architecture](ARCHITECTURE.md) for the
-current implementation and maintenance guidance.
+A modular Electron desktop app for managing a club. Meetings, individual
+letters, and invoices with local ZUGFeRD issuance are implemented. Members is a
+placeholder. See [product ideas](PRODUCT_IDEAS.md) for the longer-term direction
+and [architecture](ARCHITECTURE.md) for the current implementation and
+maintenance guidance.
 
 ## Screenshots
 

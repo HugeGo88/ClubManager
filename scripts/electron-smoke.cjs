@@ -2,7 +2,7 @@ process.env.TZ = 'Europe/Berlin';
 
 const { app, BrowserWindow, dialog, Menu, shell } = require('electron');
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -300,7 +300,7 @@ async function calendarSmoke(window, port) {
 }
 
 async function invoiceDraftSmoke(window) {
-  await window.webContents.executeJavaScript(`(async () => {
+  const issuance = await window.webContents.executeJavaScript(`(async () => {
     const waitFor = async test => {
       for (let i = 0; i < 200; i++) {
         const value = await test();
@@ -311,8 +311,9 @@ async function invoiceDraftSmoke(window) {
     };
     await waitFor(() => document.querySelector('[data-view="invoices"]'));
     const modules = await window.club.getModules();
+    const folder = await window.club.getFolder();
     await window.club.setModules({ ...modules, invoices: true }, {
-      folder: await window.club.getFolder(),
+      folder,
       revision: (await window.club.reloadModules()).revision
     });
     document.querySelector('[data-view="invoices"]').click();
@@ -362,6 +363,13 @@ async function invoiceDraftSmoke(window) {
     await waitFor(() => document.querySelector('[data-action="save-invoice"]'));
     document.querySelector('[data-action="save-invoice"]').click();
     await waitFor(async () => (await window.club.listInvoices()).length === 1);
+    const savedInvoice = (await window.club.listInvoices())[0];
+    try {
+      await window.club.saveInvoice(savedInvoice.invoice, savedInvoice.revision, { folder: folder + '-stale' });
+      throw new Error('An invoice save with a stale folder must be rejected');
+    } catch (error) {
+      if (!error.message.includes('Der aktive Datenordner hat sich geändert')) throw error;
+    }
     await waitFor(() => !document.body.inert && document.querySelector('[data-action="select-invoice"]')?.textContent.includes('7,01 €'));
     document.querySelector('[data-action="select-invoice"]').click();
     await waitFor(() => !document.body.inert && document.querySelector('[data-invoice-item="0"][data-invoice-item-field="unitPriceEuro"]')?.value === '3,50');
@@ -376,7 +384,103 @@ async function invoiceDraftSmoke(window) {
     }
     document.querySelector('[data-action="close-preview"]').click();
     await waitFor(() => !document.querySelector('.preview-pane'));
+    const currentSettings = await window.club.getInvoiceSettings();
+    const savedSettings = await window.club.saveInvoiceSettings({
+      ...currentSettings.settings,
+      issuerName: 'Sportverein Muster',
+      issuerStreet: 'Vereinsweg 2',
+      issuerPostalCode: '12345',
+      issuerCity: 'Musterstadt',
+      issuerCountryCode: 'DE',
+      issuerIdentifier: 'VR 1234',
+      issuerIdentifierType: 'registration',
+      bankName: 'Musterbank',
+      iban: 'DE89370400440532013000',
+      bic: 'COBADEFFXXX',
+      invoicePrefix: 'ZUG',
+      invoiceStartNumber: 7
+    }, { folder, revision: currentSettings.revision });
+    if (savedSettings.conflict) throw new Error(savedSettings.conflict);
+    document.querySelector('[data-action="issue-invoice"]').click();
+    await waitFor(() => document.querySelector('[data-action="preview-issued-invoice"]'));
+    const issued = (await window.club.listInvoices()).find(item => item.issued);
+    if (!issued || issued.issued.snapshot.totalCents !== 701 ||
+        issued.issued.number !== 'ZUG-' + issued.invoice.invoiceDate.slice(0, 4) + '-0007') {
+      throw new Error('Issuance must persist the expected annual number and frozen amount');
+    }
+    const pdf = new Uint8Array(await window.club.readInvoicePdf(issued.invoice.id, { folder }));
+    return { id: issued.invoice.id, number: issued.issued.number, pdf: Array.from(pdf) };
   })()`);
+  const pdf = Buffer.from(issuance.pdf);
+  const { extractXml, validatePdfA, validateXml } = await import('@lucaapp/zugferd-ts');
+  const xml = await extractXml(pdf);
+  assert.match(xml, new RegExp(`<ram:ID>${issuance.number}</ram:ID>`));
+  assert.match(xml, /<ram:GrandTotalAmount>7\.01<\/ram:GrandTotalAmount>/);
+  assert.match(xml, /Mitgliedsbeitrag/);
+  assert.match(xml, /Weitere Leistung/);
+  assert.match(xml, /DE89370400440532013000/);
+  assert.match(xml, /Alex &lt;Script&gt;/);
+  assert.equal((await validateXml(xml, { profile: 'EN16931' })).valid, true,
+    'the issued PDF must contain schema- and EN-16931-valid invoice XML');
+  assert.equal((await validatePdfA(pdf)).valid, true,
+    'the issued PDF must pass the ZUGFeRD package PDF/A-3 check');
+  if (process.env.CLUBMANAGER_VERAPDF) {
+    const pdfPath = path.join(os.tmpdir(), `clubmanager-verapdf-${randomUUID()}.pdf`);
+    try {
+      await fs.writeFile(pdfPath, pdf);
+      const report = JSON.parse(execFileSync(process.env.CLUBMANAGER_VERAPDF,
+        ['--flavour', '3b', '--format', 'json', pdfPath], { encoding: 'utf8' }));
+      const results = report.report.jobs[0].validationResult;
+      const validation = Array.isArray(results) ? results[0] : results;
+      assert.equal(validation.compliant, true,
+        `the issued PDF must pass independent veraPDF validation: ${JSON.stringify(validation)}`);
+    } finally {
+      await fs.rm(pdfPath, { force: true });
+    }
+  }
+
+  const reloaded = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
+  window.webContents.reload();
+  await reloaded;
+  const downloaded = await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for issued invoice reload');
+    };
+    await waitFor(() => document.querySelector('#app')?.dataset.modulesLoaded === 'true');
+    if (!(await window.club.getModules()).invoices) {
+      throw new Error('The invoice module must remain enabled after reloading the issued invoice');
+    }
+    document.querySelector('[data-view="invoices"]').click();
+    const select = await waitFor(() => document.querySelector('[data-action="select-invoice"][data-id="${issuance.id}"]'));
+    select.click();
+    await waitFor(() => document.querySelector('[data-action="preview-issued-invoice"]'));
+    if (![...document.querySelectorAll('[data-invoice-field], [data-invoice-item-field]')].every(input => input.disabled) ||
+        document.querySelector('[data-action="save-invoice"]') ||
+        document.querySelector('[data-action="issue-invoice"]')) {
+      throw new Error('Reloaded issued invoice contents must be read-only');
+    }
+    const record = (await window.club.listInvoices()).find(item => item.invoice.id === '${issuance.id}');
+    try {
+      await window.club.saveInvoice({ ...record.invoice, recipient: { ...record.invoice.recipient, name: 'Manipuliert' } }, record.revision,
+        { folder: await window.club.getFolder() });
+      throw new Error('An issued invoice must reject content changes after reload');
+    } catch (error) {
+      if (!error.message.includes('ausgestellte Rechnung')) throw error;
+    }
+    document.querySelector('[data-action="preview-issued-invoice"]').click();
+    await waitFor(() => document.querySelector('.preview-pane iframe')?.src.startsWith('blob:'));
+    const pdf = new Uint8Array(await window.club.readInvoicePdf(record.invoice.id, { folder: await window.club.getFolder() }));
+    document.querySelector('[data-action="download-invoice-pdf"]').click();
+    await waitFor(() => document.querySelector('.notice')?.textContent.includes('wurde heruntergeladen'));
+    return Array.from(pdf);
+  })()`);
+  assert.deepEqual(Buffer.from(downloaded), pdf, 'preview and download must use the issued PDF revision');
+  return { id: issuance.id, pdf, number: issuance.number };
 }
 
 async function calendarCacheSmoke(window, port, setCalendarAvailable) {
@@ -700,6 +804,7 @@ async function main() {
   process.on('exit', () => fsSync.rmSync(root, { recursive: true, force: true }));
   const data = path.join(root, 'data');
   const secondData = path.join(root, 'second-club');
+  const invoiceDownloadPath = path.join(root, 'invoice-download.pdf');
   const secondCssFile = path.join(root, 'second.css');
   const customizationDirectory = path.join(data, 'customizations');
   const customizationCss = path.join(customizationDirectory, 'pdf.css');
@@ -883,12 +988,17 @@ async function main() {
   await fs.mkdir(app.getPath('userData'));
   await fs.writeFile(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify({ protocolCss: cssFile }));
   let cancelCssDialog = false;
+  let invoiceSaveDialogOptions;
   dialog.showOpenDialog = async (window, options) => options.properties.includes('openFile')
     ? (options.title === 'Unterschrift auswählen' ? { canceled: false, filePaths: [selectedSignature] }
       : options.title === 'HTML-Vorlage für Briefe auswählen' ? { canceled: false, filePaths: [letterTemplateFile] }
       : options.filters?.[0]?.extensions.includes('html') ? { canceled: false, filePaths: [templateFile] }
       : cancelCssDialog ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [selectedCssFile] })
     : { canceled: false, filePaths: [selectedDataFolder] };
+  dialog.showSaveDialog = async (window, options) => {
+    invoiceSaveDialogOptions = options;
+    return { canceled: false, filePath: invoiceDownloadPath };
+  };
   const pdfColors = [];
   const pdfPointHeadings = [];
   const pdfVoteResults = [];
@@ -920,10 +1030,25 @@ async function main() {
     console.error('Electron smoke test timed out.');
     app.exit(1);
   }, 60000);
-  async function runFolderRecoverySmoke(mode = '') {
+  async function focusSmokeWindow(appWindow) {
+    app.focus({ steal: true });
+    appWindow.focus();
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (await appWindow.webContents.executeJavaScript('document.hasFocus()')) return;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(await appWindow.webContents.executeJavaScript('document.hasFocus()'), true,
+      'The smoke app window must have document focus');
+  }
+  async function runFolderRecoverySmoke(appWindow, mode = '', invoiceId = '') {
     const output = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [path.join(__dirname, 'electron-folder-recovery-smoke.cjs')], {
-        env: { ...process.env, CLUBMANAGER_SMOKE_ROOT: root, CLUBMANAGER_RECOVERY_MODE: mode },
+        env: {
+          ...process.env,
+          CLUBMANAGER_SMOKE_ROOT: root,
+          CLUBMANAGER_RECOVERY_MODE: mode,
+          CLUBMANAGER_INVOICE_ID: invoiceId
+        },
         stdio: ['ignore', 'pipe', 'pipe']
       });
       let stdout = '';
@@ -936,7 +1061,12 @@ async function main() {
         else reject(new Error(`Folder recovery smoke test failed (${code}):\n${stdout}${stderr}`));
       });
     });
+    if (mode === 'invoice-restart-check') {
+      assert.match(output, /Electron invoice restart smoke test passed:/,
+        'The invoice restart smoke must report that its assertions ran');
+    }
     process.stdout.write(output);
+    await focusSmokeWindow(appWindow);
   }
   let splash;
   let splashWasFirstWindow;
@@ -2616,6 +2746,7 @@ async function main() {
           await waitFor(() => document.querySelectorAll('[data-action="remove-signature"]').length === 1);
         })()`);
         selectedSignature = signatureSvg;
+        await focusSmokeWindow(window);
         await window.webContents.executeJavaScript(`(async () => {
           const waitFor = async test => {
             for (let i = 0; i < 200; i++) {
@@ -3307,16 +3438,19 @@ async function main() {
         ]);
         assert.equal(folderSettings.activeFolder, data);
         await calendarSmoke(window, calendarPort);
-        await invoiceDraftSmoke(window);
+        const invoiceDownload = await invoiceDraftSmoke(window);
+        assert.deepEqual(await fs.readFile(invoiceDownloadPath), invoiceDownload.pdf);
+        assert.equal(invoiceSaveDialogOptions.defaultPath, `${invoiceDownload.number}.pdf`);
+        await runFolderRecoverySmoke(window, 'invoice-restart-check', invoiceDownload.id);
         await calendarCacheSmoke(window, calendarPort, available => { calendarAvailable = available; });
         await calendarRetentionSmoke(window, calendarPort, mode => { retentionFeed = mode; });
         await previewSelectionSmoke(window);
-        await runFolderRecoverySmoke();
-        await runFolderRecoverySmoke('configuration');
-        await runFolderRecoverySmoke('restart-setup');
-        await runFolderRecoverySmoke('restart-check');
-        await runFolderRecoverySmoke('restart-external');
-        await runFolderRecoverySmoke('restart-missing');
+        await runFolderRecoverySmoke(window);
+        await runFolderRecoverySmoke(window, 'configuration');
+        await runFolderRecoverySmoke(window, 'restart-setup');
+        await runFolderRecoverySmoke(window, 'restart-check');
+        await runFolderRecoverySmoke(window, 'restart-external');
+        await runFolderRecoverySmoke(window, 'restart-missing');
         const deletionTestMeeting = {
           id: randomUUID(), title: 'Löschtest', date: '', attendance: [], points: []
         };

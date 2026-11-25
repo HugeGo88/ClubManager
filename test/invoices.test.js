@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { spawn } = require('node:child_process');
 const { initializeFolder } = require('../src/main/storage');
 const { parseEuroPrice } = require('../src/shared/invoice-amounts');
 const {
@@ -13,7 +14,9 @@ const {
   listInvoices,
   invoiceHtml,
   loadInvoiceSettings,
-  saveInvoiceSettings
+  saveInvoiceSettings,
+  issueInvoice,
+  readInvoicePdf
 } = require('../src/main/invoices');
 
 function draft(overrides = {}) {
@@ -116,6 +119,33 @@ test('stores invoice settings per folder and detects settings conflicts', async 
   assert.equal((await loadInvoiceSettings(second)).settings.paymentDays, 14);
 });
 
+test('stores an annual invoice number prefix and starting value per folder', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-invoice-number-settings-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+
+  const initial = await loadInvoiceSettings(folder);
+  assert.equal(initial.settings.invoicePrefix, 'RE');
+  assert.equal(initial.settings.invoiceStartNumber, 1);
+  const saved = await saveInvoiceSettings(folder, {
+    ...initial.settings,
+    invoicePrefix: 'RG',
+    invoiceStartNumber: 42
+  }, initial.revision);
+  assert.equal(saved.settings.invoicePrefix, 'RG');
+  assert.equal(saved.settings.invoiceStartNumber, 42);
+  assert.deepEqual((await loadInvoiceSettings(folder)).settings, saved.settings);
+
+  await assert.rejects(saveInvoiceSettings(folder, {
+    ...saved.settings,
+    invoicePrefix: 'RE-2026'
+  }, saved.revision), /Präfix/);
+  await assert.rejects(saveInvoiceSettings(folder, {
+    ...saved.settings,
+    invoiceStartNumber: 0
+  }, saved.revision), /Startwert/);
+});
+
 test('saves and lists folder-local invoice drafts and detects conflicts', async t => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-invoice-'));
   t.after(() => fs.rm(folder, { recursive: true, force: true }));
@@ -128,6 +158,128 @@ test('saves and lists folder-local invoice drafts and detects conflicts', async 
   await assert.rejects(saveInvoice(folder, value, null), /Rechnung wurde auf dem Datenträger geändert/);
   await fs.unlink(path.join(folder, 'invoices', `${value.id}.json`));
   await assert.rejects(saveInvoice(folder, value, revision), /Rechnung wurde auf dem Datenträger geändert/);
+});
+
+test('issues concurrent saved drafts with unique invoice numbers and locks their contents', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-issued-invoice-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerAddress: 'Vereinsweg 1\n12345 Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000',
+    bic: 'COBADEFFXXX'
+  }, settings.revision);
+  const firstDraft = draft();
+  const secondDraft = draft({ invoiceDate: '2027-01-03' });
+  const firstRevision = await saveInvoice(folder, firstDraft, null);
+  const secondRevision = await saveInvoice(folder, secondDraft, null);
+  const artifacts = new Map([
+    [firstDraft.id, { pdf: Buffer.from('%PDF-first'), xml: '<Invoice>first</Invoice>' }],
+    [secondDraft.id, { pdf: Buffer.from('%PDF-second'), xml: '<Invoice>second</Invoice>' }]
+  ]);
+  const generateArtifact = async snapshot => artifacts.get(snapshot.invoice.id);
+
+  const [first, second] = await Promise.all([
+    issueInvoice(folder, firstDraft.id, firstRevision, generateArtifact),
+    issueInvoice(folder, secondDraft.id, secondRevision, generateArtifact)
+  ]);
+
+  assert.equal(first.issued.number, 'RE-2026-0001');
+  assert.equal(second.issued.number, 'RE-2027-0001');
+  assert.deepEqual(await readInvoicePdf(folder, firstDraft.id), artifacts.get(firstDraft.id).pdf);
+  assert.deepEqual(await readInvoicePdf(folder, secondDraft.id), artifacts.get(secondDraft.id).pdf);
+  assert.equal((await listInvoices(folder)).find(item => item.invoice.id === firstDraft.id).issued.number, 'RE-2026-0001');
+  await assert.rejects(saveInvoice(folder, firstDraft, first.revision), /ausgestellt/);
+  await assert.rejects(issueInvoice(folder, firstDraft.id, first.revision, generateArtifact), /ausgestellt/);
+});
+
+test('prevents two processes from issuing the same saved invoice', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-concurrent-invoice-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerAddress: 'Vereinsweg 1\n12345 Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000',
+    bic: 'COBADEFFXXX'
+  }, settings.revision);
+  const value = draft();
+  const revision = await saveInvoice(folder, value, null);
+  const modulePath = path.join(__dirname, '../src/main/invoices.js');
+  const childScript = `
+    const { issueInvoice } = require(${JSON.stringify(modulePath)});
+    const [folder, id, revision] = process.argv.slice(1);
+    issueInvoice(folder, id, revision, async () => {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      return { pdf: Buffer.from('%PDF-concurrent'), xml: '<Invoice />' };
+    }).then(result => console.log(JSON.stringify({ success: true, number: result.issued.number })),
+      error => console.log(JSON.stringify({ success: false, error: error.message })));
+  `;
+  const issueInChild = () => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['-e', childScript, folder, value.id, revision]);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', code => {
+      if (code !== 0) return reject(new Error(stderr || `Invoice worker exited with ${code}`));
+      try {
+        resolve(JSON.parse(stdout.trim()));
+      } catch (error) {
+        reject(new Error(`Invalid invoice worker result: ${stdout} ${stderr}`, { cause: error }));
+      }
+    });
+  });
+
+  const results = await Promise.all([issueInChild(), issueInChild()]);
+  assert.equal(results.filter(result => result.success).length, 1);
+  assert.equal(results.filter(result => !result.success).length, 1);
+  assert.match(results.find(result => !result.success).error, /wird gerade|bereits ausgestellt/);
+  const issued = (await listInvoices(folder)).find(item => item.invoice.id === value.id);
+  assert.ok(issued.issued);
+  assert.deepEqual(await readInvoicePdf(folder, value.id), Buffer.from('%PDF-concurrent'));
+  assert.equal((await fs.readdir(path.join(folder, 'invoices', 'numbers'))).length, 1);
+});
+
+test('keeps a draft editable and releases its number when artifact creation fails', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-failed-invoice-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerAddress: 'Vereinsweg 1\n12345 Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000',
+    bic: 'COBADEFFXXX'
+  }, settings.revision);
+  const value = draft();
+  const revision = await saveInvoice(folder, value, null);
+
+  await assert.rejects(issueInvoice(folder, value.id, revision, async () => {
+    throw new Error('PDF/A validation failed');
+  }), /PDF\/A validation failed/);
+  assert.deepEqual((await listInvoices(folder)).map(item => item.invoice), [value]);
+  await assert.rejects(readInvoicePdf(folder, value.id), /noch kein ausgestelltes PDF/);
+
+  const issued = await issueInvoice(folder, value.id, revision, async () => ({
+    pdf: Buffer.from('%PDF-retry'),
+    xml: '<Invoice />'
+  }));
+  assert.equal(issued.issued.number, 'RE-2026-0001');
+  assert.deepEqual(await readInvoicePdf(folder, value.id), Buffer.from('%PDF-retry'));
 });
 
 test('renders rounded position amounts and their total in the invoice document', () => {

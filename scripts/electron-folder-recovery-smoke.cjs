@@ -136,10 +136,75 @@ async function restartScenario(root, mode) {
   app.quit();
 }
 
+async function invoiceRestartScenario(root) {
+  const folder = path.join(root, 'data');
+  const userData = path.join(root, 'settings');
+  const invoiceId = process.env.CLUBMANAGER_INVOICE_ID;
+  if (!invoiceId) throw new Error('CLUBMANAGER_INVOICE_ID is required.');
+  app.setVersion(require('../package.json').version);
+  app.setPath('userData', userData);
+  const timeout = setTimeout(() => {
+    console.error('Invoice restart smoke test timed out.');
+    app.exit(1);
+  }, 20000);
+  const mainWindowReady = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The invoice restart window did not load.')), 15000);
+    app.on('browser-window-created', (event, window) => {
+      window.webContents.once('did-finish-load', () => {
+        if (!window.webContents.getURL().endsWith('/renderer/index.html')) return;
+        clearTimeout(timer);
+        resolve(window);
+      });
+    });
+  });
+  try {
+    require('../src/main/main');
+    const window = await mainWindowReady;
+    await window.webContents.executeJavaScript(`(async () => {
+      const waitFor = async test => {
+        for (let i = 0; i < 400; i++) {
+          const value = await test();
+          if (value) return value;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        throw new Error('Timed out waiting for issued invoice after app restart');
+      };
+      await waitFor(() => document.querySelector('#app')?.dataset.modulesLoaded === 'true');
+      if (await window.club.getFolder() !== ${JSON.stringify(folder)}) {
+        throw new Error('The app restart must restore the invoice data folder');
+      }
+      document.querySelector('[data-view="invoices"]').click();
+      const button = await waitFor(() =>
+        document.querySelector('[data-action="select-invoice"][data-id="${invoiceId}"]'));
+      button.click();
+      await waitFor(() => document.querySelector('[data-action="preview-issued-invoice"]'));
+      const record = (await window.club.listInvoices()).find(item => item.invoice.id === '${invoiceId}');
+      if (!record?.issued || !document.querySelector('main h1')?.textContent.includes(record.issued.number) ||
+          ![...document.querySelectorAll('[data-invoice-field], [data-invoice-item-field]')].every(input => input.disabled)) {
+        throw new Error('The restarted app must restore the issued, read-only invoice');
+      }
+      const pdf = new Uint8Array(await window.club.readInvoicePdf(record.invoice.id, { folder: ${JSON.stringify(folder)} }));
+      if (String.fromCharCode(...pdf.slice(0, 5)) !== '%PDF-') {
+        throw new Error('The saved issued PDF must survive a new app process');
+      }
+      document.querySelector('[data-action="preview-issued-invoice"]').click();
+      await waitFor(() => document.querySelector('.preview-pane iframe')?.src.startsWith('blob:'));
+    })()`);
+    console.log('Electron invoice restart smoke test passed: issued data, PDF and preview survive a new app process.');
+  } finally {
+    clearTimeout(timeout);
+    app.quit();
+  }
+}
+
 async function main() {
   const root = process.env.CLUBMANAGER_SMOKE_ROOT;
   if (!root) throw new Error('CLUBMANAGER_SMOKE_ROOT is required.');
 
+  if (process.env.CLUBMANAGER_RECOVERY_MODE === 'invoice-restart-check') {
+    await invoiceRestartScenario(root);
+    return;
+  }
   if (['restart-setup', 'restart-check', 'restart-external', 'restart-missing'].includes(process.env.CLUBMANAGER_RECOVERY_MODE)) {
     await restartScenario(root, process.env.CLUBMANAGER_RECOVERY_MODE);
     return;

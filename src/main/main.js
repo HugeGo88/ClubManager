@@ -2,6 +2,8 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } = requir
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { loadDataFolder: loadDataFolderBase, startupSequence, checkNetworkAvailable } = require('./startup');
+const invoiceDocument = require('./invoice-document');
+const { createEpcQrCode } = require('./invoice-epc');
 
 app.commandLine.appendSwitch('lang', 'de-DE');
 
@@ -739,8 +741,62 @@ function registerHandlers() {
     }
   }));
   ipcMain.handle('invoices:list', () => invoices.listInvoices(requireFolder()));
-  ipcMain.handle('invoices:save', (event, invoice, revision) => serializeWrite(() =>
-    invoices.saveInvoice(requireFolder(), invoice, revision)));
+  ipcMain.handle('invoices:save', (event, invoice, revision, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie den Rechnungsentwurf neu.');
+    return invoices.saveInvoice(active, invoice, revision);
+  }));
+  ipcMain.handle('invoices:issue', (event, id, revision, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie den Rechnungsentwurf neu.');
+    return invoices.issueInvoice(active, id, revision, async snapshot => {
+      const xml = await invoiceDocument.buildInvoiceXml(snapshot);
+      await invoiceDocument.validateInvoiceXml(xml);
+      const qr = await createEpcQrCode(snapshot);
+      const cssFile = await documentCustomizations.customizationPath(active, 'protocolCss');
+      const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/document.css'));
+      const html = invoices.invoiceHtml(snapshot.invoice, { issuer: snapshot.issuer }, {
+        number: snapshot.number,
+        qrDataUrl: qr.dataUrl,
+        sharedCss: css
+      });
+      const pdfWindow = new BrowserWindow({
+        show: false,
+        webPreferences: { sandbox: true, nodeIntegration: false }
+      });
+      try {
+        await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        const sourcePdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+        const pdf = await invoiceDocument.embedAndValidateInvoicePdf(sourcePdf, xml);
+        return { pdf, xml };
+      } finally {
+        pdfWindow.destroy();
+      }
+    });
+  }));
+  ipcMain.handle('invoices:read-pdf', (event, id, base) => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    return invoices.readInvoicePdf(active, id);
+  });
+  ipcMain.handle('invoices:download-pdf', (event, id, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    const invoice = (await invoices.listInvoices(active)).find(item => item.invoice.id === id);
+    if (!invoice?.issued) throw new Error('Für diesen Rechnungsentwurf gibt es noch kein ausgestelltes PDF.');
+    const pdf = await invoices.readInvoicePdf(active, id);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Ausgestellte Rechnung herunterladen',
+      defaultPath: `${invoice.issued.number}.pdf`,
+      filters: [{ name: 'PDF-Dateien', extensions: ['pdf'] }]
+    });
+    if (result.canceled) return null;
+    if (folder !== active || typeof result.filePath !== 'string' || !path.isAbsolute(result.filePath)) {
+      throw new Error('Der aktive Datenordner hat sich geändert oder der Speicherort ist ungültig.');
+    }
+    await storage.atomicWrite(result.filePath, pdf);
+    return result.filePath;
+  }));
   ipcMain.handle('invoices:preview-html', (event, invoice) => {
     const active = requireFolder();
     return invoices.loadInvoiceSettings(active).then(({ settings }) =>

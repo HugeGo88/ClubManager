@@ -72,7 +72,13 @@ Aktivieren Sie das Modul **Rechnungen** und wählen Sie in der Seitenleiste **Re
 
 Mit **Rechnung speichern** wird der Entwurf lokal im Datenordner gespeichert und bleibt nach einem Neustart in der Liste und im Editor verfügbar. Ungültige Mengen oder Preise, negative Einzelpreise und eine nicht positive Gesamtsumme werden abgewiesen. Wurde der Datensatz inzwischen auf dem Datenträger geändert, meldet ClubManager einen Konflikt und überschreibt keine fremden Änderungen.
 
-**HTML-Vorschau** zeigt die Rechnung als lesbare Vorschau mit Positionssummen und Gesamtsumme. Wählen Sie **HTML-Vorschau** nach Änderungen erneut, um die Vorschau zu aktualisieren. Alle Eingaben werden als Text dargestellt; eingegebene HTML-, Skript- oder Formatierungszeichen werden nicht ausgeführt. Dieses Modul erzeugt in diesem Umfang noch keine endgültige Rechnungsnummer, Ausstellung oder PDF-Datei.
+**HTML-Vorschau** zeigt den gespeicherten oder aktuellen Entwurf als lesbare Vorschau mit Positionssummen und Gesamtsumme. Alle Eingaben werden als Text dargestellt; eingegebene HTML-, Skript- oder Formatierungszeichen werden nicht ausgeführt.
+
+Öffnen Sie vor der Ausstellung **Einstellungen → Rechnungen** und vervollständigen Sie Ausstelleranschrift, Vereins-/Handelsregisterkennung oder Umsatzsteuer-ID, Bank, IBAN und gegebenenfalls BIC. Legen Sie außerdem das Rechnungsnummern-Präfix und den Startwert fest. Die Nummer wird bei der Ausstellung aus Präfix, Rechnungsjahr und laufender Nummer gebildet; jede Nummer wird im Datenordner reserviert. Die Einstellungen gelten nur für den aktiven Datenordner.
+
+Wählen Sie bei einem gespeicherten Entwurf **Rechnung ausstellen**. ClubManager erstellt lokal ein PDF mit eingebetteter EN-16931-Rechnungs-XML im ZUGFeRD-Format und einem EPC GiroCode. Die ausgestellte Rechnung und das PDF werden im Datenordner gespeichert; nach einem Neustart können Sie die Rechnung unverändert öffnen, das PDF in der Vorschau ansehen oder über **PDF herunterladen** an einem gewählten Speicherort ablegen. Ausgestellte Rechnungen sind schreibgeschützt. Für eine fehlerhafte Rechnung gibt es noch keinen Korrektur- oder Stornierungsablauf.
+
+Derzeit wird keine Umsatzsteuer berechnet oder ausgewiesen; die XML verwendet die Steuerkategorie **nicht im Anwendungsbereich der Umsatzsteuer**. Stellen Sie nur Rechnungen aus, für die diese steuerliche Einordnung zutrifft. Die Ausstellung prüft die eingegebenen Pflichtangaben, die XML und das PDF lokal.
 
 ## Online-Kalender unter Rechnungen
 
