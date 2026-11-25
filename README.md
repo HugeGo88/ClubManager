@@ -239,7 +239,8 @@ a synchronization system or a substitute for backups; avoid editing the same
 folder with multiple app instances at the same time. Data is not encrypted.
 
 Run the storage tests with `npm test`. With a graphical desktop available, run
-the Electron smoke test with `npm run test:electron`.
+the full Electron smoke test with `npm run test:electron` or only the invoice
+issuance flow with `npm run test:electron:invoices`.
 
 The interface and generated protocol labels are German. Write new user-facing
 text in German, including accessibility labels, dialogs, errors, and document

@@ -431,6 +431,7 @@ remain separate operational steps.
 | [src/shared/](src/shared/) | Shared labels, dates and default document CSS |
 | [test/](test/) | Node tests for dates, settings, storage, protocols and updates |
 | [scripts/electron-smoke.cjs](scripts/electron-smoke.cjs) | Graphical end-to-end Electron smoke test |
+| [scripts/electron-invoice-smoke.cjs](scripts/electron-invoice-smoke.cjs) | Focused invoice issuance and saved-PDF Electron smoke test |
 | [.github/workflows/ci.yml](.github/workflows/ci.yml) | Pull-request tests and Electron smoke check |
 | [.github/workflows/release.yml](.github/workflows/release.yml) | Version-triggered or manually dispatched build and release |
 | [.vscode/](.vscode/) | Electron main-process launch and debug tasks |
@@ -447,6 +448,7 @@ npm install
 npm start
 npm test
 npm run test:electron
+npm run test:electron:invoices
 npm run build:assets
 npm run dist:mac
 npm run dist:win
@@ -465,6 +467,9 @@ and configuration recovery, relinking, non-destructive unregister, a
 deterministic initialization-write failure and retry, guarded external refresh,
 stale-save reload recovery, and a full app restart
 using the same settings context.
+The focused invoice smoke command runs the invoice issuance, artifact validation,
+reload, preview/download and fresh-process checks without the unrelated Electron
+flows.
 The pull-request workflow runs both suites and checks the smoke-test scripts'
 syntax, providing a virtual display for Electron. It installs Electron before
 configuring its Linux sandbox helper with root ownership and setuid permissions.

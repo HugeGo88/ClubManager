@@ -21,6 +21,8 @@
     "pretest:electron": "node scripts/check-node-version.cjs && npm run build:assets",
     "check:node": "node scripts/check-node-version.cjs",
     "test:electron": "electron scripts/electron-smoke.cjs",
+    "pretest:electron:invoices": "node scripts/check-node-version.cjs && npm run build:assets",
+    "test:electron:invoices": "electron scripts/electron-invoice-smoke.cjs",
     "predist:mac": "npm run build:assets",
     "dist:mac": "electron-builder --mac dmg --arm64",
     "predist:win": "npm run build:assets",

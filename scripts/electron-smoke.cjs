@@ -316,6 +316,7 @@ async function invoiceDraftSmoke(window) {
       folder,
       revision: (await window.club.reloadModules()).revision
     });
+    await waitFor(() => !document.querySelector('[data-module-nav="invoices"]').hidden);
     document.querySelector('[data-view="invoices"]').click();
     await waitFor(() => document.querySelector('[data-action="new-invoice"]'));
     document.querySelector('[data-action="new-invoice"]').click();
@@ -3515,7 +3516,11 @@ async function main() {
   require('../src/main/main');
 }
 
-main().catch(error => {
-  console.error(error);
-  app.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main().catch(error => {
+    console.error(error);
+    app.exit(1);
+  });
+}
+
+module.exports = { invoiceDraftSmoke };
