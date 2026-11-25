@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.1.14",
+    "date": "2026-11-25",
+    "sections": [
+      {
+        "title": "Rechnungen",
+        "changes": [
+          "Rechnungsentwürfe können als ZUGFeRD-Rechnung mit eingebettetem EN-16931-XML und EPC GiroCode ausgestellt werden.",
+          "Ausgestellte Rechnungen bleiben schreibgeschützt und können mit ihrem PDF nach einem Neustart geöffnet, in der Vorschau angesehen oder heruntergeladen werden.",
+          "Die Ausstellung berechnet keine Umsatzsteuer; stellen Sie nur Rechnungen aus, für die diese steuerliche Einordnung zutrifft."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.13",
     "date": "2026-11-24",
     "sections": [
