@@ -238,9 +238,10 @@ The app warns if a meeting has changed on disk since it was opened. This is not
 a synchronization system or a substitute for backups; avoid editing the same
 folder with multiple app instances at the same time. Data is not encrypted.
 
-Run the storage tests with `npm test`. With a graphical desktop available, run
-the full Electron smoke test with `npm run test:electron` or only the invoice
-issuance flow with `npm run test:electron:invoices`.
+Run the storage tests with `npm test`. Check the Electron smoke scripts for
+unused variables with `npm run lint:smoke`. With a graphical desktop available,
+run the full Electron smoke test with `npm run test:electron` or only the
+invoice issuance flow with `npm run test:electron:invoices`.
 
 The interface and generated protocol labels are German. Write new user-facing
 text in German, including accessibility labels, dialogs, errors, and document

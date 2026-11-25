@@ -1,6 +1,6 @@
 process.env.TZ = 'Europe/Berlin';
 
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, dialog } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');

@@ -23,6 +23,7 @@
     "test:electron": "electron scripts/electron-smoke.cjs",
     "pretest:electron:invoices": "node scripts/check-node-version.cjs && npm run build:assets",
     "test:electron:invoices": "electron scripts/electron-invoice-smoke.cjs",
+    "lint:smoke": "eslint \"scripts/electron*smoke.cjs\"",
     "predist:mac": "npm run build:assets",
     "dist:mac": "electron-builder --mac dmg --arm64",
     "predist:win": "npm run build:assets",
@@ -52,6 +53,7 @@
     "electron": "^45.3.0",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
     "jsqr": "^1.4.0",
     "pngjs": "^7.0.0"
   },

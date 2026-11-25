@@ -447,6 +447,7 @@ that file. Common commands:
 npm install
 npm start
 npm test
+npm run lint:smoke
 npm run test:electron
 npm run test:electron:invoices
 npm run build:assets
@@ -470,9 +471,10 @@ using the same settings context.
 The focused invoice smoke command runs the invoice issuance, artifact validation,
 reload, preview/download and fresh-process checks without the unrelated Electron
 flows.
-The pull-request workflow runs both suites and checks the smoke-test scripts'
-syntax, providing a virtual display for Electron. It installs Electron before
-configuring its Linux sandbox helper with root ownership and setuid permissions.
+The pull-request workflow runs both suites, checks the smoke-test scripts for
+unused variables and syntax, and provides a virtual display for Electron. It
+installs Electron before configuring its Linux sandbox helper with root
+ownership and setuid permissions.
 The `start`, Electron smoke test and distribution scripts build the editor and
 versioned manual through npm lifecycle scripts. VS Code's debug configurations
 also build these assets first.
