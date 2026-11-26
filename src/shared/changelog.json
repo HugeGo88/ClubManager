@@ -1,5 +1,28 @@
 [
   {
+    "version": "0.1.15",
+    "date": "2026-11-26",
+    "sections": [
+      {
+        "title": "Rechnungen",
+        "changes": [
+          "Für jeden Datenordner lässt sich eine eigene HTML-Rechnungsvorlage importieren oder auf die Standardvorlage zurücksetzen. Das gemeinsame PDF-Stylesheet gilt auch für Rechnungen.",
+          "Mit „Layout neu gestalten“ erhält eine ausgestellte Rechnung eine neue PDF-Version. Rechnungsnummer, Rechnungsdaten und eingebettete XML bleiben unverändert. Frühere PDF-Versionen lassen sich weiterhin ansehen und herunterladen.",
+          "Für ausgestellte Rechnungen lassen sich Zahlungen und Teilzahlungen mit Datum und Betrag erfassen. Mit „Restbetrag vollständig bezahlen“ lässt sich der offene Betrag ohne erneute Betragseingabe buchen. Nach vollständiger Bezahlung können Zahlungseinträge nicht mehr geändert oder gelöscht werden.",
+          "Die Rechnungsliste zeigt den Empfängernamen über der optionalen Firma und kennzeichnet Zahlungsstand und überfällige Rechnungen. Bei Teilzahlungen zeigt sie auch den Restbetrag. In der Rechnung warnt ein Hinweis, dass der GiroCode weiterhin den ursprünglichen Gesamtbetrag enthält.",
+          "Für neue Empfänger- und Ausstelleradressen gilt automatisch der Ländercode DE. Die Eingabefelder für Ländercodes entfallen; bereits gespeicherte Codes bleiben erhalten."
+        ]
+      },
+      {
+        "title": "Sitzungen",
+        "changes": [
+          "Die Anwesenheit wird platzsparend in Tabellenform gepflegt; neue Personen lassen sich am Tabellenende hinzufügen.",
+          "Personen können über ein Papierkorb-Symbol aus der Anwesenheitsliste entfernt werden."
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.14",
     "date": "2026-11-25",
     "sections": [
