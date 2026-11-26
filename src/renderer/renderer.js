@@ -109,10 +109,10 @@ function invoiceList() {
       ? invoicePayments.paymentState(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents, payments || [], invoice.dueDate)
       : null;
     const paymentText = info
-      ? ` · ${invoicePayments.paymentStatusLabel(info)}${info.status === 'partial' ? ` · offen ${invoiceAmounts.formatCents(info.remainingCents)}` : ''}`
+      ? `<small><span class="badge" data-invoice-list-payment-status="${escape(info.status)}" ${info.overdue ? 'data-invoice-overdue' : ''}>${escape(invoicePayments.paymentStatusLabel(info))}</span>${info.status === 'partial' ? ` · offen ${escape(invoiceAmounts.formatCents(info.remainingCents))}` : ''}</small>`
       : '';
     return `<button class="list-item ${invoiceState.invoice?.id === invoice.id ? 'selected' : ''}" data-action="select-invoice" data-id="${escape(invoice.id)}">
-    <strong>${escape(invoice.recipient.company || invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong><small>${escape(issued?.number || (invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum'))} · ${escape(invoiceAmounts.formatCents(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents))}${escape(paymentText)}</small></button>`;
+    <strong>${escape(invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong>${invoice.recipient.company ? `<span class="invoice-list-company">${escape(invoice.recipient.company)}</span>` : ''}<small>${escape(issued?.number || (invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum'))} · ${escape(invoiceAmounts.formatCents(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents))}</small>${paymentText}</button>`;
   }).join('');
   return `<aside class="list"><h2>Rechnungen</h2>${button('new-invoice', '+ Neue Rechnung', 'primary')}
     <label>Rechnungen suchen<input type="search" data-list-search="invoices" value="${escape(listSearch.invoices)}" placeholder="Empfänger oder Datum"></label>
@@ -180,7 +180,8 @@ function invoicePaymentsSection(invoice) {
     : `<div class="fields">
       <label>Zahlungsdatum<input type="date" data-payment-field="date" value="${escape(invoiceState.paymentForm.date)}"></label>
       <label>Betrag in Euro<input data-payment-field="amount" inputmode="decimal" placeholder="z. B. 40,00" value="${escape(invoiceState.paymentForm.amount)}"></label>
-    </div><div class="row"><button type="button" class="action primary" data-action="record-invoice-payment">Zahlung erfassen</button></div>`;
+    </div><div class="row invoice-payment-actions"><button type="button" class="action primary" data-action="record-invoice-payment">Zahlung erfassen</button><button type="button" class="action" data-action="record-invoice-balance" ${edit ? 'disabled' : ''}>Restbetrag vollständig bezahlen</button></div>
+    ${edit ? '<p class="muted">Speichern oder verwerfen Sie die Bearbeitung, bevor Sie den Restbetrag vollständig bezahlen.</p>' : ''}`;
   return `<div class="card"><h2>Zahlungen</h2>
     <p><strong data-invoice-payment-status>${escape(invoicePayments.paymentStatusLabel(info))}</strong> · Restbetrag: <span data-invoice-payment-remaining>${escape(invoiceAmounts.formatCents(info.remainingCents))}</span></p>
     ${girocodeWarning}
@@ -218,7 +219,7 @@ function invoiceEditor(invoice) {
       <label>Name<input data-invoice-field="recipient.name" value="${escape(invoice.recipient.name)}" ${disabled}></label>
       <label>Firma<input data-invoice-field="recipient.company" value="${escape(invoice.recipient.company)}" ${disabled}></label>
     </div><label>Straße und Hausnummer<input data-invoice-field="recipient.street" value="${escape(invoice.recipient.street)}" ${disabled}></label>
-    <div class="fields"><label>PLZ<input data-invoice-field="recipient.postalCode" value="${escape(invoice.recipient.postalCode)}" ${disabled}></label><label>Ort<input data-invoice-field="recipient.city" value="${escape(invoice.recipient.city)}" ${disabled}></label><label>Ländercode<input data-invoice-field="recipient.countryCode" value="${escape(invoice.recipient.countryCode || 'DE')}" maxlength="2" ${disabled}></label></div>
+    <div class="fields"><label>PLZ<input data-invoice-field="recipient.postalCode" value="${escape(invoice.recipient.postalCode)}" ${disabled}></label><label>Ort<input data-invoice-field="recipient.city" value="${escape(invoice.recipient.city)}" ${disabled}></label></div>
     <h2>Daten</h2><div class="fields">
       <label>Rechnungsdatum<input type="date" data-invoice-field="invoiceDate" value="${escape(invoice.invoiceDate)}" ${disabled}></label>
       <label>Leistungsdatum<input type="date" data-invoice-field="serviceDate" value="${escape(invoice.serviceDate)}" ${disabled}></label>
@@ -1063,7 +1064,6 @@ function settingsView() {
       ${selected[0] === 'invoices' ? `<h2>Rechnungseinstellungen</h2>
         <label>Name des Ausstellers<input data-invoice-setting="issuerName" value="${escape(invoiceState.settings?.issuerName || '')}" ${state.folder ? '' : 'disabled'}></label>
         <div class="fields"><label>Straße und Hausnummer des Ausstellers<input data-invoice-setting="issuerStreet" value="${escape(invoiceState.settings?.issuerStreet || '')}" ${state.folder ? '' : 'disabled'}></label><label>PLZ des Ausstellers<input data-invoice-setting="issuerPostalCode" value="${escape(invoiceState.settings?.issuerPostalCode || '')}" ${state.folder ? '' : 'disabled'}></label><label>Ort des Ausstellers<input data-invoice-setting="issuerCity" value="${escape(invoiceState.settings?.issuerCity || '')}" ${state.folder ? '' : 'disabled'}></label></div>
-        <label>Ländercode des Ausstellers<input data-invoice-setting="issuerCountryCode" maxlength="2" value="${escape(invoiceState.settings?.issuerCountryCode || 'DE')}" ${state.folder ? '' : 'disabled'}></label>
         <div class="fields"><label>Art der Ausstellerkennung<select data-invoice-setting="issuerIdentifierType" ${state.folder ? '' : 'disabled'}><option value="registration" ${invoiceState.settings?.issuerIdentifierType !== 'vat' ? 'selected' : ''}>Vereins-/Handelsregisterkennung</option><option value="vat" ${invoiceState.settings?.issuerIdentifierType === 'vat' ? 'selected' : ''}>Umsatzsteuer-ID</option></select></label><label>Ausstellerkennung<input data-invoice-setting="issuerIdentifier" value="${escape(invoiceState.settings?.issuerIdentifier || '')}" ${state.folder ? '' : 'disabled'}></label></div>
         <label>Bank<input data-invoice-setting="bankName" value="${escape(invoiceState.settings?.bankName || '')}" ${state.folder ? '' : 'disabled'}></label>
         <div class="fields"><label>IBAN<input data-invoice-setting="iban" value="${escape(invoiceState.settings?.iban || '')}" ${state.folder ? '' : 'disabled'}></label><label>BIC (optional)<input data-invoice-setting="bic" value="${escape(invoiceState.settings?.bic || '')}" ${state.folder ? '' : 'disabled'}></label></div>
@@ -1356,7 +1356,7 @@ async function run(action, target) {
       settingsTab = 'invoices';
       break;
     case 'save-invoice-settings': {
-      const settings = {};
+      const settings = { issuerCountryCode: invoiceState.settings?.issuerCountryCode };
       app.querySelectorAll('[data-invoice-setting]').forEach(input => {
         settings[input.dataset.invoiceSetting] = ['paymentDays', 'invoiceStartNumber'].includes(input.dataset.invoiceSetting)
           ? Number(input.value) : input.value;
@@ -1463,9 +1463,21 @@ async function run(action, target) {
         : 'Der Download wurde abgebrochen.');
       break;
     }
-    case 'record-invoice-payment': {
+    case 'record-invoice-payment':
+    case 'record-invoice-balance': {
+      let payment;
+      if (action === 'record-invoice-balance') {
+        const date = invoiceState.paymentForm.date;
+        if (!clubDates.isDate(date)) throw new Error('Geben Sie ein gültiges Zahlungsdatum an.');
+        const total = invoiceAmounts.calculateInvoiceTotal(invoiceState.invoice.items).cents;
+        const amountCents = invoicePayments.paymentState(total, invoiceState.payments, invoiceState.invoice.dueDate).remainingCents;
+        if (!window.confirm(`Den Restbetrag von ${invoiceAmounts.formatCents(amountCents)} am ${formatDate(date)} als bezahlt erfassen? Danach sind alle Zahlungseinträge endgültig gesperrt und können nicht mehr geändert oder gelöscht werden.`)) break;
+        payment = { date, amountCents };
+      } else {
+        payment = parsePaymentInput(invoiceState.paymentForm);
+      }
       const result = await window.club.recordInvoicePayment(invoiceState.invoice.id,
-        parsePaymentInput(invoiceState.paymentForm), invoiceState.revision, { folder: state.folder });
+        payment, invoiceState.revision, { folder: state.folder });
       invoiceState.payments = result.payments;
       invoiceState.revision = result.revision;
       invoiceState.paymentForm = { date: clubDates.localDate(), amount: '' };

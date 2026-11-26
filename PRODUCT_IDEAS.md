@@ -138,7 +138,8 @@ items are still open, partially implemented, or ongoing design goals.
   explicit exclusions and cancellations (#33, #36).
 - [x] Provide an invoice module for creating and managing invoice drafts (#40).
 - [x] Use a master-detail view: show a list of invoices and display the selected
-  invoice's details alongside or in a detail pane (#40).
+  invoice's details alongside or in a detail pane, with the recipient name and
+  optional company in the list (#40).
 - [x] Enter invoice unit prices in euros and show rounded position totals and
   the overall amount in the draft editor and HTML preview.
 - [x] Issue invoices with a per-folder prefix and annual sequence, freezing the
@@ -156,6 +157,8 @@ items are still open, partially implemented, or ongoing design goals.
   outstanding balance, unpaid/partial/paid/overdue states, direct correction
   until fully paid, a permanent lock afterwards and a visible warning that the
   GiroCode keeps the original total (#43).
+- [x] Record the full outstanding balance without entering an amount, with
+  confirmation before the permanent payment lock; show list statuses as badges.
 
 ### Members
 

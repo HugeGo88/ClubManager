@@ -70,6 +70,8 @@ Aktivieren Sie das Modul **Rechnungen** und wählen Sie in der Seitenleiste **Re
 
 Über **Neue Rechnung** erstellen Sie einen Rechnungsentwurf. Erfassen Sie Empfänger, Rechnungsdatum, Leistungsdatum oder Leistungszeitraum, Fälligkeit und beliebig viele Positionen. Jede Position enthält eine positive Menge mit höchstens drei Nachkommastellen (mit Punkt, z. B. `0.125`), eine Einheit, eine Beschreibung und einen nicht negativen Einzelpreis in Euro (z. B. `3,50`, höchstens zwei Nachkommastellen). Kostenlose Positionen sind neben berechneten Positionen möglich. ClubManager zeigt die Positionssummen und die Gesamtsumme im Editor und in der HTML-Vorschau sowie die Gesamtsumme in der Rechnungsliste. Jede Positionssumme wird einzeln kaufmännisch auf Cent gerundet, bevor die Gesamtsumme gebildet wird.
 
+In der Rechnungsliste steht der Empfängername über der optionalen Firma. Die Ländercodes für Empfänger und Aussteller werden nicht in der Oberfläche bearbeitet: Für neue Angaben gilt automatisch `DE`; bereits gespeicherte andere Codes bleiben erhalten.
+
 Mit **Rechnung speichern** wird der Entwurf lokal im Datenordner gespeichert und bleibt nach einem Neustart in der Liste und im Editor verfügbar. Ungültige Mengen oder Preise, negative Einzelpreise und eine nicht positive Gesamtsumme werden abgewiesen. Wurde der Datensatz inzwischen auf dem Datenträger geändert, meldet ClubManager einen Konflikt und überschreibt keine fremden Änderungen.
 
 **HTML-Vorschau** zeigt den gespeicherten oder aktuellen Entwurf als lesbare Vorschau mit Positionssummen und Gesamtsumme. Alle Eingaben werden als Text dargestellt; eingegebene HTML-, Skript- oder Formatierungszeichen werden nicht ausgeführt.
@@ -86,7 +88,9 @@ Derzeit wird keine Umsatzsteuer berechnet oder ausgewiesen; die XML verwendet di
 
 Für eine ausgestellte Rechnung erfassen Sie Zahlungen manuell im Abschnitt **Zahlungen** der Rechnung: Geben Sie das Zahlungsdatum und den Betrag in Euro an (z. B. `40,00`, höchstens zwei Nachkommastellen) und wählen Sie **Zahlung erfassen**. Mehrere Zahlungen je Rechnung sind möglich und bleiben nach einem Neustart erhalten. Rechnungsentwürfe erlauben keine Zahlungserfassung. Ein E-Mail-Versand ist nicht erforderlich; Zahlungen können auch vor dem Versand erfasst werden.
 
-Rechnungsliste und Rechnung zeigen den Zahlungsstand (**Unbezahlt**, **Teilweise bezahlt**, **Bezahlt**) und den Restbetrag. Eine ausgestellte Rechnung mit offenem Restbetrag nach dem Fälligkeitsdatum wird zusätzlich als **überfällig** gekennzeichnet; eine vollständig bezahlte Rechnung gilt nicht mehr als überfällig.
+Mit **Restbetrag vollständig bezahlen** erfassen Sie den gesamten offenen Betrag zum angegebenen Zahlungsdatum, ohne einen Betrag einzugeben. Schließen Sie zunächst eine laufende Bearbeitung eines Zahlungseintrags ab. Prüfen Sie den Betrag und das Datum in der Bestätigung: Nach der vollständigen Bezahlung sind alle Zahlungseinträge endgültig gesperrt.
+
+Rechnungsliste und Rechnung zeigen den Zahlungsstand (**Unbezahlt**, **Teilweise bezahlt**, **Bezahlt**) und den Restbetrag. In der Liste erscheint der Zahlungsstand als Badge. Eine ausgestellte Rechnung mit offenem Restbetrag nach dem Fälligkeitsdatum wird zusätzlich als **überfällig** gekennzeichnet; eine vollständig bezahlte Rechnung gilt nicht mehr als überfällig.
 
 Nullbeträge, negative Beträge und Zahlungen über den offenen Restbetrag hinaus werden abgewiesen und nicht gespeichert. Solange die Rechnung noch nicht vollständig bezahlt ist, können Sie Zahlungseinträge direkt bearbeiten oder löschen; Restbetrag und Zahlungsstand werden sofort aktualisiert. Auch beim Bearbeiten darf die Summe aller Zahlungen die Rechnungssumme nicht übersteigen.
 

@@ -107,6 +107,10 @@ main { flex: 1; min-width: 0; }
 .list .list-item { display: block; text-align: left; width: 100%; background: none; border: 0; border-radius: 6px; padding: 12px; color: inherit; }
 .list .list-item:hover, .list .list-item.selected { background: #eaf2fe; }
 .list-item small { display: block; color: #6c7889; margin-top: 4px; }
+.invoice-list-company { display: block; margin-top: 4px; font-weight: normal; }
+.list-item .badge { display: inline-block; border-radius: 999px; }
+.list-item .badge[data-invoice-list-payment-status="paid"] { color: #1f6b3a; background: #e3f4e8; }
+.list-item .badge[data-invoice-overdue] { color: #a32f26; background: #fff1ef; }
 .meeting-lock-icon { margin-left: 6px; color: #667487; font-size: 15px; vertical-align: middle; }
 .content { flex: 1; overflow: auto; padding: 34px 42px; }
 .meeting-stage.preview-open .content { min-width: 0; }
@@ -128,6 +132,7 @@ main { flex: 1; min-width: 0; }
 .meeting-toolbar .status { margin: 4px 0 0; }
 .meeting-actions { flex-wrap: wrap; }
 .letter-toolbar, .letter-actions { flex-wrap: wrap; }
+.invoice-payment-actions { flex-wrap: wrap; }
 .meeting-actions .export-option { flex: 0 1 190px; margin: 0; }
 .content:has(.meeting-toolbar) { scroll-padding-top: 140px; }
 h1 { margin: 0; font-size: 27px; } h2 { font-size: 18px; } h3 { font-size: 15px; }

@@ -357,10 +357,23 @@ async function invoiceDraftSmoke(window) {
       revision: (await window.club.reloadModules()).revision
     });
     await waitFor(() => !document.querySelector('[data-module-nav="invoices"]').hidden);
+    const initialSettings = await window.club.getInvoiceSettings();
+    const foreignSettings = await window.club.saveInvoiceSettings({
+      ...initialSettings.settings, issuerCountryCode: 'AT'
+    }, { folder, revision: initialSettings.revision });
+    if (foreignSettings.conflict) throw new Error(foreignSettings.conflict);
     document.querySelector('[data-view="settings"]').click();
     await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
     document.querySelector('[data-settings-tab="invoices"]').click();
     await waitFor(() => document.querySelector('[data-action="choose-invoice-template"]'));
+    if (document.querySelector('[data-invoice-setting="issuerCountryCode"]')) {
+      throw new Error('Issuer country code must not be editable in settings');
+    }
+    document.querySelector('[data-action="save-invoice-settings"]').click();
+    await waitFor(() => !document.body.inert && document.querySelector('.notice')?.textContent.includes('Rechnungseinstellungen wurden gespeichert'));
+    if ((await window.club.getInvoiceSettings()).settings.issuerCountryCode !== 'AT') {
+      throw new Error('Saving invoice settings must preserve an existing issuer country code');
+    }
     document.querySelector('[data-action="choose-invoice-template"]').click();
     await waitFor(() => document.querySelector('.notice.error')?.textContent.includes('Pflichtplatzhalter'));
     if (await window.club.getInvoiceTemplate() !== null) {
@@ -418,6 +431,7 @@ async function invoiceDraftSmoke(window) {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     };
     setValue('[data-invoice-field="recipient.name"]', 'Alex <Script>');
+    setValue('[data-invoice-field="recipient.company"]', 'Firma & Partner');
     setValue('[data-invoice-field="recipient.street"]', 'Hauptstraße 1');
     setValue('[data-invoice-field="recipient.postalCode"]', '12345');
     setValue('[data-invoice-field="recipient.city"]', 'Musterstadt');
@@ -456,15 +470,35 @@ async function invoiceDraftSmoke(window) {
     document.querySelector('[data-action="save-invoice"]').click();
     await waitFor(async () => (await window.club.listInvoices()).length === 1);
     const savedInvoice = (await window.club.listInvoices())[0];
+    if (savedInvoice.invoice.recipient.countryCode !== 'DE' ||
+        document.querySelector('[data-invoice-field="recipient.countryCode"]')) {
+      throw new Error('New recipients must default to DE without a country-code input');
+    }
+    const listItem = document.querySelector('[data-action="select-invoice"][data-id="' + savedInvoice.invoice.id + '"]');
+    const listName = listItem.querySelector('strong');
+    const listCompany = listItem.querySelector('.invoice-list-company');
+    if (listName?.textContent !== 'Alex <Script>' || listCompany?.textContent !== 'Firma & Partner' ||
+        listName.nextElementSibling !== listCompany ||
+        Number(getComputedStyle(listName).fontWeight) <= Number(getComputedStyle(listCompany).fontWeight)) {
+      throw new Error('The invoice list must show a bold customer name followed by the regular company name');
+    }
     try {
       await window.club.saveInvoice(savedInvoice.invoice, savedInvoice.revision, { folder: folder + '-stale' });
       throw new Error('An invoice save with a stale folder must be rejected');
     } catch (error) {
       if (!error.message.includes('Der aktive Datenordner hat sich geändert')) throw error;
     }
+    await window.club.saveInvoice({
+      ...savedInvoice.invoice, recipient: { ...savedInvoice.invoice.recipient, countryCode: 'AT' }
+    }, savedInvoice.revision, { folder });
     await waitFor(() => !document.body.inert && document.querySelector('[data-action="select-invoice"]')?.textContent.includes('7,01 €'));
     document.querySelector('[data-action="select-invoice"]').click();
     await waitFor(() => !document.body.inert && document.querySelector('[data-invoice-item="0"][data-invoice-item-field="unitPriceEuro"]')?.value === '3,50');
+    document.querySelector('[data-action="save-invoice"]').click();
+    await waitFor(() => !document.body.inert && document.querySelector('.notice')?.textContent.includes('Rechnungsentwurf wurde gespeichert'));
+    if ((await window.club.listInvoices())[0].invoice.recipient.countryCode !== 'AT') {
+      throw new Error('Editing a draft must preserve its existing recipient country code');
+    }
     document.querySelector('[data-action="preview-invoice"]').click();
     await waitFor(() => document.querySelector('.preview-pane iframe'));
     const iframe = document.querySelector('.preview-pane iframe');
@@ -500,7 +534,9 @@ async function invoiceDraftSmoke(window) {
     await waitFor(() => document.querySelector('[data-action="preview-issued-invoice"]'));
     const issued = (await window.club.listInvoices()).find(item => item.issued);
     if (!issued || issued.issued.snapshot.totalCents !== 701 ||
-        issued.issued.number !== 'ZUG-' + issued.invoice.invoiceDate.slice(0, 4) + '-0007') {
+        issued.issued.number !== 'ZUG-' + issued.invoice.invoiceDate.slice(0, 4) + '-0007' ||
+        issued.issued.snapshot.invoice.recipient.countryCode !== 'AT' ||
+        issued.issued.snapshot.issuer.address.countryCode !== 'DE') {
       throw new Error('Issuance must persist the expected annual number and frozen amount');
     }
     const previousRevision = issued.issued.pdfRevisions[0];
@@ -649,6 +685,9 @@ async function invoicePaymentSmoke(window) {
     setValue('[data-invoice-field="recipient.street"]', 'Hauptstraße 1');
     setValue('[data-invoice-field="recipient.postalCode"]', '12345');
     setValue('[data-invoice-field="recipient.city"]', 'Musterstadt');
+    setValue('[data-invoice-field="invoiceDate"]', '2020-01-01');
+    setValue('[data-invoice-field="serviceDate"]', '2020-01-01');
+    setValue('[data-invoice-field="dueDate"]', '2020-01-01');
     setValue('[data-invoice-item-field="description"]', 'Jahresbeitrag');
     setValue('[data-invoice-item="0"][data-invoice-item-field="unitPriceEuro"]', '100,00');
     if (document.querySelector('[data-invoice-payment-status]')) {
@@ -677,20 +716,33 @@ async function invoicePaymentSmoke(window) {
     const paymentDate = saved.invoice.invoiceDate;
     const statusText = () => document.querySelector('[data-invoice-payment-status]')?.textContent;
     const remainingText = () => document.querySelector('[data-invoice-payment-remaining]')?.textContent;
-    if (statusText() !== 'Unbezahlt' || remainingText() !== '100,00 €' ||
+    if (statusText() !== 'Unbezahlt · überfällig' || remainingText() !== '100,00 €' ||
         document.querySelector('[data-invoice-girocode-warning]')) {
       throw new Error('An issued invoice without payments must show Unbezahlt and the full balance');
+    }
+    const listBadge = () => document.querySelector(
+      '[data-action="select-invoice"][data-id="' + saved.invoice.id + '"] [data-invoice-list-payment-status]');
+    if (!listBadge()?.classList.contains('badge') || listBadge().textContent !== 'Unbezahlt · überfällig') {
+      throw new Error('The invoice list must show an overdue unpaid status badge');
+    }
+    const isRed = element => {
+      const color = getComputedStyle(element).color.match(/[0-9]+/g).map(Number);
+      return color[0] > color[1] && color[0] > color[2];
+    };
+    if (!isRed(listBadge())) throw new Error('An overdue unpaid status badge must be red');
+    if (parseFloat(getComputedStyle(listBadge()).borderRadius) < listBadge().offsetHeight / 2) {
+      throw new Error('The payment status badge must be pill-shaped');
     }
     setValue('[data-payment-field="date"]', paymentDate);
     setValue('[data-payment-field="amount"]', '40,00');
     document.querySelector('[data-action="record-invoice-payment"]').click();
-    await waitFor(() => !document.body.inert && statusText() === 'Teilweise bezahlt');
+    await waitFor(() => !document.body.inert && statusText() === 'Teilweise bezahlt · überfällig');
     if (remainingText() !== '60,00 €' ||
         !document.querySelector('[data-invoice-girocode-warning]')?.textContent.includes('100,00 €')) {
       throw new Error('A 40,00 EUR payment must leave 60,00 EUR open and warn about the fixed GiroCode total');
     }
-    if (![...document.querySelectorAll('[data-action="select-invoice"]')].some(item =>
-      item.textContent.includes('Teilweise bezahlt') && item.textContent.includes('offen 60,00 €'))) {
+    if (listBadge()?.textContent !== 'Teilweise bezahlt · überfällig' || !isRed(listBadge()) ||
+        !listBadge().closest('[data-action="select-invoice"]').textContent.includes('offen 60,00 €')) {
       throw new Error('The invoice list must show the partial payment state and open balance');
     }
     setValue('[data-payment-field="date"]', paymentDate);
@@ -704,6 +756,9 @@ async function invoicePaymentSmoke(window) {
     }
     document.querySelector('[data-action="edit-invoice-payment"]').click();
     await waitFor(() => document.querySelector('[data-payment-edit-field="amount"]'));
+    if (!document.querySelector('[data-action="record-invoice-balance"]').disabled) {
+      throw new Error('The balance payment must be disabled while a payment entry is being edited');
+    }
     setValue('[data-payment-edit-field="amount"]', '30,00');
     document.querySelector('[data-action="save-invoice-payment"]').click();
     await waitFor(() => !document.body.inert && remainingText() === '70,00 €');
@@ -715,11 +770,28 @@ async function invoicePaymentSmoke(window) {
     window.confirm = () => true;
     document.querySelectorAll('[data-action="delete-invoice-payment"]')[1].click();
     await waitFor(() => !document.body.inert && remainingText() === '70,00 €');
-    window.confirm = originalConfirm;
+    setValue('[data-payment-field="date"]', '');
+    document.querySelector('[data-action="record-invoice-balance"]').click();
+    await waitFor(() => !document.body.inert &&
+      document.querySelector('.notice.error')?.textContent.includes('gültiges Zahlungsdatum'));
+    if ((await window.club.listInvoices()).find(item => item.invoice.id === saved.invoice.id).payments.length !== 1) {
+      throw new Error('A missing payment date must not record the balance');
+    }
     setValue('[data-payment-field="date"]', paymentDate);
-    setValue('[data-payment-field="amount"]', '70,00');
-    document.querySelector('[data-action="record-invoice-payment"]').click();
+    setValue('[data-payment-field="amount"]', '');
+    let confirmation = '';
+    window.confirm = message => { confirmation = message; return false; };
+    document.querySelector('[data-action="record-invoice-balance"]').click();
+    await waitFor(() => !document.body.inert);
+    if (!confirmation.includes('70,00 €') || !confirmation.includes('endgültig gesperrt') ||
+        remainingText() !== '70,00 €' ||
+        (await window.club.listInvoices()).find(item => item.invoice.id === saved.invoice.id).payments.length !== 1) {
+      throw new Error('Cancelling the balance payment must preserve entries and show the final-lock warning');
+    }
+    window.confirm = () => true;
+    document.querySelector('[data-action="record-invoice-balance"]').click();
     await waitFor(() => !document.body.inert && statusText() === 'Bezahlt');
+    window.confirm = originalConfirm;
     if (remainingText() !== '0,00 €' || document.querySelector('[data-invoice-girocode-warning]') ||
         document.querySelector('[data-payment-field="amount"]') ||
         document.querySelector('[data-action="edit-invoice-payment"]') ||
@@ -742,9 +814,23 @@ async function invoicePaymentSmoke(window) {
         if (!error.message.includes('endgültig gesperrt')) throw error;
       }
     }
-    if (![...document.querySelectorAll('[data-action="select-invoice"]')].some(item =>
-      item.textContent.includes('Bezahlt') && !item.textContent.includes('offen'))) {
+    if (listBadge()?.textContent !== 'Bezahlt' ||
+        listBadge().closest('[data-action="select-invoice"]').textContent.includes('offen') ||
+        document.querySelector('[data-action="record-invoice-balance"]') ||
+        paid.payments[1].amountCents !== 7000 || paid.payments[1].date !== paymentDate) {
       throw new Error('The invoice list must show the paid state');
+    }
+    const paidColorValue = getComputedStyle(listBadge()).color;
+    const paidBackgroundValue = getComputedStyle(listBadge()).backgroundColor;
+    const paidColor = paidColorValue.match(/[0-9]+/g)?.map(Number);
+    const paidBackground = paidBackgroundValue.match(/[0-9]+/g)?.map(Number);
+    if (!paidColor || !paidBackground) {
+      throw new Error('Could not inspect paid badge colors: ' + paidColorValue + ', ' + paidBackgroundValue);
+    }
+    if (paidColor[1] <= paidColor[0] || paidColor[1] <= paidColor[2] ||
+        paidBackground[1] <= paidBackground[0] || paidBackground[1] <= paidBackground[2] ||
+        parseFloat(getComputedStyle(listBadge()).borderRadius) < listBadge().offsetHeight / 2) {
+      throw new Error('The paid status badge must be green and pill-shaped');
     }
     await settle();
     return { id: paid.invoice.id, payments: paid.payments };

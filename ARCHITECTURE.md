@@ -133,6 +133,9 @@ settings.json in userData    user-selected data folder
   Issued records cannot be edited or issued again. A deliberate layout
   redesign reuses the frozen snapshot and must produce the same invoice XML
   hash; it appends a PDF revision without changing invoice facts or number.
+  The invoice list shows the recipient name followed by the optional company.
+  Recipient and issuer country codes are not editable in the UI: new values
+  default to DE, while existing codes are preserved on edits and issuance.
   The first PDF remains at `<invoice-id>.pdf`; later revisions use
   `<invoice-id>-<revision-id>.pdf`. The issued record keeps stable revision IDs,
   hashes and creation times, and points to the latest revision. PDF bytes are
@@ -167,6 +170,9 @@ settings.json in userData    user-selected data folder
   state, the outstanding balance and the overdue flag (issued, outstanding
   balance, past due date) through the shared
   [src/shared/invoice-payments.js](src/shared/invoice-payments.js) helper.
+  The list displays the status as a badge. The detail view can record the
+  entire outstanding balance for the entered payment date without a manual
+  amount, after confirmation of the permanent lock.
   After a partial payment the invoice shows a visible warning that the GiroCode
   in the issued PDF still carries the original total; no remainder QR code is
   generated and the PDF is not silently regenerated. Payment writes use the
