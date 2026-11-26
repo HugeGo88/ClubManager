@@ -6,6 +6,7 @@ const { escapeHtml } = require('./protocol');
 const { isDate, formatDate } = require('../shared/dates');
 const { parseQuantity, calculateInvoiceTotal, formatCents } = require('../shared/invoice-amounts');
 const { buildEpcPayload, normalizeIban } = require('./invoice-epc');
+const { validateInvoiceTemplate, renderInvoiceTemplate } = require('./invoice-template');
 const lockfile = require('proper-lockfile');
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,6 +87,14 @@ function invoicePdfPath(folder, id) {
   return path.join(folder, 'invoices', 'pdf', `${id}.pdf`);
 }
 
+function invoicePdfRevisionPath(folder, id, revisionId) {
+  if (revisionId === 'initial') return invoicePdfPath(folder, id);
+  if (typeof id !== 'string' || !ID.test(id) || typeof revisionId !== 'string' || !ID.test(revisionId)) {
+    throw new Error('Ungültige PDF-Revision.');
+  }
+  return path.join(folder, 'invoices', 'pdf', `${id}-${revisionId}.pdf`);
+}
+
 function invoiceNumberPath(folder, number) {
   if (!/^[A-Z0-9]+-\d{4}-\d+$/.test(number)) throw new Error('Ungültige Rechnungsnummer.');
   return path.join(folder, 'invoices', 'numbers', `${number}.json`);
@@ -114,6 +123,25 @@ async function readInvoiceRecord(folder, id) {
   if (record.issued !== undefined && (!record.issued || typeof record.issued.number !== 'string' ||
       typeof record.issued.pdfRevision !== 'string' || !record.issued.snapshot)) {
     throw new Error(`${path.basename(file)} konnte nicht gelesen werden: ungültige Ausstellungsdaten.`);
+  }
+  if (record.issued && record.issued.pdfRevisions === undefined) {
+    record.issued.pdfRevisions = [{
+      id: 'initial',
+      pdfRevision: record.issued.pdfRevision,
+      createdAt: record.issued.issuedAt
+    }];
+  }
+  if (record.issued?.pdfRevisions !== undefined) {
+    const revisions = record.issued.pdfRevisions;
+    if (!Array.isArray(revisions) || revisions.length === 0 ||
+        revisions.some(item => !item || typeof item.id !== 'string' ||
+          (item.id !== 'initial' && !ID.test(item.id)) ||
+          typeof item.pdfRevision !== 'string' || !/^[0-9a-f]{64}$/.test(item.pdfRevision) ||
+          typeof item.createdAt !== 'string' || !Number.isFinite(Date.parse(item.createdAt))) ||
+        new Set(revisions.map(item => item.id)).size !== revisions.length ||
+        revisions.at(-1).pdfRevision !== record.issued.pdfRevision) {
+      throw new Error(`${path.basename(file)} konnte nicht gelesen werden: ungültige PDF-Revisionen.`);
+    }
   }
   return { record, content };
 }
@@ -392,12 +420,14 @@ async function issueInvoice(folder, id, expectedRevision, generateArtifact) {
         const pdfRevision = revision(pdf);
         await fs.mkdir(path.dirname(pdfFile), { recursive: true });
         await atomicWrite(pdfFile, pdf);
+        const issuedAt = new Date().toISOString();
         const issued = {
           number,
-          issuedAt: new Date().toISOString(),
+          issuedAt,
           snapshot,
           xmlRevision: revision(artifact.xml),
-          pdfRevision
+          pdfRevision,
+          pdfRevisions: [{ id: 'initial', pdfRevision, createdAt: issuedAt }]
         };
         const content = JSON.stringify({ version: 1, invoice: current.record.invoice, issued }, null, 2) + '\n';
         await atomicWrite(invoicePath(folder, id), content);
@@ -415,17 +445,84 @@ async function issueInvoice(folder, id, expectedRevision, generateArtifact) {
   });
 }
 
-async function readInvoicePdf(folder, id) {
+async function redesignInvoice(folder, id, expectedRevision, generateArtifact) {
+  if (typeof generateArtifact !== 'function') throw new Error('Der PDF-Erzeuger ist ungültig.');
+  return queueInvoiceIssue(folder, async () => {
+    const release = await acquireInvoiceLock(folder, id);
+    try {
+      const stored = await readInvoiceRecord(folder, id);
+      if (!stored?.record.issued) throw new Error('Die Rechnung wurde noch nicht ausgestellt.');
+      if (revision(stored.content) !== expectedRevision) {
+        throw new Error('Die ausgestellte Rechnung wurde geändert. Laden Sie sie vor der Neugestaltung neu.');
+      }
+      const snapshot = JSON.parse(JSON.stringify(stored.record.issued.snapshot));
+      const artifact = await generateArtifact(snapshot);
+      if (!artifact || !(Buffer.isBuffer(artifact.pdf) || artifact.pdf instanceof Uint8Array) ||
+          typeof artifact.xml !== 'string' || !artifact.xml.trim()) {
+        throw new Error('Die ZUGFeRD-Rechnung konnte nicht vollständig erstellt werden.');
+      }
+      if (revision(artifact.xml) !== stored.record.issued.xmlRevision) {
+        throw new Error('Die Neugestaltung darf die fachlichen Rechnungs-XML-Daten nicht ändern.');
+      }
+      const current = await readInvoiceRecord(folder, id);
+      if (!current?.record.issued || revision(current.content) !== expectedRevision) {
+        throw new Error('Die ausgestellte Rechnung wurde während der Neugestaltung geändert.');
+      }
+
+      const pdf = Buffer.from(artifact.pdf);
+      const pdfRevision = revision(pdf);
+      const revisionId = crypto.randomUUID();
+      const pdfFile = invoicePdfRevisionPath(folder, id, revisionId);
+      await fs.mkdir(path.dirname(pdfFile), { recursive: true });
+      await atomicWrite(pdfFile, pdf);
+      let committed = false;
+      try {
+        const latest = await readInvoiceRecord(folder, id);
+        if (!latest?.record.issued || revision(latest.content) !== expectedRevision) {
+          throw new Error('Die ausgestellte Rechnung wurde während der Neugestaltung geändert.');
+        }
+        const createdAt = new Date().toISOString();
+        const issued = {
+          ...latest.record.issued,
+          pdfRevision,
+          pdfRevisions: [
+            ...latest.record.issued.pdfRevisions,
+            { id: revisionId, pdfRevision, createdAt }
+          ]
+        };
+        const content = JSON.stringify({
+          version: 1,
+          invoice: latest.record.invoice,
+          issued
+        }, null, 2) + '\n';
+        await atomicWrite(invoicePath(folder, id), content);
+        committed = true;
+        return { invoice: latest.record.invoice, issued, revision: revision(content) };
+      } finally {
+        if (!committed) await fs.rm(pdfFile, { force: true });
+      }
+    } finally {
+      await release();
+    }
+  });
+}
+
+async function readInvoicePdf(folder, id, revisionId) {
   const stored = await readInvoiceRecord(folder, id);
   if (!stored?.record.issued) throw new Error('Für diesen Rechnungsentwurf gibt es noch kein ausgestelltes PDF.');
+  const revisions = stored.record.issued.pdfRevisions;
+  const selected = revisionId === undefined
+    ? revisions.at(-1)
+    : revisions.find(item => item.id === revisionId);
+  if (!selected) throw new Error('Die ausgewählte PDF-Revision wurde nicht gefunden.');
   let pdf;
   try {
-    pdf = await fs.readFile(invoicePdfPath(folder, id));
+    pdf = await fs.readFile(invoicePdfRevisionPath(folder, id, selected.id));
   } catch (error) {
     if (error.code === 'ENOENT') throw new Error('Das gespeicherte Rechnungs-PDF fehlt.');
     throw error;
   }
-  if (revision(pdf) !== stored.record.issued.pdfRevision) {
+  if (revision(pdf) !== selected.pdfRevision) {
     throw new Error('Das gespeicherte Rechnungs-PDF wurde verändert.');
   }
   return pdf;
@@ -438,6 +535,7 @@ function countryName(code) {
 
 function invoiceHtml(invoice, settings, options = {}) {
   const recipientCountry = countryName(invoice.recipient.countryCode || 'DE');
+  const issuer = settings.issuer || settings;
   const recipient = [
     invoice.recipient.company,
     invoice.recipient.name,
@@ -445,7 +543,13 @@ function invoiceHtml(invoice, settings, options = {}) {
     [invoice.recipient.postalCode, invoice.recipient.city].filter(Boolean).join(' '),
     recipientCountry
   ].filter(line => line.trim()).map(escapeHtml).join('<br>');
-  const issuer = settings.issuer || settings;
+  const issuerAddressText = issuer.address
+    ? [
+      issuer.address.street,
+      `${issuer.address.postalCode} ${issuer.address.city}`.trim(),
+      countryName(issuer.address.countryCode)
+    ].filter(Boolean).join('\n')
+    : settings.issuerAddress || '';
   const issuerAddress = issuer.address
     ? [
       issuer.address.street,
@@ -465,6 +569,43 @@ function invoiceHtml(invoice, settings, options = {}) {
   const qr = options.qrDataUrl
     ? `<section class="payment-code"><div><h2>Per GiroCode bezahlen</h2><p>Scannen Sie den Code mit Ihrer Banking-App.</p></div><img src="${escapeHtml(options.qrDataUrl)}" alt="GiroCode für Rechnung ${escapeHtml(options.number)}"></section>`
     : '';
+  const body = options.template
+    ? renderInvoiceTemplate(options.template, {
+      invoice_number: options.number || '',
+      issuer_name: issuer.name || settings.issuerName || '',
+      issuer_address: issuerAddressText,
+      issuer_identifier: issuer.identifier || settings.issuerIdentifier || '',
+      recipient_name: invoice.recipient.name,
+      recipient_company: invoice.recipient.company,
+      recipient_address: [
+        invoice.recipient.street,
+        [invoice.recipient.postalCode, invoice.recipient.city].filter(Boolean).join(' '),
+        recipientCountry
+      ].filter(Boolean).join('\n'),
+      invoice_date: formatDate(invoice.invoiceDate),
+      service_details: invoice.servicePeriodStart || invoice.servicePeriodEnd
+        ? `Leistungszeitraum: ${[invoice.servicePeriodStart, invoice.servicePeriodEnd].filter(Boolean).map(formatDate).join(' – ')}`
+        : `Leistungsdatum: ${formatDate(invoice.serviceDate)}`,
+      due_date: formatDate(invoice.dueDate),
+      items: `<table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis</th><th>Summe</th></tr></thead><tbody>${items}</tbody></table>`,
+      total: formatCents(total.cents),
+      bank_name: issuer.bankName || settings.bankName || '',
+      iban: issuer.iban || settings.iban || '',
+      bic: issuer.bic || settings.bic || '',
+      girocode: qr
+    })
+    : `<main>
+      <h1>Rechnung</h1><p><strong>${escapeHtml(issuer.name || settings.issuerName || '')}</strong></p><p>${issuerAddress}</p>
+      ${issuer.identifier ? `<p>Ausstellerkennung: ${escapeHtml(issuer.identifier)}</p>` : ''}
+      ${options.number ? `<p><strong>Rechnungsnummer: ${escapeHtml(options.number)}</strong></p>` : ''}
+      <div class="invoice-meta"><div>${recipient}</div><div>
+        <p>Rechnungsdatum: ${escapeHtml(formatDate(invoice.invoiceDate))}</p><p>${service}</p><p>${due}</p>
+      </div></div>
+      <table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis</th><th>Summe</th></tr></thead><tbody>${items}</tbody></table>
+      <p class="total"><strong>Gesamtsumme: ${escapeHtml(formatCents(total.cents))}</strong></p>
+      <p>${escapeHtml(issuer.bankName || settings.bankName || '')}<br>IBAN: ${escapeHtml(issuer.iban || settings.iban || '')}<br>BIC: ${escapeHtml(issuer.bic || settings.bic || '')}</p>
+      ${qr}
+    </main>`;
   const sharedCss = String(options.sharedCss || '').replace(/<\/style/gi, '<\\/style');
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;"><style>
     @page { size: A4; margin: 20mm }
@@ -480,18 +621,9 @@ function invoiceHtml(invoice, settings, options = {}) {
     .payment-code { display: flex; align-items: center; justify-content: space-between; gap: 8mm; margin-top: 10mm; border-top: 1px solid #ccc; padding-top: 5mm; break-inside: avoid }
     .payment-code h2 { margin: 0 0 2mm }
     .payment-code img { width: 40mm; height: 40mm; image-rendering: pixelated }
-  </style><style>${sharedCss}</style></head><body><main>
-    <h1>Rechnung</h1><p><strong>${escapeHtml(issuer.name || settings.issuerName || '')}</strong></p><p>${issuerAddress}</p>
-    ${issuer.identifier ? `<p>Ausstellerkennung: ${escapeHtml(issuer.identifier)}</p>` : ''}
-    ${options.number ? `<p><strong>Rechnungsnummer: ${escapeHtml(options.number)}</strong></p>` : ''}
-    <div class="invoice-meta"><div>${recipient}</div><div>
-      <p>Rechnungsdatum: ${escapeHtml(formatDate(invoice.invoiceDate))}</p><p>${service}</p><p>${due}</p>
-    </div></div>
-    <table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis</th><th>Summe</th></tr></thead><tbody>${items}</tbody></table>
-    <p class="total"><strong>Gesamtsumme: ${escapeHtml(formatCents(total.cents))}</strong></p>
-    <p>${escapeHtml(issuer.bankName || settings.bankName || '')}<br>IBAN: ${escapeHtml(issuer.iban || settings.iban || '')}<br>BIC: ${escapeHtml(issuer.bic || settings.bic || '')}</p>
-    ${qr}
-  </main></body></html>`;
+    .invoice-address { white-space: pre-line }
+    .total { text-align: right }
+  </style><style>${sharedCss}</style></head><body>${body}</body></html>`;
 }
 
 module.exports = {
@@ -504,7 +636,9 @@ module.exports = {
   loadInvoiceSettings,
   saveInvoiceSettings,
   issueInvoice,
+  redesignInvoice,
   readInvoicePdf,
   invoiceHtml,
+  validateInvoiceTemplate,
   formatCents
 };

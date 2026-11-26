@@ -128,24 +128,31 @@ settings.json in userData    user-selected data folder
 - Invoice drafts are folder-local records below `invoices/`, while issuer,
   bank, payment-term and invoice-number settings are stored in the same module
   directory. Issuance reserves a prefix/year/sequence number, freezes the
-  invoice and issuer data, and stores the PDF under `invoices/pdf/`. Issued
-  records cannot be edited or issued again; the PDF is SHA-256 checked when
-  previewed or downloaded. The main process serializes writes, and an
-  inter-process invoice lock prevents concurrent saves and issuance of the same
-  draft. Number reservation uses exclusive file creation to avoid duplicate
-  numbers across processes sharing the folder.
+  invoice and issuer data, and stores the initial PDF under `invoices/pdf/`.
+  Issued records cannot be edited or issued again. A deliberate layout
+  redesign reuses the frozen snapshot and must produce the same invoice XML
+  hash; it appends a PDF revision without changing invoice facts or number.
+  The first PDF remains at `<invoice-id>.pdf`; later revisions use
+  `<invoice-id>-<revision-id>.pdf`. The issued record keeps stable revision IDs,
+  hashes and creation times, and points to the latest revision. PDF bytes are
+  SHA-256 checked when any revision is previewed or downloaded. A failed
+  redesign removes only its uncommitted file and leaves the record and earlier
+  PDFs intact. The main process serializes writes, and an inter-process invoice
+  lock prevents concurrent saves, issuance and redesign of the same invoice.
+  Number reservation uses exclusive file creation to avoid duplicate numbers
+  across processes sharing the folder.
   Prices are entered in euros but stored as integer cents; the shared invoice
   amount helpers calculate editor, list and document totals using exact
   decimal-to-cent rounding. Every position is rounded Half-up independently
   before totals are summed. The HTML preview uses a sandboxed blob frame and
   escapes all user values. Draft writes use SHA-256 revisions and
   atomic replacement; stale or invalid writes are rejected with German errors.
-  Issued PDFs are generated locally from HTML, contain validated EN-16931 CII
-  XML and an EPC GiroCode QR, and are checked with the ZUGFeRD dependency's
-  PDF/A validation subset before storage. This check is not a full independent
-  veraPDF conformance report. Invoice tax is currently fixed to the
-  EN-16931 outside-scope category; VAT calculation, cancellation and correction
-  workflows are not implemented.
+  Issued PDFs and redesigns are generated locally from sanitized HTML, contain
+  validated EN-16931 CII XML and an EPC GiroCode QR, and are checked with the
+  ZUGFeRD dependency's PDF/A validation subset before storage. This check is not
+  a full independent veraPDF conformance report. Invoice tax is currently
+  fixed to the EN-16931 outside-scope category; VAT calculation, cancellation
+  and correction workflows are not implemented.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
   same width when selecting another saved item from the list. It replaces the
   PDF with that item's export or shows a missing/unreadable message. Selection
@@ -170,7 +177,8 @@ settings.json in userData    user-selected data folder
   app-wide), so each folder maintains an independent signature library.
   Current document customizations live inside each data folder:
   `customizations/pdf.css`, `customizations/meeting.html`,
-  `customizations/letter.html`, `customizations/letter-placeholders.json` and
+  `customizations/invoice.html`, `customizations/letter.html`,
+  `customizations/letter-placeholders.json` and
   `customizations/signatures/`. The signatures directory includes a versioned
   manifest and copied image files. The letter-placeholder file is a versioned,
   folder-local list of unique lowercase keys and single-line text values shared
@@ -309,10 +317,11 @@ and uses `printToPDF`; the result replaces the meeting's previous export.
 Document CSP blocks external resources. The packaged default stylesheets are
 [src/shared/document.css](src/shared/document.css) for Meetings and
 [src/shared/letter.css](src/shared/letter.css) for Letters. A data folder's
-optional `customizations/pdf.css` replaces the stylesheet for both PDF types
-and is reread on each export; it does not affect the app UI. Missing local CSS
-or templates independently use their corresponding packaged defaults. Present
-but unreadable or invalid custom files are errors rather than fallbacks.
+optional `customizations/pdf.css` is shared by Meetings, Invoices and Letters
+and is reread for every generated document; it does not affect the app UI.
+Missing local CSS or templates independently use their corresponding packaged
+defaults. Present but unreadable or invalid custom files are errors rather
+than fallbacks.
 The optional meeting-specific HTML body template places escaped title/date,
 chair and recorder names and generated attendance, TOP and open-task sections using
 documented placeholders, including `{{chair}}` and `{{recorder}}`;
@@ -321,6 +330,17 @@ local template the existing built-in layout is used.
 The optional letter-specific HTML body template places the address, date, title,
 content and signatures using their documented placeholders. The packaged letter
 stylesheet requests Source Sans Pro with system sans-serif fallbacks.
+The packaged invoice template is [src/shared/invoice.html](src/shared/invoice.html);
+the optional folder-local `customizations/invoice.html` is imported and reset
+through Rechnungseinstellungen. It accepts documented invoice-field tokens
+only in visible text nodes; required tokens cannot be supplied by comments,
+attributes, scripts or hidden regions. Unknown tokens, scripts, unsupported
+elements and unsafe token locations fail import and output. User data is
+escaped as text; only the generated positions table and GiroCode markup are
+inserted as HTML. No template loops, conditions or custom-field registry are
+provided. Draft preview uses the selected invoice template and shared PDF CSS.
+Re-layout of an issued invoice appends a durable revision; the latest is the
+default preview/download while earlier revisions remain selectable.
 
 The PDF contains attendance grouped by status, TOPs, decision results and
 tasks, plus the optional chair and recorder names. Its final open-task section groups by responsible person; comma- and
@@ -468,9 +488,10 @@ and configuration recovery, relinking, non-destructive unregister, a
 deterministic initialization-write failure and retry, guarded external refresh,
 stale-save reload recovery, and a full app restart
 using the same settings context.
-The focused invoice smoke command runs the invoice issuance, artifact validation,
-reload, preview/download and fresh-process checks without the unrelated Electron
-flows.
+The focused invoice smoke command exercises invoice-template import and reset,
+custom CSS, draft preview, issuance, redesign, revision selection, validation of
+both actual PDFs, reload, preview/download and fresh-process revision checks
+without the unrelated Electron flows.
 The pull-request workflow runs both suites, checks the smoke-test scripts for
 unused variables and syntax, and provides a virtual display for Electron. It
 installs Electron before configuring its Linux sandbox helper with root

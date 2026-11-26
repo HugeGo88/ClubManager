@@ -326,6 +326,46 @@ async function readLetterTemplate(file, customPlaceholders = letterPlaceholders)
   return template;
 }
 
+async function readInvoiceTemplate(file) {
+  const templateFile = file || path.join(__dirname, '../shared/invoice.html');
+  let template;
+  try {
+    template = await fs.readFile(templateFile, 'utf8');
+  } catch (error) {
+    throw new Error(`Die Rechnungsvorlage konnte nicht gelesen werden: ${error.message}`);
+  }
+  invoices.validateInvoiceTemplate(template);
+  return template;
+}
+
+async function generateInvoiceArtifact(activeFolder, snapshot) {
+  const xml = await invoiceDocument.buildInvoiceXml(snapshot);
+  await invoiceDocument.validateInvoiceXml(xml);
+  const qr = await createEpcQrCode(snapshot);
+  const cssFile = await documentCustomizations.customizationPath(activeFolder, 'protocolCss');
+  const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/document.css'));
+  const templateFile = await documentCustomizations.customizationPath(activeFolder, 'invoiceTemplate');
+  const template = await readInvoiceTemplate(templateFile);
+  const html = invoices.invoiceHtml(snapshot.invoice, { issuer: snapshot.issuer }, {
+    number: snapshot.number,
+    qrDataUrl: qr.dataUrl,
+    sharedCss: css,
+    template
+  });
+  const pdfWindow = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, nodeIntegration: false }
+  });
+  try {
+    await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    const sourcePdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
+    const pdf = await invoiceDocument.embedAndValidateInvoicePdf(sourcePdf, xml);
+    return { pdf, xml };
+  } finally {
+    pdfWindow.destroy();
+  }
+}
+
 async function readSignature(signature) {
   const types = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.gif': 'image/gif' };
   const type = types[path.extname(signature.path).toLowerCase()];
@@ -730,6 +770,24 @@ function registerHandlers() {
     });
   });
   ipcMain.handle('invoices:settings:get', () => folder ? invoices.loadInvoiceSettings(folder) : { settings: null, revision: null });
+  ipcMain.handle('invoice-template:get', () => folder
+    ? documentCustomizations.customizationPath(folder, 'invoiceTemplate')
+    : null);
+  ipcMain.handle('invoice-template:choose', async () => {
+    const currentFolder = requireFolder();
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'HTML-Rechnungsvorlage auswählen',
+      buttonLabel: 'HTML-Vorlage importieren',
+      properties: ['openFile'],
+      filters: [{ name: 'HTML-Dateien', extensions: ['html', 'htm'] }]
+    });
+    if (result.canceled) return null;
+    return serializeWrite(() => documentCustomizations.importCustomization(
+      currentFolder, 'invoiceTemplate', result.filePaths[0], invoices.validateInvoiceTemplate));
+  });
+  ipcMain.handle('invoice-template:reset', () => serializeWrite(async () => {
+    await documentCustomizations.resetCustomization(requireFolder(), 'invoiceTemplate');
+  }));
   ipcMain.handle('invoices:settings:set', (event, settings, base) => serializeWrite(async () => {
     const active = requireFolder();
     if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnungseinstellungen neu.');
@@ -749,45 +807,33 @@ function registerHandlers() {
   ipcMain.handle('invoices:issue', (event, id, revision, base) => serializeWrite(async () => {
     const active = requireFolder();
     if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie den Rechnungsentwurf neu.');
-    return invoices.issueInvoice(active, id, revision, async snapshot => {
-      const xml = await invoiceDocument.buildInvoiceXml(snapshot);
-      await invoiceDocument.validateInvoiceXml(xml);
-      const qr = await createEpcQrCode(snapshot);
-      const cssFile = await documentCustomizations.customizationPath(active, 'protocolCss');
-      const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/document.css'));
-      const html = invoices.invoiceHtml(snapshot.invoice, { issuer: snapshot.issuer }, {
-        number: snapshot.number,
-        qrDataUrl: qr.dataUrl,
-        sharedCss: css
-      });
-      const pdfWindow = new BrowserWindow({
-        show: false,
-        webPreferences: { sandbox: true, nodeIntegration: false }
-      });
-      try {
-        await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-        const sourcePdf = await pdfWindow.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
-        const pdf = await invoiceDocument.embedAndValidateInvoicePdf(sourcePdf, xml);
-        return { pdf, xml };
-      } finally {
-        pdfWindow.destroy();
-      }
-    });
+    return invoices.issueInvoice(active, id, revision, snapshot => generateInvoiceArtifact(active, snapshot));
   }));
-  ipcMain.handle('invoices:read-pdf', (event, id, base) => {
+  ipcMain.handle('invoices:redesign', (event, id, revision, base) => serializeWrite(async () => {
     const active = requireFolder();
     if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
-    return invoices.readInvoicePdf(active, id);
+    return invoices.redesignInvoice(active, id, revision, snapshot => generateInvoiceArtifact(active, snapshot));
+  }));
+  ipcMain.handle('invoices:read-pdf', (event, id, base, revisionId) => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    return invoices.readInvoicePdf(active, id, revisionId);
   });
-  ipcMain.handle('invoices:download-pdf', (event, id, base) => serializeWrite(async () => {
+  ipcMain.handle('invoices:download-pdf', (event, id, base, revisionId) => serializeWrite(async () => {
     const active = requireFolder();
     if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
     const invoice = (await invoices.listInvoices(active)).find(item => item.invoice.id === id);
     if (!invoice?.issued) throw new Error('Für diesen Rechnungsentwurf gibt es noch kein ausgestelltes PDF.');
-    const pdf = await invoices.readInvoicePdf(active, id);
+    const revisions = invoice.issued.pdfRevisions;
+    const selected = revisionId === undefined
+      ? revisions.at(-1)
+      : revisions.find(item => item.id === revisionId);
+    if (!selected) throw new Error('Die ausgewählte PDF-Revision wurde nicht gefunden.');
+    const pdf = await invoices.readInvoicePdf(active, id, selected.id);
+    const revisionIndex = revisions.indexOf(selected);
     const result = await dialog.showSaveDialog(mainWindow, {
       title: 'Ausgestellte Rechnung herunterladen',
-      defaultPath: `${invoice.issued.number}.pdf`,
+      defaultPath: `${invoice.issued.number}${revisionIndex === revisions.length - 1 ? '' : `-${revisionIndex + 1}`}.pdf`,
       filters: [{ name: 'PDF-Dateien', extensions: ['pdf'] }]
     });
     if (result.canceled) return null;
@@ -797,10 +843,17 @@ function registerHandlers() {
     await storage.atomicWrite(result.filePath, pdf);
     return result.filePath;
   }));
-  ipcMain.handle('invoices:preview-html', (event, invoice) => {
+  ipcMain.handle('invoices:preview-html', async (event, invoice, base) => {
     const active = requireFolder();
-    return invoices.loadInvoiceSettings(active).then(({ settings }) =>
-      invoices.invoiceHtml(invoice, settings));
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    const [{ settings }, cssFile, templateFile] = await Promise.all([
+      invoices.loadInvoiceSettings(active),
+      documentCustomizations.customizationPath(active, 'protocolCss'),
+      documentCustomizations.customizationPath(active, 'invoiceTemplate')
+    ]);
+    const css = await readProtocolCss(cssFile || path.join(__dirname, '../shared/document.css'));
+    const template = await readInvoiceTemplate(templateFile);
+    return invoices.invoiceHtml(invoice, settings, { sharedCss: css, template });
   });
   ipcMain.handle('meetings:list', () => storage.listMeetings(requireFolder()));
   ipcMain.handle('letters:list', () => letters.listLetters(requireFolder()));

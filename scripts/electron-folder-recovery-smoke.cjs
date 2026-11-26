@@ -180,17 +180,24 @@ async function invoiceRestartScenario(root) {
       await waitFor(() => document.querySelector('[data-action="preview-issued-invoice"]'));
       const record = (await window.club.listInvoices()).find(item => item.invoice.id === '${invoiceId}');
       if (!record?.issued || !document.querySelector('main h1')?.textContent.includes(record.issued.number) ||
-          ![...document.querySelectorAll('[data-invoice-field], [data-invoice-item-field]')].every(input => input.disabled)) {
+          ![...document.querySelectorAll('[data-invoice-field], [data-invoice-item-field]')].every(input => input.disabled) ||
+          record.issued.pdfRevisions?.length !== 2) {
         throw new Error('The restarted app must restore the issued, read-only invoice');
       }
       const pdf = new Uint8Array(await window.club.readInvoicePdf(record.invoice.id, { folder: ${JSON.stringify(folder)} }));
-      if (String.fromCharCode(...pdf.slice(0, 5)) !== '%PDF-') {
-        throw new Error('The saved issued PDF must survive a new app process');
+      const previousPdf = new Uint8Array(await window.club.readInvoicePdf(
+        record.invoice.id, { folder: ${JSON.stringify(folder)} }, record.issued.pdfRevisions[0].id));
+      const revisionsDiffer = pdf.length !== previousPdf.length ||
+        pdf.some((byte, index) => byte !== previousPdf[index]);
+      if (String.fromCharCode(...pdf.slice(0, 5)) !== '%PDF-' ||
+          String.fromCharCode(...previousPdf.slice(0, 5)) !== '%PDF-' ||
+          !revisionsDiffer) {
+        throw new Error('Both distinct saved PDF revisions must survive a new app process');
       }
       document.querySelector('[data-action="preview-issued-invoice"]').click();
       await waitFor(() => document.querySelector('.preview-pane iframe')?.src.startsWith('blob:'));
     })()`);
-    console.log('Electron invoice restart smoke test passed: issued data, PDF and preview survive a new app process.');
+    console.log('Electron invoice restart smoke test passed: issued data, both PDF revisions and preview survive a new app process.');
   } finally {
     clearTimeout(timeout);
     app.quit();

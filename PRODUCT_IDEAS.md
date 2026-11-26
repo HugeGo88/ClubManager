@@ -146,6 +146,12 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Generate a local ZUGFeRD PDF with EN-16931 CII XML and an EPC GiroCode,
   store it with an integrity hash, and provide in-app preview and download (#41).
 - [x] Build the issued invoice layout with HTML and shared PDF CSS.
+- [x] Import and reset a folder-local HTML invoice template with documented
+  placeholders, safe generated positions and GiroCode blocks, and preview drafts
+  with that template.
+- [x] Deliberately redesign issued invoices without changing their number or
+  factual/XML contents; preserve selectable, integrity-checked PDF revisions
+  across app restarts.
 
 ### Members
 

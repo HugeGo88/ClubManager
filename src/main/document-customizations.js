@@ -7,6 +7,7 @@ const { atomicWrite } = require('./storage');
 const CUSTOMIZATION_NAMES = Object.freeze({
   protocolCss: 'pdf.css',
   meetingTemplate: 'meeting.html',
+  invoiceTemplate: 'invoice.html',
   letterTemplate: 'letter.html'
 });
 const SIGNATURE_TYPES = new Set(['.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif']);
@@ -22,6 +23,7 @@ function pathsForFolder(folder) {
     directory,
     protocolCss: path.join(directory, CUSTOMIZATION_NAMES.protocolCss),
     meetingTemplate: path.join(directory, CUSTOMIZATION_NAMES.meetingTemplate),
+    invoiceTemplate: path.join(directory, CUSTOMIZATION_NAMES.invoiceTemplate),
     letterTemplate: path.join(directory, CUSTOMIZATION_NAMES.letterTemplate),
     signaturesDirectory,
     signaturesManifest: path.join(signaturesDirectory, 'manifest.json')

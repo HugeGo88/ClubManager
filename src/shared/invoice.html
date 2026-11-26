@@ -1,0 +1,26 @@
+<main class="invoice">
+  <header class="invoice-issuer">
+    <p><strong>{{issuer_name}}</strong></p>
+    <p class="invoice-address">{{issuer_address}}</p>
+    <p>Ausstellerkennung: {{issuer_identifier}}</p>
+  </header>
+  <h1>Rechnung {{invoice_number}}</h1>
+  <section class="invoice-recipient">
+    <p>{{recipient_company}}</p>
+    <p>{{recipient_name}}</p>
+    <p class="invoice-address">{{recipient_address}}</p>
+  </section>
+  <section class="invoice-dates">
+    <p>Rechnungsdatum: {{invoice_date}}</p>
+    <p>{{service_details}}</p>
+    <p>Fälligkeitsdatum: {{due_date}}</p>
+  </section>
+  {{items}}
+  <p class="total"><strong>Gesamtsumme: {{total}}</strong></p>
+  <section class="invoice-bank">
+    <p>{{bank_name}}</p>
+    <p>IBAN: {{iban}}</p>
+    <p>BIC: {{bic}}</p>
+  </section>
+  {{girocode}}
+</main>

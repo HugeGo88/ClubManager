@@ -9,6 +9,7 @@ const invoiceState = {
   invoices: [], invoice: null, issued: null, revision: null,
   priceInputs: [],
   settings: null, settingsRevision: null, settingsDirty: false,
+  template: null, selectedPdfRevision: null,
   preview: { open: false, url: null, error: false }
 };
 const listSearch = { meetings: '', letters: '', invoices: '' };
@@ -146,12 +147,16 @@ function invoiceEditor(invoice) {
   </tr>`;
   }).join('');
   const total = invoiceAmount(invoice.items);
+  const pdfRevisions = issued ? issued.pdfRevisions : [];
+  const selectedPdfRevision = invoiceState.selectedPdfRevision || pdfRevisions.at(-1)?.id;
   const toolbar = issued
-    ? `${button('preview-issued-invoice', 'PDF-Vorschau')}${button('download-invoice-pdf', 'PDF herunterladen')}`
+    ? `<label>PDF-Revision<select data-invoice-pdf-revision>${pdfRevisions.map((revision, index) =>
+      `<option value="${escape(revision.id)}" ${revision.id === selectedPdfRevision ? 'selected' : ''}>Revision ${index + 1}${index === pdfRevisions.length - 1 ? ' · aktuell' : ''} · ${escape(formatDate(revision.createdAt.slice(0, 10)))}</option>`
+    ).join('')}</select></label>${button('redesign-invoice', 'Layout neu gestalten')}${button('preview-issued-invoice', 'PDF-Vorschau')}${button('download-invoice-pdf', 'PDF herunterladen')}`
     : `${button('preview-invoice', 'HTML-Vorschau')}<button class="action" data-action="save-invoice">Rechnung speichern</button><button class="action primary" data-action="issue-invoice" ${state.dirty || !invoiceState.revision ? 'disabled' : ''}>Rechnung ausstellen</button>`;
   return `<div class="topline"><div><h1>${issued ? `Rechnung ${escape(issued.number)}` : 'Rechnungsentwurf bearbeiten'}</h1><p class="status">${issued ? 'Ausgestellt · unveränderlich' : state.dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert'}</p></div>
     <div class="row">${toolbar}</div></div>
-    ${issued ? '<p class="muted">Ausgestellte Rechnungen können nicht geändert, storniert oder ersetzt werden.</p>' : ''}
+    ${issued ? '<p class="muted">Rechnungsnummer und Rechnungsdaten bleiben unverändert. Eine Neugestaltung speichert eine weitere PDF-Revision.</p>' : ''}
     <div class="card"><h2>Empfänger</h2><div class="fields">
       <label>Name<input data-invoice-field="recipient.name" value="${escape(invoice.recipient.name)}" ${disabled}></label>
       <label>Firma<input data-invoice-field="recipient.company" value="${escape(invoice.recipient.company)}" ${disabled}></label>
@@ -271,6 +276,7 @@ function clearEditor() {
   invoiceState.invoice = null;
   invoiceState.issued = null;
   invoiceState.revision = null;
+  invoiceState.selectedPdfRevision = null;
   invoiceState.priceInputs = [];
   letterState.revision = null;
   letterState.hasPdf = false;
@@ -298,13 +304,18 @@ async function loadInvoiceSettings(folder = state.folder) {
   if (!folder) {
     invoiceState.settings = null;
     invoiceState.settingsRevision = null;
+    invoiceState.template = null;
     return;
   }
-  const loaded = await window.club.getInvoiceSettings();
+  const [loaded, template] = await Promise.all([
+    window.club.getInvoiceSettings(),
+    window.club.getInvoiceTemplate()
+  ]);
   if (state.folder !== folder) return;
   invoiceState.settings = loaded.settings;
   invoiceState.settingsRevision = loaded.revision;
   invoiceState.settingsDirty = false;
+  invoiceState.template = template;
 }
 
 function calendarDateKey(date) {
@@ -568,8 +579,7 @@ async function adoptActiveFolder(result) {
   letterState.placeholdersRevision = letterSettings.placeholdersRevision;
   letterState.placeholdersDirty = false;
   clearEditor();
-  await loadCalendarConfig();
-  await refresh();
+  await Promise.all([loadCalendarConfig(), loadInvoiceSettings(result.folder), refresh()]);
 }
 
 function notice() {
@@ -1000,6 +1010,12 @@ function settingsView() {
         <div class="fields"><label>Rechnungsnummern-Präfix<input data-invoice-setting="invoicePrefix" maxlength="10" value="${escape(invoiceState.settings?.invoicePrefix || 'RE')}" ${state.folder ? '' : 'disabled'}></label><label>Rechnungsnummern-Startwert<input type="number" min="1" step="1" data-invoice-setting="invoiceStartNumber" value="${escape(invoiceState.settings?.invoiceStartNumber ?? 1)}" ${state.folder ? '' : 'disabled'}></label></div>
         <p class="muted">Ausgestellte Rechnungen verwenden die EN-16931-Steuerkategorie „nicht im Anwendungsbereich der Umsatzsteuer“ (O). Es wird keine Umsatzsteuer berechnet oder ausgewiesen.</p>
         <div class="row"><button class="action primary" data-action="save-invoice-settings" ${state.folder ? '' : 'disabled'}>Rechnungseinstellungen speichern</button></div>
+        <h2>HTML-Rechnungsvorlage</h2>
+        <p>Platzhalter: <code>{{invoice_number}}</code>, <code>{{issuer_name}}</code>, <code>{{issuer_address}}</code>, <code>{{issuer_identifier}}</code>, <code>{{recipient_name}}</code>, <code>{{recipient_company}}</code>, <code>{{recipient_address}}</code>, <code>{{invoice_date}}</code>, <code>{{service_details}}</code>, <code>{{due_date}}</code>, <code>{{items}}</code>, <code>{{total}}</code>, <code>{{bank_name}}</code>, <code>{{iban}}</code>, <code>{{bic}}</code>, <code>{{girocode}}</code>.</p>
+        <p><code>{{items}}</code> und <code>{{girocode}}</code> sind sicher erzeugte HTML-Blöcke. Alle übrigen Platzhalter werden als Text eingesetzt. Die Pflichtplatzhalter müssen sichtbar im Vorlagentext stehen.</p>
+        <p class="path" data-invoice-template>${escape(invoiceState.template || 'Standardvorlage wird verwendet')}</p>
+        <div class="row"><button class="action" data-action="choose-invoice-template" ${state.folder ? '' : 'disabled'}>HTML-Vorlage importieren</button>${invoiceState.template ? button('reset-invoice-template', 'Vorlage zurücksetzen') : ''}</div>
+        <p>Die gemeinsame PDF-CSS-Datei gilt auch für Rechnungen. Eine ausgestellte Rechnung übernimmt Änderungen erst nach ausdrücklicher Neugestaltung; frühere PDF-Revisionen bleiben erhalten.</p>
         <h2>Online-Kalender</h2>
         <p>Eine ICS-Abonnementadresse wird mit diesem Datenordner gespeichert und gilt für alle Benutzer dieses Ordners.</p>
         <label>ICS-URL<input type="url" data-calendar-url value="${escape(calendarState.config?.url || '')}" ${state.folder ? '' : 'disabled'} placeholder="https://.../calendar.ics"></label>
@@ -1033,7 +1049,7 @@ function settingsView() {
           </ul>` : ''}
       </div>
       <div class="card"><h2>Gemeinsame CSS-Datei für PDF-Dokumente</h2>
-        <p>Diese CSS-Datei gilt für Sitzungsprotokolle und Briefe in diesem Datenordner. Die Gestaltung der App bleibt unverändert.</p>
+        <p>Diese CSS-Datei gilt für Sitzungsprotokolle, Rechnungen und Briefe in diesem Datenordner. Die Gestaltung der App bleibt unverändert.</p>
         <p class="path" data-protocol-css>${escape(state.protocolCss || 'Standardlayout wird verwendet')}</p>
         <div class="row"><button class="action" data-action="choose-protocol-css" ${state.folder ? '' : 'disabled'}>CSS-Datei importieren</button>${state.protocolCss ? button('reset-protocol-css', 'CSS zurücksetzen') : ''}</div>
         <p>Die importierte Datei wird bei jedem Export neu gelesen. Bereits exportierte PDFs bleiben unverändert.</p>
@@ -1117,7 +1133,7 @@ function render() {
       ${showPreview ? `<div class="preview-splitter" data-preview-splitter role="separator" aria-label="${state.view === 'invoices' ? 'HTML' : 'PDF'}-Vorschaugröße ändern" aria-orientation="vertical" aria-valuemin="180" aria-valuemax="${Math.max(180, app.clientWidth - 270 - 208)}" aria-valuenow="${state.previewWidth}" tabindex="0"></div>
         <aside class="preview-pane" aria-label="${state.view === 'invoices' ? invoicePreviewType : 'PDF'}-Vorschau">
           <div class="preview-header"><h2>${state.view === 'invoices' ? invoicePreviewType : 'PDF'}-Vorschau</h2><button class="action" data-action="close-preview" aria-label="${state.view === 'invoices' ? invoicePreviewType : 'PDF'}-Vorschau schließen">Schließen</button></div>
-          ${state.view === 'invoices' ? `<p class="muted">Die Vorschau zeigt ${invoiceState.issued ? 'die gespeicherte erste PDF-Revision' : 'den Stand beim Öffnen'}.</p>` : ''}
+          ${state.view === 'invoices' ? `<p class="muted">Die Vorschau zeigt ${invoiceState.issued ? 'die ausgewählte PDF-Revision' : 'den Stand beim Öffnen'}.</p>` : ''}
           ${preview.url ? `<iframe title="${state.view === 'meetings' ? 'Gespeichertes Sitzungsprotokoll' : state.view === 'letters' ? 'Gespeicherter Brief' : invoiceState.issued ? 'Ausgestellte Rechnung' : 'Rechnungsentwurf'}" ${state.view === 'invoices' && !invoiceState.issued ? 'sandbox="allow-same-origin"' : ''} src="${escape(preview.url)}"></iframe>`
             : `<p class="preview-message" role="${preview.error ? 'alert' : 'status'}">${preview.error
               ? 'Das exportierte PDF konnte nicht gelesen werden.' : 'Für diesen Eintrag wurde noch kein PDF exportiert.'}</p>`}
@@ -1302,6 +1318,7 @@ async function run(action, target) {
       closePdfPreview(invoiceState.preview);
       invoiceState.invoice = blankInvoice();
       invoiceState.issued = null;
+      invoiceState.selectedPdfRevision = null;
       invoiceState.priceInputs = ['0,00'];
       invoiceState.revision = null;
       state.dirty = true;
@@ -1315,6 +1332,9 @@ async function run(action, target) {
       closePdfPreview(invoiceState.preview);
       invoiceState.invoice = JSON.parse(JSON.stringify(selected.invoice));
       invoiceState.issued = selected.issued || null;
+      invoiceState.selectedPdfRevision = selected.issued
+        ? selected.issued.pdfRevisions.at(-1).id
+        : null;
       invoiceState.priceInputs = selected.invoice.items.map(item => invoiceAmounts.formatCents(item.unitPriceCents).slice(0, -2));
       invoiceState.revision = selected.revision;
       state.dirty = false;
@@ -1332,26 +1352,42 @@ async function run(action, target) {
       const result = await window.club.issueInvoice(invoiceState.invoice.id, invoiceState.revision, { folder: state.folder });
       invoiceState.revision = result.revision;
       invoiceState.issued = result.issued;
+      invoiceState.selectedPdfRevision = result.issued.pdfRevisions.at(-1).id;
       state.dirty = false;
       await refresh();
       setMessage(`Rechnung ${result.issued.number} wurde ausgestellt und unveränderlich gespeichert.`);
       break;
     }
     case 'preview-invoice': {
-      const html = await window.club.previewInvoiceHtml(invoiceState.invoice);
+      const html = await window.club.previewInvoiceHtml(invoiceState.invoice, { folder: state.folder });
       if (invoiceState.preview.url) URL.revokeObjectURL(invoiceState.preview.url);
       invoiceState.preview.url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
       invoiceState.preview.error = false;
       invoiceState.preview.open = true;
       break;
     }
+    case 'redesign-invoice': {
+      const result = await window.club.redesignInvoice(
+        invoiceState.invoice.id, invoiceState.revision, { folder: state.folder });
+      invoiceState.revision = result.revision;
+      invoiceState.issued = result.issued;
+      invoiceState.selectedPdfRevision = result.issued.pdfRevisions.at(-1).id;
+      await refresh();
+      if (invoiceState.preview.open) {
+        replacePdfPreviewContent(invoiceState.preview,
+          await window.club.readInvoicePdf(invoiceState.invoice.id, { folder: state.folder }, invoiceState.selectedPdfRevision));
+      }
+      setMessage(`Rechnung ${result.issued.number} wurde als PDF-Revision ${result.issued.pdfRevisions.length} neu gestaltet.`);
+      break;
+    }
     case 'preview-issued-invoice':
       replacePdfPreviewContent(invoiceState.preview,
-        await window.club.readInvoicePdf(invoiceState.invoice.id, { folder: state.folder }));
+        await window.club.readInvoicePdf(invoiceState.invoice.id, { folder: state.folder }, invoiceState.selectedPdfRevision));
       invoiceState.preview.open = true;
       break;
     case 'download-invoice-pdf': {
-      const filePath = await window.club.downloadInvoicePdf(invoiceState.invoice.id, { folder: state.folder });
+      const filePath = await window.club.downloadInvoicePdf(
+        invoiceState.invoice.id, { folder: state.folder }, invoiceState.selectedPdfRevision);
       setMessage(filePath
         ? `Rechnung ${invoiceState.issued.number} wurde heruntergeladen.`
         : 'Der Download wurde abgebrochen.');
@@ -1523,6 +1559,7 @@ async function run(action, target) {
         state.protocolCss = null;
         state.meetingTemplate = null;
         letterState.template = null;
+        invoiceState.template = null;
         letterState.signatures = [];
         letterState.placeholders = [];
         letterState.placeholdersRevision = null;
@@ -1573,6 +1610,20 @@ async function run(action, target) {
       await window.club.resetLetterTemplate();
       letterState.template = null;
       setMessage('Die Standardvorlage für Briefe wird verwendet.');
+      break;
+    case 'choose-invoice-template': {
+      const selected = await window.club.chooseInvoiceTemplate();
+      if (selected) {
+        invoiceState.template = selected;
+        setMessage('Rechnungsvorlage in den Anpassungsordner importiert.');
+      }
+      break;
+    }
+    case 'reset-invoice-template':
+      if (!window.confirm('Die HTML-Rechnungsvorlage dieses Datenordners zurücksetzen?')) break;
+      await window.club.resetInvoiceTemplate();
+      invoiceState.template = null;
+      setMessage('Die Standard-Rechnungsvorlage wird verwendet.');
       break;
     case 'add-letter-placeholder':
       letterState.placeholders.push({ key: '', value: '' });
@@ -1902,6 +1953,20 @@ document.addEventListener('keydown', event => {
 
 app.addEventListener('change', async event => {
   const target = event.target;
+  if (target.hasAttribute('data-invoice-pdf-revision') && invoiceState.invoice) {
+    invoiceState.selectedPdfRevision = target.value;
+    if (invoiceState.preview.open) {
+      try {
+        replacePdfPreviewContent(invoiceState.preview, await window.club.readInvoicePdf(
+          invoiceState.invoice.id, { folder: state.folder }, invoiceState.selectedPdfRevision));
+        setMessage('');
+      } catch (error) {
+        setMessage(error.message, true);
+      }
+    }
+    render();
+    return;
+  }
   if (target.hasAttribute('data-meeting-read-only')) {
     if (!target.checked && !window.confirm('Schreibschutz für dieses Protokoll wirklich aufheben?')) {
       target.checked = true;
@@ -2170,19 +2235,21 @@ window.club.onPrepareUpdate(async () => {
   state.version = version;
   state.changelog = changelog;
   try {
-    const [folder, folders, protocolCss, meetingTemplate, sidebarCollapsed, letterSettings, calendarConfig] = await Promise.all([
+    const [folder, folders, protocolCss, meetingTemplate, sidebarCollapsed, letterSettings, calendarConfig, invoiceTemplate] = await Promise.all([
       window.club.getFolder(),
       window.club.getFolders(),
       window.club.getProtocolCss(),
       window.club.getMeetingTemplate(),
       window.club.getSidebarCollapsed(),
       window.club.getLetterSettings(),
-      window.club.getCalendarConfig().catch(() => null)
+      window.club.getCalendarConfig().catch(() => null),
+      window.club.getInvoiceTemplate()
     ]);
     state.folder = folder;
     adoptFolderRegistry(folders);
     state.protocolCss = protocolCss;
     state.meetingTemplate = meetingTemplate;
+    invoiceState.template = invoiceTemplate;
     adoptModuleSettings(selection);
     state.sidebarCollapsed = sidebarCollapsed;
     letterState.template = letterSettings.template;

@@ -300,6 +300,46 @@ async function calendarSmoke(window, port) {
 }
 
 async function invoiceDraftSmoke(window) {
+  const folder = await window.webContents.executeJavaScript('window.club.getFolder()');
+  const root = path.dirname(folder);
+  const invalidInvoiceTemplateFile = path.join(root, 'invoice-template-invalid-smoke.html');
+  const invoiceTemplateFile = path.join(root, 'invoice-template-smoke.html');
+  const redesignedInvoiceTemplateFile = path.join(root, 'invoice-template-redesigned-smoke.html');
+  const invoiceCssFile = path.join(root, 'invoice-css-smoke.css');
+  const redesignedInvoiceCssFile = path.join(root, 'invoice-css-redesigned-smoke.css');
+  const invoiceTemplate = (revision, fields) =>
+    `<main class="invoice-smoke-${revision}"><h1>Layout ${revision} {{invoice_number}}</h1>${fields
+      .map(field => `<section>{{${field}}}</section>`).join('')}</main>`;
+  const invoiceFields = [
+    'issuer_name', 'issuer_address', 'issuer_identifier', 'recipient_name',
+    'recipient_company', 'recipient_address', 'invoice_date', 'service_details',
+    'due_date', 'items', 'total', 'bank_name', 'iban', 'bic', 'girocode'
+  ];
+  await Promise.all([
+    fs.writeFile(invalidInvoiceTemplateFile, invoiceTemplate('invalid', invoiceFields.filter(field => field !== 'total'))),
+    fs.writeFile(invoiceTemplateFile, invoiceTemplate('a', invoiceFields)),
+    fs.writeFile(redesignedInvoiceTemplateFile, invoiceTemplate('b', [...invoiceFields].reverse())),
+    fs.writeFile(invoiceCssFile, '.invoice-smoke-a { color: rgb(1, 2, 3); }'),
+    fs.writeFile(redesignedInvoiceCssFile, '.invoice-smoke-b { color: rgb(4, 5, 6); }')
+  ]);
+  const originalShowOpenDialog = dialog.showOpenDialog;
+  const invoiceTemplateSelections = [
+    invalidInvoiceTemplateFile, invoiceTemplateFile, invoiceTemplateFile, redesignedInvoiceTemplateFile
+  ];
+  const invoiceCssSelections = [invoiceCssFile, redesignedInvoiceCssFile];
+  let templateSelection = 0;
+  let cssSelection = 0;
+  dialog.showOpenDialog = (browserWindow, options) => {
+    if (options.title === 'HTML-Rechnungsvorlage auswählen') {
+      const selected = invoiceTemplateSelections[Math.min(templateSelection++, invoiceTemplateSelections.length - 1)];
+      return Promise.resolve({ canceled: false, filePaths: [selected] });
+    }
+    if (options.title === 'Gemeinsame CSS-Datei für PDF-Dokumente auswählen') {
+      const selected = invoiceCssSelections[Math.min(cssSelection++, invoiceCssSelections.length - 1)];
+      return Promise.resolve({ canceled: false, filePaths: [selected] });
+    }
+    return originalShowOpenDialog.call(dialog, browserWindow, options);
+  };
   const issuance = await window.webContents.executeJavaScript(`(async () => {
     const waitFor = async test => {
       for (let i = 0; i < 200; i++) {
@@ -317,6 +357,57 @@ async function invoiceDraftSmoke(window) {
       revision: (await window.club.reloadModules()).revision
     });
     await waitFor(() => !document.querySelector('[data-module-nav="invoices"]').hidden);
+    document.querySelector('[data-view="settings"]').click();
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    document.querySelector('[data-settings-tab="invoices"]').click();
+    await waitFor(() => document.querySelector('[data-action="choose-invoice-template"]'));
+    document.querySelector('[data-action="choose-invoice-template"]').click();
+    await waitFor(() => document.querySelector('.notice.error')?.textContent.includes('Pflichtplatzhalter'));
+    if (await window.club.getInvoiceTemplate() !== null) {
+      throw new Error('An incomplete invoice template must be rejected without replacing the active template');
+    }
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    document.querySelector('[data-action="choose-invoice-template"]').click();
+    await waitFor(async () => (await window.club.getInvoiceTemplate())?.endsWith('/invoice.html'));
+    document.querySelector('[data-settings-tab="general"]').click();
+    await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
+    document.querySelector('[data-action="choose-protocol-css"]').click();
+    await waitFor(async () => (await window.club.getProtocolCss())?.endsWith('/pdf.css'));
+    document.querySelector('[data-settings-tab="invoices"]').click();
+    await waitFor(() => document.querySelector('[data-action="reset-invoice-template"]'));
+    window.confirm = () => false;
+    document.querySelector('[data-action="reset-invoice-template"]').click();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    if (!(await window.club.getInvoiceTemplate())) {
+      throw new Error('Cancelling template reset must preserve the imported invoice template');
+    }
+    window.confirm = () => true;
+    document.querySelector('[data-action="reset-invoice-template"]').click();
+    await waitFor(async () => (await window.club.getInvoiceTemplate()) === null);
+    const defaultPreview = await window.club.previewInvoiceHtml({
+      id: 'b6f9c26e-9f4d-4c3a-a864-8e235fb91dc1',
+      invoiceDate: '2026-11-20',
+      serviceDate: '2026-11-20',
+      servicePeriodStart: '',
+      servicePeriodEnd: '',
+      dueDate: '2026-12-01',
+      recipient: {
+        name: 'Beispiel',
+        company: '',
+        street: 'Vereinsweg 1',
+        postalCode: '12345',
+        city: 'Musterstadt',
+        countryCode: 'DE'
+      },
+      items: [{ description: 'Beitrag', quantity: '1', unit: 'Stück', unitPriceCents: 100 }]
+    }, { folder });
+    if (!defaultPreview.includes('<main class="invoice">') || !defaultPreview.includes('Beitrag')) {
+      throw new Error('Resetting the invoice template must restore the packaged default for draft preview');
+    }
+    document.querySelector('[data-action="choose-invoice-template"]').click();
+    await waitFor(async () => (await window.club.getInvoiceTemplate())?.endsWith('/invoice.html'));
+    window.confirm = originalConfirm;
     document.querySelector('[data-view="invoices"]').click();
     await waitFor(() => document.querySelector('[data-action="new-invoice"]'));
     document.querySelector('[data-action="new-invoice"]').click();
@@ -377,10 +468,13 @@ async function invoiceDraftSmoke(window) {
     document.querySelector('[data-action="preview-invoice"]').click();
     await waitFor(() => document.querySelector('.preview-pane iframe'));
     const iframe = document.querySelector('.preview-pane iframe');
-    await waitFor(() => iframe.contentDocument?.body?.textContent.includes('Gesamtsumme: 7,01 €'));
+    await waitFor(() => iframe.contentDocument?.body?.textContent.includes('7,01 €'));
     const text = iframe.contentDocument.body.textContent;
     if (!text.includes('Alex <Script>') || !text.includes('7,00 €') || !text.includes('0,01 €') ||
-        iframe.contentDocument.querySelector('script')) {
+        iframe.contentDocument.querySelector('script') ||
+        iframe.contentDocument.querySelector('main')?.className !== 'invoice-smoke-a' ||
+        ![...iframe.contentDocument.querySelectorAll('style')].some(style =>
+          style.textContent.includes('.invoice-smoke-a { color: rgb(1, 2, 3); }'))) {
       throw new Error('The invoice HTML preview must show escaped recipient and rounded amounts');
     }
     document.querySelector('[data-action="close-preview"]').click();
@@ -409,36 +503,81 @@ async function invoiceDraftSmoke(window) {
         issued.issued.number !== 'ZUG-' + issued.invoice.invoiceDate.slice(0, 4) + '-0007') {
       throw new Error('Issuance must persist the expected annual number and frozen amount');
     }
-    const pdf = new Uint8Array(await window.club.readInvoicePdf(issued.invoice.id, { folder }));
-    return { id: issued.invoice.id, number: issued.issued.number, pdf: Array.from(pdf) };
+    const previousRevision = issued.issued.pdfRevisions[0];
+    const previousPdf = new Uint8Array(await window.club.readInvoicePdf(
+      issued.invoice.id, { folder }, previousRevision.id));
+    document.querySelector('[data-view="settings"]').click();
+    await waitFor(() => document.querySelector('[data-settings-tab="invoices"]'));
+    document.querySelector('[data-settings-tab="invoices"]').click();
+    document.querySelector('[data-action="choose-invoice-template"]').click();
+    await waitFor(async () => (await window.club.getInvoiceTemplate())?.endsWith('/invoice.html'));
+    document.querySelector('[data-settings-tab="general"]').click();
+    await waitFor(() => document.querySelector('[data-action="choose-protocol-css"]'));
+    document.querySelector('[data-action="choose-protocol-css"]').click();
+    await waitFor(async () => (await window.club.getProtocolCss())?.endsWith('/pdf.css'));
+    document.querySelector('[data-view="invoices"]').click();
+    await waitFor(() => document.querySelector('[data-action="redesign-invoice"]'));
+    document.querySelector('[data-action="redesign-invoice"]').click();
+    await waitFor(async () => {
+      const current = (await window.club.listInvoices()).find(item => item.invoice.id === issued.invoice.id);
+      return current?.issued?.pdfRevisions?.length === 2;
+    });
+    const redesigned = (await window.club.listInvoices()).find(item => item.invoice.id === issued.invoice.id);
+    const currentPdf = new Uint8Array(await window.club.readInvoicePdf(issued.invoice.id, { folder }));
+    document.querySelector('[data-invoice-pdf-revision]').value = previousRevision.id;
+    document.querySelector('[data-invoice-pdf-revision]').dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => document.querySelector('[data-invoice-pdf-revision]')?.value === previousRevision.id);
+    document.querySelector('[data-action="preview-issued-invoice"]').click();
+    await waitFor(() => document.querySelector('.preview-pane iframe')?.src.startsWith('blob:'));
+    document.querySelector('[data-invoice-pdf-revision]').value = redesigned.issued.pdfRevisions[1].id;
+    document.querySelector('[data-invoice-pdf-revision]').dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => document.querySelector('[data-invoice-pdf-revision]')?.value === redesigned.issued.pdfRevisions[1].id);
+    return {
+      id: issued.invoice.id,
+      number: issued.issued.number,
+      pdf: Array.from(currentPdf),
+      previousPdf: Array.from(previousPdf),
+      revisions: redesigned.issued.pdfRevisions
+    };
   })()`);
+  dialog.showOpenDialog = originalShowOpenDialog;
   const pdf = Buffer.from(issuance.pdf);
+  const previousPdf = Buffer.from(issuance.previousPdf);
   const { extractXml, validatePdfA, validateXml } = await import('@lucaapp/zugferd-ts');
-  const xml = await extractXml(pdf);
-  assert.match(xml, new RegExp(`<ram:ID>${issuance.number}</ram:ID>`));
-  assert.match(xml, /<ram:GrandTotalAmount>7\.01<\/ram:GrandTotalAmount>/);
-  assert.match(xml, /Mitgliedsbeitrag/);
-  assert.match(xml, /Weitere Leistung/);
-  assert.match(xml, /DE89370400440532013000/);
-  assert.match(xml, /Alex &lt;Script&gt;/);
-  assert.equal((await validateXml(xml, { profile: 'EN16931' })).valid, true,
-    'the issued PDF must contain schema- and EN-16931-valid invoice XML');
-  assert.equal((await validatePdfA(pdf)).valid, true,
-    'the issued PDF must pass the ZUGFeRD package PDF/A-3 check');
-  if (process.env.CLUBMANAGER_VERAPDF) {
-    const pdfPath = path.join(os.tmpdir(), `clubmanager-verapdf-${randomUUID()}.pdf`);
-    try {
-      await fs.writeFile(pdfPath, pdf);
-      const report = JSON.parse(execFileSync(process.env.CLUBMANAGER_VERAPDF,
-        ['--flavour', '3b', '--format', 'json', pdfPath], { encoding: 'utf8' }));
-      const results = report.report.jobs[0].validationResult;
-      const validation = Array.isArray(results) ? results[0] : results;
-      assert.equal(validation.compliant, true,
-        `the issued PDF must pass independent veraPDF validation: ${JSON.stringify(validation)}`);
-    } finally {
-      await fs.rm(pdfPath, { force: true });
+  assert.notDeepEqual(previousPdf, pdf, 'redesign must create a distinct PDF revision');
+  const validateArtifact = async (artifact, label) => {
+    const xml = await extractXml(artifact);
+    assert.match(xml, new RegExp(`<ram:ID>${issuance.number}</ram:ID>`));
+    assert.match(xml, /<ram:GrandTotalAmount>7\.01<\/ram:GrandTotalAmount>/);
+    assert.match(xml, /Mitgliedsbeitrag/);
+    assert.match(xml, /Weitere Leistung/);
+    assert.match(xml, /DE89370400440532013000/);
+    assert.match(xml, /Alex &lt;Script&gt;/);
+    assert.equal((await validateXml(xml, { profile: 'EN16931' })).valid, true,
+      `${label} must contain schema- and EN-16931-valid invoice XML`);
+    assert.equal((await validatePdfA(artifact)).valid, true,
+      `${label} must pass the ZUGFeRD package PDF/A-3 check`);
+    if (process.env.CLUBMANAGER_VERAPDF) {
+      const pdfPath = path.join(os.tmpdir(), `clubmanager-verapdf-${randomUUID()}.pdf`);
+      try {
+        await fs.writeFile(pdfPath, artifact);
+        const report = JSON.parse(execFileSync(process.env.CLUBMANAGER_VERAPDF,
+          ['--flavour', '3b', '--format', 'json', pdfPath], { encoding: 'utf8' }));
+        const results = report.report.jobs[0].validationResult;
+        const validation = Array.isArray(results) ? results[0] : results;
+        assert.equal(validation.compliant, true,
+          `${label} must pass independent veraPDF validation: ${JSON.stringify(validation)}`);
+      } finally {
+        await fs.rm(pdfPath, { force: true });
+      }
     }
-  }
+    return xml;
+  };
+  const [previousXml, xml] = await Promise.all([
+    validateArtifact(previousPdf, 'the original PDF revision'),
+    validateArtifact(pdf, 'the redesigned PDF revision')
+  ]);
+  assert.equal(previousXml, xml, 'redesign must preserve the exact embedded invoice XML');
 
   const reloaded = new Promise(resolve => window.webContents.once('did-finish-load', resolve));
   window.webContents.reload();

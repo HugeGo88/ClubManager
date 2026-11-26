@@ -16,6 +16,7 @@ const {
   loadInvoiceSettings,
   saveInvoiceSettings,
   issueInvoice,
+  redesignInvoice,
   readInvoicePdf
 } = require('../src/main/invoices');
 
@@ -282,6 +283,123 @@ test('keeps a draft editable and releases its number when artifact creation fail
   assert.deepEqual(await readInvoicePdf(folder, value.id), Buffer.from('%PDF-retry'));
 });
 
+test('stores selectable PDF revisions without changing issued invoice facts', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-invoice-redesign-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerStreet: 'Vereinsweg 1',
+    issuerPostalCode: '12345',
+    issuerCity: 'Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000',
+    bic: 'COBADEFFXXX'
+  }, settings.revision);
+  const value = draft();
+  const draftRevision = await saveInvoice(folder, value, null);
+  const xml = '<Invoice>frozen facts</Invoice>';
+  const initialPdf = Buffer.from('%PDF-layout-one');
+  const issued = await issueInvoice(folder, value.id, draftRevision, async () => ({ pdf: initialPdf, xml }));
+
+  const updatedPdf = Buffer.from('%PDF-layout-two');
+  const redesigned = await redesignInvoice(folder, value.id, issued.revision, async snapshot => {
+    assert.deepEqual(snapshot, issued.issued.snapshot);
+    return { pdf: updatedPdf, xml };
+  });
+  const record = (await listInvoices(folder)).find(item => item.invoice.id === value.id);
+  const revisions = record.issued.pdfRevisions;
+
+  assert.equal(redesigned.issued.number, issued.issued.number);
+  assert.equal(redesigned.issued.xmlRevision, issued.issued.xmlRevision);
+  assert.deepEqual(record.invoice, value);
+  assert.equal(revisions.length, 2);
+  assert.notEqual(revisions[0].id, revisions[1].id);
+  assert.deepEqual(await readInvoicePdf(folder, value.id), updatedPdf);
+  assert.deepEqual(await readInvoicePdf(folder, value.id, revisions[0].id), initialPdf);
+  assert.deepEqual(await readInvoicePdf(folder, value.id, revisions[1].id), updatedPdf);
+  await assert.rejects(redesignInvoice(folder, value.id, issued.revision, async () => ({
+    pdf: Buffer.from('%PDF-stale'),
+    xml
+  })), /geändert/);
+  assert.deepEqual(await readInvoicePdf(folder, value.id), updatedPdf);
+  assert.deepEqual((await listInvoices(folder)).find(item => item.invoice.id === value.id).issued.pdfRevisions, revisions);
+});
+
+test('reads legacy issued invoices as a single initial PDF revision', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-legacy-invoice-revision-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerStreet: 'Vereinsweg 1',
+    issuerPostalCode: '12345',
+    issuerCity: 'Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000'
+  }, settings.revision);
+  const value = draft();
+  const draftRevision = await saveInvoice(folder, value, null);
+  const pdf = Buffer.from('%PDF-legacy');
+  const issued = await issueInvoice(folder, value.id, draftRevision, async () => ({
+    pdf,
+    xml: '<Invoice />'
+  }));
+  const file = path.join(folder, 'invoices', `${value.id}.json`);
+  const record = JSON.parse(await fs.readFile(file, 'utf8'));
+  delete record.issued.pdfRevisions;
+  await fs.writeFile(file, `${JSON.stringify(record, null, 2)}\n`);
+
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === value.id);
+  assert.deepEqual(listed.issued.pdfRevisions, [{
+    id: 'initial',
+    pdfRevision: issued.issued.pdfRevision,
+    createdAt: issued.issued.issuedAt
+  }]);
+  assert.deepEqual(await readInvoicePdf(folder, value.id, 'initial'), pdf);
+});
+
+test('failed invoice redesign preserves the current and previous PDF revisions', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-failed-invoice-redesign-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerStreet: 'Vereinsweg 1',
+    issuerPostalCode: '12345',
+    issuerCity: 'Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000'
+  }, settings.revision);
+  const value = draft();
+  const draftRevision = await saveInvoice(folder, value, null);
+  const originalPdf = Buffer.from('%PDF-original');
+  const xml = '<Invoice>frozen facts</Invoice>';
+  const issued = await issueInvoice(folder, value.id, draftRevision, async () => ({ pdf: originalPdf, xml }));
+  const before = (await fs.readFile(path.join(folder, 'invoices', `${value.id}.json`), 'utf8'));
+
+  await assert.rejects(redesignInvoice(folder, value.id, issued.revision, async () => {
+    throw new Error('PDF/A validation failed');
+  }), /PDF\/A validation failed/);
+  await assert.rejects(redesignInvoice(folder, value.id, issued.revision, async () => ({
+    pdf: Buffer.from('%PDF-changed-facts'),
+    xml: '<Invoice>changed facts</Invoice>'
+  })), /fachlichen Rechnungs-XML-Daten nicht ändern/);
+
+  assert.equal(await fs.readFile(path.join(folder, 'invoices', `${value.id}.json`), 'utf8'), before);
+  assert.deepEqual(await readInvoicePdf(folder, value.id), originalPdf);
+  assert.deepEqual(await fs.readdir(path.join(folder, 'invoices', 'pdf')), [`${value.id}.pdf`]);
+});
+
 test('renders rounded position amounts and their total in the invoice document', () => {
   const value = draft({
     items: [
@@ -314,4 +432,54 @@ test('renders invoice user values as escaped text and never executable markup', 
   assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
   assert.match(html, /Club &lt;Admin&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test('renders reordered custom invoice fields, generated blocks and shared CSS safely', () => {
+  const value = draft({
+    recipient: {
+      name: '<script>bad()</script>',
+      company: 'Verein & Team',
+      street: 'Straße 1',
+      postalCode: '12345',
+      city: 'Musterstadt'
+    }
+  });
+  const fields = [
+    'invoice_number', 'issuer_name', 'issuer_address', 'issuer_identifier',
+    'recipient_name', 'recipient_company', 'recipient_address', 'invoice_date',
+    'service_details', 'due_date', 'items', 'total', 'bank_name', 'iban', 'bic', 'girocode'
+  ];
+  const template = `<main><h1>{{invoice_number}}</h1>${fields.reverse().map(field => `<section>{{${field}}}</section>`).join('')}</main>`;
+  const html = invoiceHtml(value, {
+    issuerName: 'Club <Admin>',
+    issuerAddress: 'Vereinsweg 2\n12345 Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Bank & Co',
+    iban: 'DE89370400440532013000',
+    bic: 'COBADEFFXXX'
+  }, {
+    template,
+    number: 'RE-2026-0001',
+    qrDataUrl: 'data:image/png;base64,ZmFrZQ==',
+    sharedCss: '.custom-invoice { color: red }'
+  });
+
+  assert.ok(html.indexOf('DE89370400440532013000') < html.indexOf('<table'));
+  assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+  assert.match(html, /Club &lt;Admin&gt;/);
+  assert.match(html, /Verein &amp; Team/);
+  assert.match(html, /<table>[\s\S]*Erste Leistung[\s\S]*<\/table>/);
+  assert.match(html, /<img src="data:image\/png;base64,ZmFrZQ==" alt="GiroCode/);
+  assert.match(html, /\.custom-invoice \{ color: red \}/);
+  assert.doesNotMatch(html, /<script>/);
+});
+
+test('rejects invalid invoice templates again when producing document HTML', () => {
+  for (const template of [
+    '<main>{{invoice_number}} {{unknown}}</main>',
+    '<main>{{invoice_number}}</main>',
+    '<main>{{invoice_number}}<script>run()</script></main>'
+  ]) {
+    assert.throws(() => invoiceHtml(draft(), {}, { template }), /Rechnungsvorlage|Platzhalter|Element|Skript/i);
+  }
 });
