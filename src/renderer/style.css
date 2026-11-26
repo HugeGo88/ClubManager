@@ -159,6 +159,14 @@ button:disabled { opacity: .45; cursor: default; }
 .row > label { flex: 1; min-width: 0; }
 .row > button { flex-shrink: 0; }
 .checkbox { display: flex; gap: 7px; align-items: center; }
+.attendance-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; margin-top: 12px; }
+.attendance-table th { padding: 4px 8px 6px 0; color: #4a586b; font-size: 13px; border-bottom: 1px solid #e1e6ed; }
+.attendance-table td { padding: 5px 8px 5px 0; vertical-align: middle; }
+.attendance-table th:last-child, .attendance-table td:last-child { padding-right: 0; }
+.attendance-table input, .attendance-table select { margin-top: 0; }
+.attendance-col-status { width: 180px; }
+.attendance-col-action { width: 36px; }
+.attendance-footer { margin-top: 12px; }
 .meeting-task-row { flex-wrap: wrap; }
 .meeting-task-row > label:not(.checkbox) { flex: 1 1 145px; }
 .meeting-task-row > label.checkbox { flex: 0 0 auto; }

@@ -736,12 +736,15 @@ function meetingEditor(meeting) {
       <label>Sitzungsleitung (optional)<input data-field="chair" value="${escape(meeting.chair ?? '')}" placeholder="Name der Person"></label>
       <label>Protokollführer/in (optional)<input data-field="recorder" value="${escape(meeting.recorder ?? '')}" placeholder="Name der Person"></label>
     </div></div>
-    <div class="card"><div class="card-header"><h2>Anwesenheit</h2>${button('add-person', '+ Person hinzufügen')}</div>
-      ${meeting.attendance.length ? meeting.attendance.map((person, i) => `<div class="row">
-        <label>Name<input data-person="${i}" data-field="name" value="${escape(person.name)}" placeholder="Name der Person"></label>
-        <label>Status<select data-person="${i}" data-field="status">${options(Object.entries(clubDeutsch.attendance), person.status)}</select></label>
-        <button class="action" data-action="remove-person" data-index="${i}" aria-label="Person entfernen">Entfernen</button>
-      </div>`).join('') : '<p>Keine Anwesenheit erfasst.</p>'}</div>
+    <div class="card"><div class="card-header"><h2>Anwesenheit</h2></div>
+      ${meeting.attendance.length ? `<table class="attendance-table"><caption class="sr-only">Anwesenheit</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col" class="attendance-col-status">Status</th><th scope="col" class="attendance-col-action"><span class="sr-only">Aktion</span></th></tr></thead>
+        <tbody>${meeting.attendance.map((person, i) => `<tr>
+          <td><input data-person="${i}" data-field="name" value="${escape(person.name)}" placeholder="Name der Person" aria-label="Name"></td>
+          <td><select data-person="${i}" data-field="status" aria-label="Status">${options(Object.entries(clubDeutsch.attendance), person.status)}</select></td>
+          <td><button type="button" class="action icon-button" data-action="remove-person" data-index="${i}" aria-label="Person entfernen" title="Person entfernen"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></svg></button></td>
+        </tr>`).join('')}</tbody></table>` : '<p>Keine Anwesenheit erfasst.</p>'}
+      <div class="attendance-footer">${button('add-person', '+ Person hinzufügen')}</div></div>
     <div class="topline"><h2>TOPs</h2></div>
     ${meeting.points.length ? meeting.points.map((point, i) => `<section class="card">
       <div class="card-header"><h3>TOP ${i + 1}</h3><div class="row">
