@@ -814,6 +814,21 @@ function registerHandlers() {
     if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
     return invoices.redesignInvoice(active, id, revision, snapshot => generateInvoiceArtifact(active, snapshot));
   }));
+  ipcMain.handle('invoices:payment:record', (event, id, payment, revision, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    return invoices.recordInvoicePayment(active, id, revision, payment);
+  }));
+  ipcMain.handle('invoices:payment:update', (event, id, paymentId, payment, revision, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    return invoices.updateInvoicePayment(active, id, revision, paymentId, payment);
+  }));
+  ipcMain.handle('invoices:payment:delete', (event, id, paymentId, revision, base) => serializeWrite(async () => {
+    const active = requireFolder();
+    if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');
+    return invoices.deleteInvoicePayment(active, id, revision, paymentId);
+  }));
   ipcMain.handle('invoices:read-pdf', (event, id, base, revisionId) => {
     const active = requireFolder();
     if (base?.folder !== active) throw new Error('Der aktive Datenordner hat sich geändert. Laden Sie die Rechnung neu.');

@@ -8,6 +8,7 @@ const letterState = {
 const invoiceState = {
   invoices: [], invoice: null, issued: null, revision: null,
   priceInputs: [],
+  payments: [], paymentForm: { date: '', amount: '' }, paymentEdit: null,
   settings: null, settingsRevision: null, settingsDirty: false,
   template: null, selectedPdfRevision: null,
   preview: { open: false, url: null, error: false }
@@ -103,8 +104,16 @@ function invoiceList() {
   const matches = invoiceState.invoices.filter(({ invoice, issued }) =>
     [invoice.recipient.name, invoice.recipient.company, invoice.invoiceDate, formatDate(invoice.invoiceDate), issued?.number]
       .join(' ').toLocaleLowerCase('de').includes(search));
-  const items = matches.map(({ invoice, issued }) => `<button class="list-item ${invoiceState.invoice?.id === invoice.id ? 'selected' : ''}" data-action="select-invoice" data-id="${escape(invoice.id)}">
-    <strong>${escape(invoice.recipient.company || invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong><small>${escape(issued?.number || (invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum'))} · ${escape(invoiceAmounts.formatCents(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents))}</small></button>`).join('');
+  const items = matches.map(({ invoice, issued, payments }) => {
+    const info = issued
+      ? invoicePayments.paymentState(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents, payments || [], invoice.dueDate)
+      : null;
+    const paymentText = info
+      ? ` · ${invoicePayments.paymentStatusLabel(info)}${info.status === 'partial' ? ` · offen ${invoiceAmounts.formatCents(info.remainingCents)}` : ''}`
+      : '';
+    return `<button class="list-item ${invoiceState.invoice?.id === invoice.id ? 'selected' : ''}" data-action="select-invoice" data-id="${escape(invoice.id)}">
+    <strong>${escape(invoice.recipient.company || invoice.recipient.name || 'Rechnung ohne Empfänger')}</strong><small>${escape(issued?.number || (invoice.invoiceDate ? formatDate(invoice.invoiceDate) : 'Kein Rechnungsdatum'))} · ${escape(invoiceAmounts.formatCents(invoiceAmounts.calculateInvoiceTotal(invoice.items).cents))}${escape(paymentText)}</small></button>`;
+  }).join('');
   return `<aside class="list"><h2>Rechnungen</h2>${button('new-invoice', '+ Neue Rechnung', 'primary')}
     <label>Rechnungen suchen<input type="search" data-list-search="invoices" value="${escape(listSearch.invoices)}" placeholder="Empfänger oder Datum"></label>
     <div data-list-results aria-live="polite">${invoiceState.invoices.length ? (items || '<p>Keine Rechnungen entsprechen der Suche.</p>') : '<p>Noch keine Rechnungen gespeichert.</p>'}</div></aside>`;
@@ -130,6 +139,54 @@ function refreshInvoiceAmounts() {
   const total = app.querySelector('[data-invoice-total]');
   total.textContent = result.text;
   total.title = result.error;
+}
+
+function parsePaymentInput({ date, amount }) {
+  if (!clubDates.isDate(date)) throw new Error('Geben Sie ein gültiges Zahlungsdatum an.');
+  const amountCents = invoiceAmounts.parseEuroPrice(String(amount).trim());
+  if (amountCents === null || amountCents <= 0) {
+    throw new Error('Geben Sie einen positiven Zahlungsbetrag in Euro mit höchstens zwei Nachkommastellen an (z. B. 40,00).');
+  }
+  return { date, amountCents };
+}
+
+function invoicePaymentsSection(invoice) {
+  const payments = invoiceState.payments;
+  const totalCents = invoiceAmounts.calculateInvoiceTotal(invoice.items).cents;
+  const info = invoicePayments.paymentState(totalCents, payments, invoice.dueDate);
+  const locked = info.status === 'paid';
+  const edit = invoiceState.paymentEdit;
+  const rows = payments.map(payment => payment.id === edit?.id && !locked
+    ? `<tr>
+      <td><input type="date" data-payment-edit-field="date" value="${escape(edit.date)}"></td>
+      <td><input data-payment-edit-field="amount" inputmode="decimal" aria-label="Zahlungsbetrag in Euro" value="${escape(edit.amount)}"></td>
+      <td><button type="button" class="action primary" data-action="save-invoice-payment">Speichern</button>
+        <button type="button" class="action" data-action="cancel-invoice-payment-edit">Abbrechen</button></td>
+    </tr>`
+    : `<tr>
+      <td>${escape(formatDate(payment.date))}</td>
+      <td>${escape(invoiceAmounts.formatCents(payment.amountCents))}</td>
+      <td>${locked ? '' : `<button type="button" class="action" data-action="edit-invoice-payment" data-payment-id="${escape(payment.id)}">Bearbeiten</button>
+        <button type="button" class="action" data-action="delete-invoice-payment" data-payment-id="${escape(payment.id)}">Löschen</button>`}</td>
+    </tr>`).join('');
+  const girocodeWarning = info.status === 'partial'
+    ? `<p class="warning" data-invoice-girocode-warning>Der GiroCode im ausgestellten PDF enthält weiterhin den ursprünglichen Gesamtbetrag von ${escape(invoiceAmounts.formatCents(totalCents))}. Es wird kein QR-Code für den Restbetrag erzeugt und das PDF nicht neu erstellt.</p>`
+    : '';
+  const lockNotice = locked
+    ? '<p class="muted" data-invoice-payment-lock>Die Rechnung ist vollständig bezahlt. Alle Zahlungseinträge sind endgültig gesperrt: Es gibt keine Entsperrung, Bearbeitung, Löschung, Erstattung oder Storno-Korrektur – auch nicht für versehentlich fehlerhafte Einträge. Prüfen Sie Zahlungen deshalb vor der letzten Erfassung.</p>'
+    : '<p class="muted">Zahlungseinträge können bearbeitet und gelöscht werden, solange die Rechnung noch nicht vollständig bezahlt ist.</p>';
+  const form = locked
+    ? ''
+    : `<div class="fields">
+      <label>Zahlungsdatum<input type="date" data-payment-field="date" value="${escape(invoiceState.paymentForm.date)}"></label>
+      <label>Betrag in Euro<input data-payment-field="amount" inputmode="decimal" placeholder="z. B. 40,00" value="${escape(invoiceState.paymentForm.amount)}"></label>
+    </div><div class="row"><button type="button" class="action primary" data-action="record-invoice-payment">Zahlung erfassen</button></div>`;
+  return `<div class="card"><h2>Zahlungen</h2>
+    <p><strong data-invoice-payment-status>${escape(invoicePayments.paymentStatusLabel(info))}</strong> · Restbetrag: <span data-invoice-payment-remaining>${escape(invoiceAmounts.formatCents(info.remainingCents))}</span></p>
+    ${girocodeWarning}
+    ${payments.length ? `<div class="table-scroll"><table><thead><tr><th>Datum</th><th>Betrag</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p>Noch keine Zahlungen erfasst.</p>'}
+    ${lockNotice}
+    ${form}</div>`;
 }
 
 function invoiceEditor(invoice) {
@@ -172,7 +229,8 @@ function invoiceEditor(invoice) {
     </div>
     <h2>Positionen</h2><div class="table-scroll"><table><thead><tr><th>Beschreibung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis in Euro</th><th>Positionssumme</th>${issued ? '' : '<th></th>'}</tr></thead><tbody>${items}</tbody></table></div>
     ${issued ? '' : '<div class="row"><button type="button" class="action" data-action="add-invoice-item">Position hinzufügen</button></div>'}
-    <p><strong>Gesamtsumme: <span data-invoice-total aria-live="polite" title="${escape(total.error)}">${escape(total.text)}</span></strong></p></div>`;
+    <p><strong>Gesamtsumme: <span data-invoice-total aria-live="polite" title="${escape(total.error)}">${escape(total.text)}</span></strong></p></div>
+    ${issued ? invoicePaymentsSection(invoice) : ''}`;
 }
 
 function letterEditor(letter) {
@@ -278,6 +336,9 @@ function clearEditor() {
   invoiceState.revision = null;
   invoiceState.selectedPdfRevision = null;
   invoiceState.priceInputs = [];
+  invoiceState.payments = [];
+  invoiceState.paymentForm = { date: '', amount: '' };
+  invoiceState.paymentEdit = null;
   letterState.revision = null;
   letterState.hasPdf = false;
   state.revision = null;
@@ -1320,6 +1381,9 @@ async function run(action, target) {
       invoiceState.issued = null;
       invoiceState.selectedPdfRevision = null;
       invoiceState.priceInputs = ['0,00'];
+      invoiceState.payments = [];
+      invoiceState.paymentForm = { date: '', amount: '' };
+      invoiceState.paymentEdit = null;
       invoiceState.revision = null;
       state.dirty = true;
       setMessage('');
@@ -1336,6 +1400,9 @@ async function run(action, target) {
         ? selected.issued.pdfRevisions.at(-1).id
         : null;
       invoiceState.priceInputs = selected.invoice.items.map(item => invoiceAmounts.formatCents(item.unitPriceCents).slice(0, -2));
+      invoiceState.payments = selected.payments ? JSON.parse(JSON.stringify(selected.payments)) : [];
+      invoiceState.paymentForm = { date: clubDates.localDate(), amount: '' };
+      invoiceState.paymentEdit = null;
       invoiceState.revision = selected.revision;
       state.dirty = false;
       setMessage('');
@@ -1353,6 +1420,9 @@ async function run(action, target) {
       invoiceState.revision = result.revision;
       invoiceState.issued = result.issued;
       invoiceState.selectedPdfRevision = result.issued.pdfRevisions.at(-1).id;
+      invoiceState.payments = [];
+      invoiceState.paymentForm = { date: clubDates.localDate(), amount: '' };
+      invoiceState.paymentEdit = null;
       state.dirty = false;
       await refresh();
       setMessage(`Rechnung ${result.issued.number} wurde ausgestellt und unveränderlich gespeichert.`);
@@ -1391,6 +1461,51 @@ async function run(action, target) {
       setMessage(filePath
         ? `Rechnung ${invoiceState.issued.number} wurde heruntergeladen.`
         : 'Der Download wurde abgebrochen.');
+      break;
+    }
+    case 'record-invoice-payment': {
+      const result = await window.club.recordInvoicePayment(invoiceState.invoice.id,
+        parsePaymentInput(invoiceState.paymentForm), invoiceState.revision, { folder: state.folder });
+      invoiceState.payments = result.payments;
+      invoiceState.revision = result.revision;
+      invoiceState.paymentForm = { date: clubDates.localDate(), amount: '' };
+      await refresh();
+      setMessage('Die Zahlung wurde erfasst.');
+      break;
+    }
+    case 'edit-invoice-payment': {
+      const payment = invoiceState.payments.find(item => item.id === target.dataset.paymentId);
+      if (!payment) throw new Error('Der Zahlungseintrag wurde nicht gefunden.');
+      invoiceState.paymentEdit = {
+        id: payment.id,
+        date: payment.date,
+        amount: invoiceAmounts.formatCents(payment.amountCents).slice(0, -2)
+      };
+      break;
+    }
+    case 'cancel-invoice-payment-edit':
+      invoiceState.paymentEdit = null;
+      break;
+    case 'save-invoice-payment': {
+      const edit = invoiceState.paymentEdit;
+      const result = await window.club.updateInvoicePayment(invoiceState.invoice.id, edit.id,
+        parsePaymentInput(edit), invoiceState.revision, { folder: state.folder });
+      invoiceState.payments = result.payments;
+      invoiceState.revision = result.revision;
+      invoiceState.paymentEdit = null;
+      await refresh();
+      setMessage('Die Zahlung wurde aktualisiert.');
+      break;
+    }
+    case 'delete-invoice-payment': {
+      if (!window.confirm('Diesen Zahlungseintrag löschen?')) break;
+      const result = await window.club.deleteInvoicePayment(invoiceState.invoice.id,
+        target.dataset.paymentId, invoiceState.revision, { folder: state.folder });
+      invoiceState.payments = result.payments;
+      invoiceState.revision = result.revision;
+      invoiceState.paymentEdit = null;
+      await refresh();
+      setMessage('Die Zahlung wurde gelöscht.');
       break;
     }
     case 'toggle-invoice-preview':
@@ -2035,6 +2150,14 @@ app.addEventListener('change', async event => {
 
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.hasAttribute('data-payment-field')) {
+    invoiceState.paymentForm[target.dataset.paymentField] = target.value;
+    return;
+  }
+  if (target.hasAttribute('data-payment-edit-field') && invoiceState.paymentEdit) {
+    invoiceState.paymentEdit[target.dataset.paymentEditField] = target.value;
+    return;
+  }
   if (target.hasAttribute('data-invoice-field') && invoiceState.invoice) {
     const pathParts = target.dataset.invoiceField.split('.');
     if (pathParts.length === 2) invoiceState.invoice[pathParts[0]][pathParts[1]] = target.value;

@@ -77,7 +77,8 @@ settings.json in userData    user-selected data folder
   renaming, module settings, folder-local document customization import, reset
   and directory opening, PDF CSS,
   meeting list/save/delete/export, invoice draft/settings/issuance/PDF
-  preview/download, opening exported PDFs, reading existing meeting and letter
+  preview/download, invoice payment recording/editing/deletion, opening exported
+  PDFs, reading existing meeting and letter
   PDFs for their resizable in-app previews and update installation.
   Add new privileged operations through an explicit preload method and
   main-process handler rather than exposing Node or unrestricted IPC.
@@ -153,6 +154,24 @@ settings.json in userData    user-selected data folder
   a full independent veraPDF conformance report. Invoice tax is currently
   fixed to the EN-16931 outside-scope category; VAT calculation, cancellation
   and correction workflows are not implemented.
+- Manual payments are recorded per issued invoice as dated, positive integer-cent
+  entries stored in the invoice record; drafts reject payment recording, and an
+  email send is never required. Payments never change invoice facts, the issued
+  snapshot, the XML or stored PDFs, and their sum may not exceed the invoice
+  total — overpayments, zero and negative amounts are rejected on recording,
+  editing and when reading stored records. Entries can be edited and deleted
+  until the invoice is fully paid; a fully paid invoice permanently locks all
+  its payment entries with no unlock, refund or correction history. The lock is
+  enforced in the renderer UI and again in the privileged main-process
+  operations. List and detail views derive the unpaid/partially paid/paid
+  state, the outstanding balance and the overdue flag (issued, outstanding
+  balance, past due date) through the shared
+  [src/shared/invoice-payments.js](src/shared/invoice-payments.js) helper.
+  After a partial payment the invoice shows a visible warning that the GiroCode
+  in the issued PDF still carries the original total; no remainder QR code is
+  generated and the PDF is not silently regenerated. Payment writes use the
+  same inter-process invoice lock and SHA-256 revision checks as other invoice
+  writes, and a changed active folder is an explicit error.
 - In Letters and Meetings, the renderer keeps the PDF preview open and at the
   same width when selecting another saved item from the list. It replaces the
   PDF with that item's export or shows a missing/unreadable message. Selection
@@ -162,7 +181,9 @@ settings.json in userData    user-selected data folder
   surfaced rather than silently replaced by defaults.
 - [src/shared/de.js](src/shared/de.js) supplies German labels and vote
   descriptions; [src/shared/dates.js](src/shared/dates.js) shares date
-  validation, local dates, formatting and overdue logic. Reuse these helpers in
+  validation, local dates, formatting and overdue logic;
+  [src/shared/invoice-payments.js](src/shared/invoice-payments.js) shares
+  invoice payment-state and status-label logic. Reuse these helpers in
   renderer and main-process output where applicable.
 
 ## Settings and persistence
@@ -490,8 +511,10 @@ stale-save reload recovery, and a full app restart
 using the same settings context.
 The focused invoice smoke command exercises invoice-template import and reset,
 custom CSS, draft preview, issuance, redesign, revision selection, validation of
-both actual PDFs, reload, preview/download and fresh-process revision checks
-without the unrelated Electron flows.
+both actual PDFs, reload, preview/download, fresh-process revision checks and
+the payment workflow — partial payment, overpayment rejection, entry editing
+and deletion, the GiroCode warning, the permanent full-payment lock and its
+survival across an app restart — without the unrelated Electron flows.
 The pull-request workflow runs both suites, checks the smoke-test scripts for
 unused variables and syntax, and provides a virtual display for Electron. It
 installs Electron before configuring its Linux sandbox helper with root

@@ -82,6 +82,18 @@ Wählen Sie bei einem gespeicherten Entwurf **Rechnung ausstellen**. ClubManager
 
 Derzeit wird keine Umsatzsteuer berechnet oder ausgewiesen; die XML verwendet die Steuerkategorie **nicht im Anwendungsbereich der Umsatzsteuer**. Stellen Sie nur Rechnungen aus, für die diese steuerliche Einordnung zutrifft. Die Ausstellung prüft die eingegebenen Pflichtangaben, die XML und das PDF lokal.
 
+## Zahlungen und Teilzahlungen
+
+Für eine ausgestellte Rechnung erfassen Sie Zahlungen manuell im Abschnitt **Zahlungen** der Rechnung: Geben Sie das Zahlungsdatum und den Betrag in Euro an (z. B. `40,00`, höchstens zwei Nachkommastellen) und wählen Sie **Zahlung erfassen**. Mehrere Zahlungen je Rechnung sind möglich und bleiben nach einem Neustart erhalten. Rechnungsentwürfe erlauben keine Zahlungserfassung. Ein E-Mail-Versand ist nicht erforderlich; Zahlungen können auch vor dem Versand erfasst werden.
+
+Rechnungsliste und Rechnung zeigen den Zahlungsstand (**Unbezahlt**, **Teilweise bezahlt**, **Bezahlt**) und den Restbetrag. Eine ausgestellte Rechnung mit offenem Restbetrag nach dem Fälligkeitsdatum wird zusätzlich als **überfällig** gekennzeichnet; eine vollständig bezahlte Rechnung gilt nicht mehr als überfällig.
+
+Nullbeträge, negative Beträge und Zahlungen über den offenen Restbetrag hinaus werden abgewiesen und nicht gespeichert. Solange die Rechnung noch nicht vollständig bezahlt ist, können Sie Zahlungseinträge direkt bearbeiten oder löschen; Restbetrag und Zahlungsstand werden sofort aktualisiert. Auch beim Bearbeiten darf die Summe aller Zahlungen die Rechnungssumme nicht übersteigen.
+
+Sobald die Rechnung vollständig bezahlt ist, sind alle ihre Zahlungseinträge endgültig gesperrt: Es gibt keine Entsperrung, keine Erstattung und keine Storno- oder Korrekturhistorie – auch nicht für versehentlich fehlerhafte Einträge. Prüfen Sie Zahlungen deshalb vor der letzten Erfassung sorgfältig. Wurde die Rechnung inzwischen auf dem Datenträger geändert oder der Datenordner gewechselt, meldet ClubManager einen ausdrücklichen Fehler statt Zahlungen zu verlieren oder im falschen Ordner zu speichern.
+
+Nach einer Teilzahlung zeigt ClubManager eine deutliche Warnung: Der GiroCode im ausgestellten PDF enthält weiterhin den ursprünglichen Gesamtbetrag. Es wird kein QR-Code für den Restbetrag erzeugt und das PDF nicht neu erstellt. Rechnungsdaten und gespeicherte PDFs bleiben bei Zahlungseinträgen unverändert.
+
 ## Online-Kalender unter Rechnungen
 
 Aktivieren Sie das Modul **Rechnungen** und öffnen Sie **Einstellungen → Rechnungen**. Dort können Sie eine einzelne ICS-Abonnementadresse für den aktiven Datenordner speichern oder löschen. Die URL wird in diesem Datenordner gespeichert, folgt beim Wechsel des Datenordners dessen eigener Einstellung und wird mit allen Personen geteilt, die auf diesen Ordner zugreifen. Eine gespeicherte URL kann einen Zugangstoken enthalten; diese URL ist deshalb für alle Personen mit Datenordnerzugriff sichtbar.

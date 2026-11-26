@@ -196,8 +196,30 @@ async function invoiceRestartScenario(root) {
       }
       document.querySelector('[data-action="preview-issued-invoice"]').click();
       await waitFor(() => document.querySelector('.preview-pane iframe')?.src.startsWith('blob:'));
+      const paidId = ${JSON.stringify(process.env.CLUBMANAGER_PAID_INVOICE_ID || '')};
+      if (paidId) {
+        document.querySelector('[data-action="select-invoice"][data-id="' + paidId + '"]').click();
+        await waitFor(() => document.querySelector('[data-invoice-payment-lock]'));
+        const paid = (await window.club.listInvoices()).find(item => item.invoice.id === paidId);
+        if (document.querySelector('[data-invoice-payment-status]')?.textContent !== 'Bezahlt' ||
+            document.querySelector('[data-invoice-payment-remaining]')?.textContent !== '0,00 €' ||
+            !document.querySelector('[data-invoice-payment-lock]') ||
+            document.querySelector('[data-action="edit-invoice-payment"]') ||
+            document.querySelector('[data-action="delete-invoice-payment"]') ||
+            document.querySelector('[data-payment-field="amount"]') ||
+            paid.payments.reduce((sum, payment) => sum + payment.amountCents, 0) !== 10000) {
+          throw new Error('The restarted app must restore the fully paid, locked payment entries');
+        }
+        try {
+          await window.club.deleteInvoicePayment(paidId, paid.payments[0].id, paid.revision,
+            { folder: ${JSON.stringify(folder)} });
+          throw new Error('A fully paid invoice must stay locked after an app restart');
+        } catch (error) {
+          if (!error.message.includes('endgültig gesperrt')) throw error;
+        }
+      }
     })()`);
-    console.log('Electron invoice restart smoke test passed: issued data, both PDF revisions and preview survive a new app process.');
+    console.log('Electron invoice restart smoke test passed: issued data, both PDF revisions, preview and locked payments survive a new app process.');
   } finally {
     clearTimeout(timeout);
     app.quit();

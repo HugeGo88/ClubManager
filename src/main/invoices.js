@@ -5,6 +5,7 @@ const { atomicWrite } = require('./storage');
 const { escapeHtml } = require('./protocol');
 const { isDate, formatDate } = require('../shared/dates');
 const { parseQuantity, calculateInvoiceTotal, formatCents } = require('../shared/invoice-amounts');
+const { paymentState } = require('../shared/invoice-payments');
 const { buildEpcPayload, normalizeIban } = require('./invoice-epc');
 const { validateInvoiceTemplate, renderInvoiceTemplate } = require('./invoice-template');
 const lockfile = require('proper-lockfile');
@@ -119,7 +120,7 @@ async function readInvoiceRecord(folder, id) {
   if (!record || record.version !== 1 || record.invoice?.id !== id) {
     throw new Error(`${path.basename(file)} konnte nicht gelesen werden: ungültiger Rechnungsdatensatz.`);
   }
-  validateInvoiceDraft(record.invoice);
+  const total = validateInvoiceDraft(record.invoice);
   if (record.issued !== undefined && (!record.issued || typeof record.issued.number !== 'string' ||
       typeof record.issued.pdfRevision !== 'string' || !record.issued.snapshot)) {
     throw new Error(`${path.basename(file)} konnte nicht gelesen werden: ungültige Ausstellungsdaten.`);
@@ -143,6 +144,16 @@ async function readInvoiceRecord(folder, id) {
       throw new Error(`${path.basename(file)} konnte nicht gelesen werden: ungültige PDF-Revisionen.`);
     }
   }
+  if (record.payments !== undefined) {
+    const payments = record.payments;
+    if (!record.issued || !Array.isArray(payments) ||
+        payments.some(payment => !payment || typeof payment.id !== 'string' || !ID.test(payment.id) ||
+          !isDate(payment.date) || !Number.isSafeInteger(payment.amountCents) || payment.amountCents <= 0) ||
+        new Set(payments.map(payment => payment.id)).size !== payments.length ||
+        payments.reduce((sum, payment) => sum + payment.amountCents, 0) > total.cents) {
+      throw new Error(`${path.basename(file)} konnte nicht gelesen werden: ungültige Zahlungseinträge.`);
+    }
+  }
   return { record, content };
 }
 
@@ -162,7 +173,8 @@ async function listInvoices(folder) {
     records.push({
       invoice: stored.record.invoice,
       revision: revision(stored.content),
-      ...(stored.record.issued ? { issued: stored.record.issued } : {})
+      ...(stored.record.issued ? { issued: stored.record.issued } : {}),
+      ...(stored.record.payments ? { payments: stored.record.payments } : {})
     });
   }
   return records.sort((a, b) => b.invoice.invoiceDate.localeCompare(a.invoice.invoiceDate) ||
@@ -493,7 +505,8 @@ async function redesignInvoice(folder, id, expectedRevision, generateArtifact) {
         const content = JSON.stringify({
           version: 1,
           invoice: latest.record.invoice,
-          issued
+          issued,
+          ...(latest.record.payments ? { payments: latest.record.payments } : {})
         }, null, 2) + '\n';
         await atomicWrite(invoicePath(folder, id), content);
         committed = true;
@@ -526,6 +539,74 @@ async function readInvoicePdf(folder, id, revisionId) {
     throw new Error('Das gespeicherte Rechnungs-PDF wurde verändert.');
   }
   return pdf;
+}
+
+function validatePaymentEntry(payment) {
+  if (!payment || typeof payment !== 'object' || Array.isArray(payment) || !isDate(payment.date)) {
+    throw new Error('Geben Sie ein gültiges Zahlungsdatum an.');
+  }
+  if (!Number.isSafeInteger(payment.amountCents) || payment.amountCents <= 0) {
+    throw new Error('Der Zahlungsbetrag muss ein positiver Eurobetrag in Cent sein.');
+  }
+  return { date: payment.date, amountCents: payment.amountCents };
+}
+
+async function changeInvoicePayments(folder, id, expectedRevision, change) {
+  const release = await acquireInvoiceLock(folder, id);
+  try {
+    const stored = await readInvoiceRecord(folder, id);
+    if (!stored) throw new Error('Die Rechnung wurde nicht gefunden.');
+    if (!stored.record.issued) {
+      throw new Error('Zahlungen können nur für ausgestellte Rechnungen erfasst werden.');
+    }
+    if (revision(stored.content) !== expectedRevision) {
+      throw new Error('Die Rechnung wurde auf dem Datenträger geändert. Laden Sie sie vor der Zahlungserfassung neu.');
+    }
+    const totalCents = calculateInvoiceTotal(stored.record.invoice.items).cents;
+    const existing = stored.record.payments || [];
+    if (paymentState(totalCents, existing).status === 'paid') {
+      throw new Error('Die Rechnung ist vollständig bezahlt. Zahlungseinträge sind endgültig gesperrt und können nicht mehr geändert oder gelöscht werden.');
+    }
+    const payments = change([...existing]);
+    if (paymentState(totalCents, payments).remainingCents < 0) {
+      throw new Error('Die Zahlungen dürfen die Rechnungssumme nicht übersteigen. Verringern Sie den Betrag auf höchstens den offenen Restbetrag.');
+    }
+    const content = JSON.stringify({
+      version: 1,
+      invoice: stored.record.invoice,
+      issued: stored.record.issued,
+      ...(payments.length ? { payments } : {})
+    }, null, 2) + '\n';
+    await atomicWrite(invoicePath(folder, id), content);
+    return { payments, revision: revision(content) };
+  } finally {
+    await release();
+  }
+}
+
+async function recordInvoicePayment(folder, id, expectedRevision, payment) {
+  const entry = validatePaymentEntry(payment);
+  return changeInvoicePayments(folder, id, expectedRevision,
+    payments => [...payments, { id: crypto.randomUUID(), ...entry }]);
+}
+
+async function updateInvoicePayment(folder, id, expectedRevision, paymentId, payment) {
+  const entry = validatePaymentEntry(payment);
+  return changeInvoicePayments(folder, id, expectedRevision, payments => {
+    const index = payments.findIndex(item => item.id === paymentId);
+    if (index === -1) throw new Error('Der Zahlungseintrag wurde nicht gefunden.');
+    payments[index] = { id: paymentId, ...entry };
+    return payments;
+  });
+}
+
+function deleteInvoicePayment(folder, id, expectedRevision, paymentId) {
+  return changeInvoicePayments(folder, id, expectedRevision, payments => {
+    const index = payments.findIndex(item => item.id === paymentId);
+    if (index === -1) throw new Error('Der Zahlungseintrag wurde nicht gefunden.');
+    payments.splice(index, 1);
+    return payments;
+  });
 }
 
 function countryName(code) {
@@ -638,6 +719,9 @@ module.exports = {
   issueInvoice,
   redesignInvoice,
   readInvoicePdf,
+  recordInvoicePayment,
+  updateInvoicePayment,
+  deleteInvoicePayment,
   invoiceHtml,
   validateInvoiceTemplate,
   formatCents

@@ -152,6 +152,10 @@ items are still open, partially implemented, or ongoing design goals.
 - [x] Deliberately redesign issued invoices without changing their number or
   factual/XML contents; preserve selectable, integrity-checked PDF revisions
   across app restarts.
+- [x] Track manual payments and partial payments per issued invoice with
+  outstanding balance, unpaid/partial/paid/overdue states, direct correction
+  until fully paid, a permanent lock afterwards and a visible warning that the
+  GiroCode keeps the original total (#43).
 
 ### Members
 

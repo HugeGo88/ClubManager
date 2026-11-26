@@ -7,7 +7,7 @@ const fsSync = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { invoiceDraftSmoke } = require('./electron-smoke.cjs');
+const { invoiceDraftSmoke, invoicePaymentSmoke } = require('./electron-smoke.cjs');
 
 let root;
 process.on('exit', () => {
@@ -19,14 +19,15 @@ const timeout = setTimeout(() => {
   app.exit(1);
 }, 60000);
 
-async function runInvoiceRestartSmoke(rootPath, invoiceId) {
+async function runInvoiceRestartSmoke(rootPath, invoiceId, paidInvoiceId) {
   const output = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(__dirname, 'electron-folder-recovery-smoke.cjs')], {
       env: {
         ...process.env,
         CLUBMANAGER_SMOKE_ROOT: rootPath,
         CLUBMANAGER_RECOVERY_MODE: 'invoice-restart-check',
-        CLUBMANAGER_INVOICE_ID: invoiceId
+        CLUBMANAGER_INVOICE_ID: invoiceId,
+        CLUBMANAGER_PAID_INVOICE_ID: paidInvoiceId
       },
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -102,8 +103,9 @@ async function main() {
   const invoice = await invoiceDraftSmoke(window);
   assert.deepEqual(await fs.readFile(invoiceDownloadPath), invoice.pdf);
   assert.equal(invoiceSaveDialogOptions.defaultPath, `${invoice.number}.pdf`);
-  await runInvoiceRestartSmoke(root, invoice.id);
-  console.log('Electron invoice smoke test passed: issue, artifact, reload, preview, download and restart.');
+  const paidInvoice = await invoicePaymentSmoke(window);
+  await runInvoiceRestartSmoke(root, invoice.id, paidInvoice.id);
+  console.log('Electron invoice smoke test passed: issue, artifact, payments, reload, preview, download and restart.');
   clearTimeout(timeout);
 }
 

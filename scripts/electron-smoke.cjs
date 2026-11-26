@@ -623,6 +623,137 @@ async function invoiceDraftSmoke(window) {
   return { id: issuance.id, pdf, number: issuance.number };
 }
 
+async function invoicePaymentSmoke(window) {
+  const result = await window.webContents.executeJavaScript(`(async () => {
+    const waitFor = async test => {
+      for (let i = 0; i < 200; i++) {
+        const value = await test();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      throw new Error('Timed out waiting for invoice payment scenario');
+    };
+    const setValue = (selector, value) => {
+      const input = document.querySelector(selector);
+      if (!input) throw new Error('Missing payment input: ' + selector);
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const settle = async () => waitFor(() => !document.body.inert);
+    const folder = await window.club.getFolder();
+    document.querySelector('[data-view="invoices"]').click();
+    await waitFor(() => document.querySelector('[data-action="new-invoice"]'));
+    document.querySelector('[data-action="new-invoice"]').click();
+    await waitFor(() => document.querySelector('[data-invoice-field="recipient.name"]'));
+    setValue('[data-invoice-field="recipient.name"]', 'Zahlende Person');
+    setValue('[data-invoice-field="recipient.street"]', 'Hauptstraße 1');
+    setValue('[data-invoice-field="recipient.postalCode"]', '12345');
+    setValue('[data-invoice-field="recipient.city"]', 'Musterstadt');
+    setValue('[data-invoice-item-field="description"]', 'Jahresbeitrag');
+    setValue('[data-invoice-item="0"][data-invoice-item-field="unitPriceEuro"]', '100,00');
+    if (document.querySelector('[data-invoice-payment-status]')) {
+      throw new Error('An invoice draft must not offer payment recording');
+    }
+    document.querySelector('[data-action="save-invoice"]').click();
+    await waitFor(async () => !document.body.inert &&
+      (await window.club.listInvoices()).some(item => item.invoice.recipient.name === 'Zahlende Person'));
+    const saved = (await window.club.listInvoices()).find(item => item.invoice.recipient.name === 'Zahlende Person');
+    try {
+      await window.club.recordInvoicePayment(saved.invoice.id,
+        { date: saved.invoice.invoiceDate, amountCents: 1000 }, saved.revision, { folder });
+      throw new Error('A draft must reject privileged payment recording');
+    } catch (error) {
+      if (!error.message.includes('nur für ausgestellte Rechnungen')) throw error;
+    }
+    try {
+      await window.club.recordInvoicePayment(saved.invoice.id,
+        { date: saved.invoice.invoiceDate, amountCents: 1000 }, saved.revision, { folder: folder + '-stale' });
+      throw new Error('A payment with a stale folder context must be rejected');
+    } catch (error) {
+      if (!error.message.includes('Der aktive Datenordner hat sich geändert')) throw error;
+    }
+    document.querySelector('[data-action="issue-invoice"]').click();
+    await waitFor(() => !document.body.inert && document.querySelector('[data-invoice-payment-status]'));
+    const paymentDate = saved.invoice.invoiceDate;
+    const statusText = () => document.querySelector('[data-invoice-payment-status]')?.textContent;
+    const remainingText = () => document.querySelector('[data-invoice-payment-remaining]')?.textContent;
+    if (statusText() !== 'Unbezahlt' || remainingText() !== '100,00 €' ||
+        document.querySelector('[data-invoice-girocode-warning]')) {
+      throw new Error('An issued invoice without payments must show Unbezahlt and the full balance');
+    }
+    setValue('[data-payment-field="date"]', paymentDate);
+    setValue('[data-payment-field="amount"]', '40,00');
+    document.querySelector('[data-action="record-invoice-payment"]').click();
+    await waitFor(() => !document.body.inert && statusText() === 'Teilweise bezahlt');
+    if (remainingText() !== '60,00 €' ||
+        !document.querySelector('[data-invoice-girocode-warning]')?.textContent.includes('100,00 €')) {
+      throw new Error('A 40,00 EUR payment must leave 60,00 EUR open and warn about the fixed GiroCode total');
+    }
+    if (![...document.querySelectorAll('[data-action="select-invoice"]')].some(item =>
+      item.textContent.includes('Teilweise bezahlt') && item.textContent.includes('offen 60,00 €'))) {
+      throw new Error('The invoice list must show the partial payment state and open balance');
+    }
+    setValue('[data-payment-field="date"]', paymentDate);
+    setValue('[data-payment-field="amount"]', '60,01');
+    document.querySelector('[data-action="record-invoice-payment"]').click();
+    await waitFor(() => !document.body.inert &&
+      document.querySelector('.notice.error')?.textContent.includes('nicht übersteigen'));
+    const afterOverpay = (await window.club.listInvoices()).find(item => item.invoice.id === saved.invoice.id);
+    if (afterOverpay.payments.length !== 1 || remainingText() !== '60,00 €') {
+      throw new Error('An overpayment must be rejected visibly and not stored');
+    }
+    document.querySelector('[data-action="edit-invoice-payment"]').click();
+    await waitFor(() => document.querySelector('[data-payment-edit-field="amount"]'));
+    setValue('[data-payment-edit-field="amount"]', '30,00');
+    document.querySelector('[data-action="save-invoice-payment"]').click();
+    await waitFor(() => !document.body.inert && remainingText() === '70,00 €');
+    setValue('[data-payment-field="date"]', paymentDate);
+    setValue('[data-payment-field="amount"]', '10,00');
+    document.querySelector('[data-action="record-invoice-payment"]').click();
+    await waitFor(() => !document.body.inert && remainingText() === '60,00 €');
+    const originalConfirm = window.confirm;
+    window.confirm = () => true;
+    document.querySelectorAll('[data-action="delete-invoice-payment"]')[1].click();
+    await waitFor(() => !document.body.inert && remainingText() === '70,00 €');
+    window.confirm = originalConfirm;
+    setValue('[data-payment-field="date"]', paymentDate);
+    setValue('[data-payment-field="amount"]', '70,00');
+    document.querySelector('[data-action="record-invoice-payment"]').click();
+    await waitFor(() => !document.body.inert && statusText() === 'Bezahlt');
+    if (remainingText() !== '0,00 €' || document.querySelector('[data-invoice-girocode-warning]') ||
+        document.querySelector('[data-payment-field="amount"]') ||
+        document.querySelector('[data-action="edit-invoice-payment"]') ||
+        document.querySelector('[data-action="delete-invoice-payment"]') ||
+        !document.querySelector('[data-invoice-payment-lock]')) {
+      throw new Error('A fully paid invoice must lock its payment entries in the interface');
+    }
+    const paid = (await window.club.listInvoices()).find(item => item.invoice.id === saved.invoice.id);
+    for (const attempt of [
+      () => window.club.recordInvoicePayment(paid.invoice.id,
+        { date: paymentDate, amountCents: 100 }, paid.revision, { folder }),
+      () => window.club.updateInvoicePayment(paid.invoice.id, paid.payments[0].id,
+        { date: paymentDate, amountCents: 100 }, paid.revision, { folder }),
+      () => window.club.deleteInvoicePayment(paid.invoice.id, paid.payments[0].id, paid.revision, { folder })
+    ]) {
+      try {
+        await attempt();
+        throw new Error('A fully paid invoice must reject privileged payment changes');
+      } catch (error) {
+        if (!error.message.includes('endgültig gesperrt')) throw error;
+      }
+    }
+    if (![...document.querySelectorAll('[data-action="select-invoice"]')].some(item =>
+      item.textContent.includes('Bezahlt') && !item.textContent.includes('offen'))) {
+      throw new Error('The invoice list must show the paid state');
+    }
+    await settle();
+    return { id: paid.invoice.id, payments: paid.payments };
+  })()`);
+  assert.equal(result.payments.length, 2);
+  assert.equal(result.payments.reduce((sum, payment) => sum + payment.amountCents, 0), 10000);
+  return result;
+}
+
 async function calendarCacheSmoke(window, port, setCalendarAvailable) {
   const configure = async url => {
     await window.webContents.executeJavaScript(`(async () => {
@@ -3662,4 +3793,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   });
 }
 
-module.exports = { invoiceDraftSmoke };
+module.exports = { invoiceDraftSmoke, invoicePaymentSmoke };

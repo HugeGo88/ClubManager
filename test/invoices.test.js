@@ -17,8 +17,39 @@ const {
   saveInvoiceSettings,
   issueInvoice,
   redesignInvoice,
-  readInvoicePdf
+  readInvoicePdf,
+  recordInvoicePayment,
+  updateInvoicePayment,
+  deleteInvoicePayment
 } = require('../src/main/invoices');
+
+async function issuedInvoiceFolder(t, overrides = {}) {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-invoice-payments-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const settings = await loadInvoiceSettings(folder);
+  await saveInvoiceSettings(folder, {
+    ...settings.settings,
+    issuerName: 'Beispielverein',
+    issuerStreet: 'Vereinsweg 1',
+    issuerPostalCode: '12345',
+    issuerCity: 'Musterstadt',
+    issuerIdentifier: 'VR 1234',
+    bankName: 'Beispielbank',
+    iban: 'DE89370400440532013000',
+    bic: 'COBADEFFXXX'
+  }, settings.revision);
+  const value = draft({
+    items: [{ description: 'Mitgliedsbeitrag', quantity: '1', unit: 'Stück', unitPriceCents: 10000 }],
+    ...overrides
+  });
+  const draftRevision = await saveInvoice(folder, value, null);
+  const issued = await issueInvoice(folder, value.id, draftRevision, async () => ({
+    pdf: Buffer.from('%PDF-paid'),
+    xml: '<Invoice />'
+  }));
+  return { folder, invoice: value, issued };
+}
 
 function draft(overrides = {}) {
   return {
@@ -482,4 +513,168 @@ test('rejects invalid invoice templates again when producing document HTML', () 
   ]) {
     assert.throws(() => invoiceHtml(draft(), {}, { template }), /Rechnungsvorlage|Platzhalter|Element|Skript/i);
   }
+});
+
+test('records manual payments on issued invoices and keeps the outstanding balance after reload', async t => {
+  const { folder, invoice } = await issuedInvoiceFolder(t);
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+
+  const first = await recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-25', amountCents: 4000 });
+  assert.equal(first.payments.length, 1);
+  assert.equal(first.payments[0].date, '2026-11-25');
+  assert.equal(first.payments[0].amountCents, 4000);
+
+  const second = await recordInvoicePayment(folder, invoice.id, first.revision,
+    { date: '2026-11-26', amountCents: 1000 });
+  assert.equal(second.payments.length, 2);
+
+  const reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, second.payments);
+  assert.equal(reloaded.payments.reduce((sum, payment) => sum + payment.amountCents, 0), 5000);
+  assert.notEqual(reloaded.payments[0].id, reloaded.payments[1].id);
+});
+
+test('rejects payment recording on invoice drafts', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'clubmanager-draft-payment-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  await initializeFolder(folder);
+  const value = draft();
+  const revision = await saveInvoice(folder, value, null);
+  await assert.rejects(recordInvoicePayment(folder, value.id, revision,
+    { date: '2026-11-25', amountCents: 1000 }), /nur für ausgestellte Rechnungen/);
+  assert.equal((await listInvoices(folder)).find(item => item.invoice.id === value.id).payments, undefined);
+});
+
+test('visibly rejects overpayments, zero amounts, negative amounts and invalid dates', async t => {
+  const { folder, invoice } = await issuedInvoiceFolder(t);
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  const partial = await recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-25', amountCents: 4000 });
+
+  await assert.rejects(recordInvoicePayment(folder, invoice.id, partial.revision,
+    { date: '2026-11-26', amountCents: 6001 }), /nicht übersteigen/);
+  await assert.rejects(recordInvoicePayment(folder, invoice.id, partial.revision,
+    { date: '2026-11-26', amountCents: 0 }), /positiver Eurobetrag/);
+  await assert.rejects(recordInvoicePayment(folder, invoice.id, partial.revision,
+    { date: '2026-11-26', amountCents: -100 }), /positiver Eurobetrag/);
+  await assert.rejects(recordInvoicePayment(folder, invoice.id, partial.revision,
+    { date: '2026-02-30', amountCents: 100 }), /Zahlungsdatum/);
+  await assert.rejects(recordInvoicePayment(folder, invoice.id, partial.revision,
+    { date: '2026-11-26', amountCents: 10.5 }), /positiver Eurobetrag/);
+
+  const reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, partial.payments);
+});
+
+test('edits and deletes payment entries while the invoice is not fully paid', async t => {
+  const { folder, invoice } = await issuedInvoiceFolder(t);
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  const first = await recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-25', amountCents: 4000 });
+  const second = await recordInvoicePayment(folder, invoice.id, first.revision,
+    { date: '2026-11-26', amountCents: 2000 });
+
+  const edited = await updateInvoicePayment(folder, invoice.id, second.revision,
+    second.payments[0].id, { date: '2026-11-24', amountCents: 3000 });
+  assert.deepEqual(edited.payments.map(payment => payment.amountCents), [3000, 2000]);
+  assert.equal(edited.payments[0].date, '2026-11-24');
+  assert.equal(edited.payments[0].id, second.payments[0].id);
+
+  await assert.rejects(updateInvoicePayment(folder, invoice.id, edited.revision,
+    edited.payments[0].id, { date: '2026-11-24', amountCents: 8001 }), /nicht übersteigen/);
+
+  const removed = await deleteInvoicePayment(folder, invoice.id, edited.revision, edited.payments[1].id);
+  assert.deepEqual(removed.payments.map(payment => payment.amountCents), [3000]);
+  const reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, removed.payments);
+
+  await assert.rejects(updateInvoicePayment(folder, invoice.id, removed.revision,
+    edited.payments[1].id, { date: '2026-11-24', amountCents: 100 }), /nicht gefunden/);
+});
+
+test('locks all payment entries permanently once the invoice is fully paid', async t => {
+  const { folder, invoice } = await issuedInvoiceFolder(t);
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  const first = await recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-25', amountCents: 4000 });
+  const paid = await recordInvoicePayment(folder, invoice.id, first.revision,
+    { date: '2026-11-26', amountCents: 6000 });
+
+  for (const attempt of [
+    () => recordInvoicePayment(folder, invoice.id, paid.revision, { date: '2026-11-27', amountCents: 100 }),
+    () => updateInvoicePayment(folder, invoice.id, paid.revision, paid.payments[0].id,
+      { date: '2026-11-27', amountCents: 3000 }),
+    () => deleteInvoicePayment(folder, invoice.id, paid.revision, paid.payments[0].id)
+  ]) {
+    await assert.rejects(attempt(), /vollständig bezahlt.*endgültig gesperrt/);
+  }
+  const reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, paid.payments);
+  assert.equal(reloaded.payments.reduce((sum, payment) => sum + payment.amountCents, 0), 10000);
+});
+
+test('rejects payment changes with stale revisions and keeps invoice facts unchanged', async t => {
+  const { folder, invoice, issued } = await issuedInvoiceFolder(t);
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  const before = await fs.readFile(path.join(folder, 'invoices', `${invoice.id}.json`), 'utf8');
+  const first = await recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-25', amountCents: 4000 });
+
+  await assert.rejects(recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-26', amountCents: 1000 }), /auf dem Datenträger geändert/);
+  await assert.rejects(deleteInvoicePayment(folder, invoice.id, listed.revision,
+    first.payments[0].id), /auf dem Datenträger geändert/);
+
+  const reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, first.payments);
+  assert.deepEqual(reloaded.invoice, JSON.parse(before).invoice);
+  assert.deepEqual(reloaded.issued, issued.issued);
+  assert.deepEqual(await readInvoicePdf(folder, invoice.id), Buffer.from('%PDF-paid'));
+});
+
+test('rejects stored payment entries that are invalid or exceed the invoice total', async t => {
+  const { folder, invoice } = await issuedInvoiceFolder(t);
+  const file = path.join(folder, 'invoices', `${invoice.id}.json`);
+  const record = JSON.parse(await fs.readFile(file, 'utf8'));
+
+  for (const payments of [
+    [{ id: crypto.randomUUID(), date: '2026-11-25', amountCents: 10001 }],
+    [{ id: crypto.randomUUID(), date: '2026-11-25', amountCents: 0 }],
+    [{ id: 'not-a-uuid', date: '2026-11-25', amountCents: 100 }],
+    [{ id: crypto.randomUUID(), date: 'gestern', amountCents: 100 }]
+  ]) {
+    await fs.writeFile(file, `${JSON.stringify({ ...record, payments }, null, 2)}\n`);
+    await assert.rejects(listInvoices(folder), /ungültige Zahlungseinträge/);
+  }
+
+  const draftRecord = { version: 1, invoice: draft() };
+  const draftFile = path.join(folder, 'invoices', `${draftRecord.invoice.id}.json`);
+  await fs.writeFile(file, `${JSON.stringify(record, null, 2)}\n`);
+  await fs.writeFile(draftFile, `${JSON.stringify({
+    ...draftRecord,
+    payments: [{ id: crypto.randomUUID(), date: '2026-11-25', amountCents: 1 }]
+  }, null, 2)}\n`);
+  await assert.rejects(listInvoices(folder), /ungültige Zahlungseinträge/);
+});
+
+test('invoice redesign preserves recorded payments and the payment lock', async t => {
+  const { folder, invoice } = await issuedInvoiceFolder(t);
+  const listed = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  const partial = await recordInvoicePayment(folder, invoice.id, listed.revision,
+    { date: '2026-11-25', amountCents: 4000 });
+
+  const redesigned = await redesignInvoice(folder, invoice.id, partial.revision,
+    async () => ({ pdf: Buffer.from('%PDF-relayout'), xml: '<Invoice />' }));
+  let reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, partial.payments);
+
+  const paid = await recordInvoicePayment(folder, invoice.id, redesigned.revision,
+    { date: '2026-11-26', amountCents: 6000 });
+  const paidRedesign = await redesignInvoice(folder, invoice.id, paid.revision,
+    async () => ({ pdf: Buffer.from('%PDF-paid-relayout'), xml: '<Invoice />' }));
+  reloaded = (await listInvoices(folder)).find(item => item.invoice.id === invoice.id);
+  assert.deepEqual(reloaded.payments, paid.payments);
+  await assert.rejects(deleteInvoicePayment(folder, invoice.id, paidRedesign.revision,
+    paid.payments[0].id), /vollständig bezahlt.*endgültig gesperrt/);
 });

@@ -160,6 +160,7 @@ button:disabled { opacity: .45; cursor: default; }
 .task-completed-date { color: #667487; font-size: 13px; }
 .status { font-size: 13px; color: #667487; }
 .notice { padding: 12px 14px; background: #eef5ff; border-radius: 6px; color: #35567c; }
+.warning { padding: 12px 14px; background: #fff6e0; border-radius: 6px; color: #7a5410; }
 .error { background: #fff1ef; color: #a32f26; }
 .empty { padding: 45px 10px; text-align: center; }
 .path { overflow-wrap: anywhere; font-family: monospace; }
